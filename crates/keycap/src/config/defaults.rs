@@ -4,10 +4,11 @@ use keycap_protocol::Warning;
 
 use super::layer::{Layer, Source};
 
-const DEFAULTS: &str = include_str!("defaults.toml");
+/// The text of `defaults.toml`, exactly as shipped.
+pub(crate) const DEFAULTS_TOML: &str = include_str!("defaults.toml");
 
 /// The built-in layer, every default mapping. The warnings are empty for the shipped file; a
 /// test holds that.
 pub fn builtin() -> (Layer, Vec<Warning>) {
-    Layer::parse(DEFAULTS, Source::Builtin)
+    Layer::parse(DEFAULTS_TOML, Source::Builtin)
 }

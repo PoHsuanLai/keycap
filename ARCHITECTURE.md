@@ -35,19 +35,27 @@ never name `daemon` modules.
 | L3 state | `held`, `gate`, `escape`, `backoff` | pure state machines | `pub` |
 | L4 remapper | `remap` (`Remapper::step`, `Input`, `Out`) | pure composition: `Remapper::step(self, Input, &Profiles) -> (Self, Vec<Out>)` | `pub` |
 | L5 effects | `daemon` (`reader`, `socket`, `discover`, `uinput`, `sdnotify`, `env`, `sys`) | threads, sockets, devices, clocks, ioctls | `pub(crate)` |
-| L6 entry | `command` | argument parsing, one `run(args)`; reads `std::env` once into `daemon::Env`; `replay FILE` | `pub` (one fn) |
+| L6 entry | `command` | argument parsing, one `run(args)`; reads `std::env` once into `daemon::Env`; `--print-config`, `--check-uinput`, `replay FILE` (a pure script parser, `script.rs`) | `pub` (one fn) |
 
 Daemon modules:
 
 | Module | Role |
 |---|---|
-| `daemon/sys.rs` | the only `unsafe`: typed ioctls (`EVIOCGRAB`, `EVIOCGBIT`, `EVIOCGKEY`, `EVIOCGID`, uinput), each with a `SAFETY` comment, and a test pinning every opcode's number |
-| `daemon/uinput.rs` | the one "keycap keyboard" virtual device, destroyed on `Drop`; passes pointer events through for combo devices |
-| `daemon/discover.rs` | the /sys scan and `notify` on `/dev/input`; `classify(&Caps) -> Eligibility` is pure and table-tested, sysfs roots injectable |
-| `daemon/reader.rs` | one `poll` loop over the grabbed fds, an eventfd and the timeout; the reader waits on nothing but `poll` |
-| `daemon/socket.rs` | the socket thread; `SO_PEERCRED` to `Peer { SeatOwner, Observer }` |
-| `daemon/sdnotify.rs` | `READY=1` and `WATCHDOG=1` to `$NOTIFY_SOCKET` |
-| `daemon/env.rs` | `Env::from_lookup`: environment, clock, directories |
+| `daemon/sys.rs` | the only `unsafe`: typed ioctls (`EVIOCGRAB`, `EVIOCGKEY`, uinput), each with a `SAFETY` comment, and a test pinning every opcode's number |
+| `daemon/uinput.rs` | the one "keycap keyboard" virtual device, destroyed on `Drop`; passes pointer events through for combo devices; the `Emitter` trait and its recording fake |
+| `daemon/events.rs` | `struct input_event` as bytes, `decode` (what a device sent) and `encode` (what keycap writes), pure |
+| `daemon/discover/` | the /sys scan and `notify` on `/dev/input`; `classify(&Caps) -> Eligibility` is pure and table-tested, sysfs roots injectable |
+| `daemon/devices/` | every keyboard as a pure state machine: `{ identity, layout, gate, grab }` plus the conflict `Backoff`; transitions return `(Devices, Vec<DeviceEffect>)`, `drive` carries the effects out through `Nodes`, `status_of` makes the `Status` a desktop sees |
+| `daemon/grabber.rs` | `Grabber` (grab, ungrab) and `Nodes` (open, close, keys down): the real evdev fds, and `FakeGrabber` in tests |
+| `daemon/reader/` | the main thread: one `poll` over the nodes and the inbox's eventfd, timeout from the next gate or backoff deadline and half the watchdog; the reader waits on nothing but `poll` |
+| `daemon/route.rs`, `daemon/evdev.rs` | one read of a node (drained until `EAGAIN`) to `Input`s and pointer frames, pure `route` over the drained events |
+| `daemon/inbox.rs`, `daemon/waker.rs` | what other threads send the reader (`Request`, system config, hotplug) over one channel and one eventfd |
+| `daemon/socket/` | the socket thread; `seat.rs` holds the pure parts (`active_uid`, `peer_of` to `Peer { SeatOwner, Observer }`, `request_of`, `Seat::look` for owner leaving or user switch) |
+| `daemon/settings.rs` | the config layers in force (built-in, system, user) and their resolution |
+| `daemon/service.rs` | `run(env)`: the virtual keyboard, socket thread, watchers, then the reader |
+| `daemon/sdnotify.rs` | `READY=1`, `WATCHDOG=1` and `STATUS=` to `$NOTIFY_SOCKET` |
+| `daemon/env.rs` | `Env::from_lookup`: environment, directories, the seat file |
+| `daemon/clock.rs` | the one `CLOCK_MONOTONIC` read |
 
 `lib.rs` holds declarations and root re-exports only.
 
@@ -76,7 +84,9 @@ Daemon modules:
 
 | Trait | Signature | Implementors |
 |---|---|---|
-| `Grabber` (`daemon::discover`) | grab and ungrab one device, returning a typed error | the real evdev grab, a fake in tests |
+| `Grabber` (`daemon::grabber`) | grab and ungrab one device, returning a typed error | the real evdev grab, a fake in tests |
+| `Nodes: Grabber` (`daemon::grabber`) | open, close and read the keys down of a device by id | the open evdev fds, a fake in tests |
+| `Emitter` (`daemon::uinput`) | write one batch of events to the virtual keyboard | the uinput device, a recording sink in tests |
 | `Setting` (`config::lenient`) | `fn read(v: &toml::Value, key: &str, warn: &mut Vec<Warning>) -> Option<Self>` | every unit newtype and enum |
 
 A trait appears only when two real implementations are swapped at a boundary. **Closed enums
@@ -106,7 +116,7 @@ that stay enums:** `Input`, `Out`, `Action`, `Edge`, `Layout`, `ToDaemon`, `ToCl
 
 1. `keycap-protocol`: the variant in `message.rs`, its vocabulary in `vocab.rs`, the round-trip
    test; bump `PROTOCOL_VERSION` when incompatible.
-2. `daemon/socket.rs`: the arm, with its `Peer` check.
+2. `daemon/socket/seat.rs`: the arm of `request_of`, with its `Peer` check, and the `Request` it becomes in `daemon/inbox.rs`; the reader's `request` handles it.
 3. The core input or output it maps to, and the desktop, in the same change.
 
 ## 6. Test harness
@@ -116,8 +126,10 @@ that stay enums:** `Input`, `Out`, `Action`, `Edge`, `Layout`, `ToDaemon`, `ToCl
 | Key names, layout, classify, opcodes, protocol | table tests beside the code |
 | Whole-core behaviour | scripts of `Input`s through `Remapper::step`, asserting `Out`s, in `tests/` |
 | Stuck keys | a property test: every emitted press has exactly one release |
-| Socket | a private socket in a temp dir, beside `daemon/socket.rs` |
-| Grab conflicts | `discover` and `gate` tests with a fake `Grabber` |
+| Socket | a private socket in a temp dir and a fake seat file, in `daemon/socket/tests.rs` |
+| Grab conflicts, pause and resume | `daemon/devices` tests: the state machine driven through `FakeGrabber` |
+| The reader's decisions | `daemon/reader/tests.rs`: a recording `Emitter`, a private socket, no node opened |
+| Replay | `command/script.rs` table tests and `command/replay.rs` on a script in a temp dir |
 
 No test creates an input device, opens a real node for writing, or reads a real config
 directory or a running daemon.

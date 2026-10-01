@@ -11,6 +11,7 @@ mod resolve;
 mod tests;
 mod watch;
 
+pub(crate) use defaults::DEFAULTS_TOML;
 pub use defaults::builtin;
 pub use layer::{Layer, Source};
 pub use load::{FILE_NAME, system};

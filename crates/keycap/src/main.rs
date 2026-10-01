@@ -1,8 +1,7 @@
-//! Stub entry point; a later wave replaces it with `keycap::command::run`.
+//! The `keycap` command: the daemon and its tools.
 
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    eprintln!("usage: keycap [run | --print-config | replay FILE]");
-    ExitCode::from(2)
+    keycap::command::run(std::env::args())
 }

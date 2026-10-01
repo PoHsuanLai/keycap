@@ -95,7 +95,7 @@ Only per-app profiles and the user's own settings wait for a session.
 | Hang | Watchdog kill after 1 s, then the crash path | manual check |
 | Crash loop | The unit becomes failed after 5 restarts; the desktop notices | manual check |
 | Killed mid-chord, keyboard unplugged mid-chord, profile changed mid-chord | `ReleaseAll` releases exactly what `Held` recorded | core tests |
-| Another remapper holds the keyboard | `Status::Conflict`; keycap does not retry over and over | discover and gate tests with a fake grabber |
+| Another remapper holds the keyboard | `Grab::Conflict`; the grab is retried after 1 s, doubling to 30 s, never in a loop | devices tests with a fake grabber |
 | Emergency chord | `Out::ReleaseGrabs` and `Status::Paused` | core test |
 
 ## Safety rules
@@ -127,6 +127,48 @@ not run, the commands that need root:
 - `dist/keycap.polkit.rules` to `/etc/polkit-1/rules.d/`: the active session user may restart
   and reset `keycap.service`.
 
+## Tools
+
+```
+keycap                          run the daemon
+keycap --print-config           print the built-in defaults.toml
+keycap --check-uinput           can this user create virtual devices?
+keycap replay FILE [--config FILE]
+keycap --help | --version
+```
+
+`--check-uinput` opens and closes `/dev/uinput` and creates nothing; it refuses to run unless
+`KEYCAP_ALLOW_UINPUT_PROBE=1` is set.
+
+`keycap replay FILE` feeds a script through the remapper with the built-in profiles (and
+`--config FILE` laid over them as the user layer) and prints each input with what it writes.
+It never touches a device. A script has one input per line; `#` starts a comment:
+
+```
+<ms> press|release|repeat <dev> <apple|pc> <keyname>
+<ms> focus <profile>
+<ms> gone <dev>
+<ms> release-all
+<ms> resume
+```
+
+`<dev>` is a number naming a keyboard, `apple` or `pc` its layout, `<keyname>` a name from the
+key table (`leftmeta`, `c`, `left`). Output is `+key` for a press, `-key` for a release, `SYN`
+for the sync, then `release-grabs` and `status paused` for the escape chord:
+
+```
+$ cat copy.txt
+0 press 1 apple leftmeta
+10 press 1 apple c
+20 release 1 apple c
+30 release 1 apple leftmeta
+$ keycap replay copy.txt
+0 press 1 apple leftmeta -> +leftctrl SYN
+10 press 1 apple c -> +c SYN
+20 release 1 apple c -> -c SYN
+30 release 1 apple leftmeta -> -leftctrl SYN
+```
+
 ## Configuration
 
 Three layers, each overriding the one before:
@@ -136,7 +178,7 @@ Three layers, each overriding the one before:
 3. The seat owner's `UserConfig`, sent over the socket (a desktop forwards
    `~/.config/keycap/keycap.toml`).
 
-`keycap --print-config` prints the merged result. A bad value costs only its own key (logged,
+`keycap --print-config` prints the built-in `defaults.toml`, the file to copy from. A bad value costs only its own key (logged,
 the layer below used and a `ConfigWarnings` sent); an unknown key is ignored. A rule with
 `then = []` swallows its chord, which removes a rule a profile inherits. Profiles are open:
 a name the config does not define resolves to `default`.

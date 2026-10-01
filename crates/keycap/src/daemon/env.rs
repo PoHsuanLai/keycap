@@ -1,6 +1,7 @@
 //! What the daemon takes from the process environment, read once in `command::run` so nothing
 //! below it reads `std::env`.
 
+use super::socket::SEAT_FILE;
 use super::uinput::{PROBE_PERMIT, ProbePermit};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -9,6 +10,9 @@ use std::time::Duration;
 const DEFAULT_CONFIG_DIR: &str = "/etc/keycap";
 /// Where the socket directory is when systemd does not provide one.
 const DEFAULT_RUNTIME_DIR: &str = "/run/keycap";
+
+/// Where logind records the seat's active user.
+const DEFAULT_SEAT_FILE: &str = SEAT_FILE;
 
 /// The process environment as the daemon uses it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,6 +24,8 @@ pub(crate) struct Env {
     pub config_dir: PathBuf,
     /// `$RUNTIME_DIRECTORY` (systemd's), else `/run/keycap`: where the socket lives.
     pub runtime_dir: PathBuf,
+    /// The seat state file the active user is read from; injectable so tests need no logind.
+    pub seat_file: PathBuf,
     /// Whether `--check-uinput` may open the uinput node.
     pub probe: ProbePermit,
     /// `$WATCHDOG_USEC` as a duration: how often systemd expects a ping at the latest.
@@ -36,6 +42,7 @@ impl Env {
             notify_socket: non_empty("NOTIFY_SOCKET"),
             config_dir: dir("KEYCAP_CONFIG_DIR", DEFAULT_CONFIG_DIR),
             runtime_dir: dir("RUNTIME_DIRECTORY", DEFAULT_RUNTIME_DIR),
+            seat_file: PathBuf::from(DEFAULT_SEAT_FILE),
             probe: ProbePermit::from_env_value(lookup(PROBE_PERMIT).as_deref()),
             watchdog: non_empty("WATCHDOG_USEC")
                 .and_then(|s| s.parse::<u64>().ok())
@@ -70,6 +77,7 @@ mod tests {
         assert_eq!(env.notify_socket.as_deref(), Some("/run/systemd/notify"));
         assert_eq!(env.config_dir, PathBuf::from("/tmp/cfg"));
         assert_eq!(env.runtime_dir, PathBuf::from("/run/keycap"));
+        assert_eq!(env.seat_file, PathBuf::from("/run/systemd/seats/seat0"));
         assert_eq!(env.probe, ProbePermit::Granted);
         assert_eq!(env.watchdog, Some(Duration::from_secs(1)));
     }

@@ -8,7 +8,6 @@ mod scan;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use caps::{Bits, Caps};
-pub(crate) use classify::{Eligibility, Identity, classify};
-pub(crate) use hotplug::{Hotplug, concerns_us, hotplug_of, spawn};
-pub(crate) use scan::{Candidate, DEV_INPUT, SYS_INPUT, scan};
+pub(crate) use classify::Identity;
+pub(crate) use hotplug::{Hotplug, spawn};
+pub(crate) use scan::{DEV_INPUT, SYS_INPUT, scan};

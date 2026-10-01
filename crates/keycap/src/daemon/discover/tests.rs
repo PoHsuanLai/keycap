@@ -1,3 +1,6 @@
+use super::caps::{Bits, Caps};
+use super::classify::{Eligibility, classify};
+use super::hotplug::{concerns_us, hotplug_of};
 use super::*;
 use crate::daemon::events::{EV_KEY, EV_REL, EV_SYN, REL_X, REL_Y};
 use crate::daemon::scratch::Scratch;

@@ -20,6 +20,25 @@ A receiver that is a keyboard and a pointer in one node is grabbed whole, so its
 are forwarded through the keycap virtual device. Motion, clicks and scroll through that path,
 and their latency, are untested on a real receiver.
 
+**The daemon's device I/O has never run against a kernel. Unverified on hardware.** The reader's
+`poll` over real evdev fds, `read` until `EAGAIN`, `EVIOCGKEY` and `EVIOCGRAB` through the real
+`EvdevGrabber`, hotplug from `notify` on `/dev/input`, and the uinput device itself are compiled
+and reviewed; the tests drive the same logic through fakes, a recording emitter and socket pairs.
+Needs a machine with a keyboard: boot with the unit, plug and unplug, grab with a key held.
+
+**`SO_PEERCRED` and the seat file on a real logind are untested.** The socket tests use the
+test's own uid and a fake `seat0` file; the real `ACTIVE_UID=` line, a user switch and a
+Bluetooth-era session change are covered by the parser table only.
+
+**The systemd watchdog loop is proven against a datagram socket, not systemd.** The reader pets
+`WATCHDOG=1` on every pass and sleeps at most half the interval; whether `WatchdogSec=1` holds
+under load (a burst of events, a slow uinput write) is a manual check.
+
+**A uinput write that fails is logged and dropped.** A failed or short write to the virtual
+device leaves the remapper's `Held` records believing keys are down that never reached the
+wire. Whether `/dev/uinput` can fail mid-stream in practice (nonblocking `EAGAIN` under load) is
+unknown; a pause or `ReleaseAll` releases the records either way.
+
 **Manual acceptance, waiting for the user and hardware.** The list is in the README, "Manual
 checks".
 

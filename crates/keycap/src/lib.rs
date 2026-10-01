@@ -5,6 +5,7 @@
 //! different vocabularies and the types keep them apart; see ARCHITECTURE.md section 8.
 
 mod backoff;
+pub mod command;
 mod config;
 mod daemon;
 mod escape;

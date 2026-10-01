@@ -30,6 +30,13 @@ pub(crate) struct InputEvent {
 }
 
 impl InputEvent {
+    /// The `SYN_REPORT` that ends a frame.
+    pub(crate) const SYNC: InputEvent = InputEvent {
+        kind: EV_SYN,
+        code: SYN_REPORT,
+        value: 0,
+    };
+
     /// The event as written to uinput, with a zero timestamp.
     pub(crate) fn to_bytes(self) -> [u8; EVENT_BYTES] {
         let mut b = [0u8; EVENT_BYTES];
@@ -47,6 +54,13 @@ impl InputEvent {
             value: i32::from_le_bytes([b[20], b[21], b[22], b[23]]),
         }
     }
+}
+
+/// The events in a buffer read from an evdev node: whole 24-byte records, a trailing partial
+/// record ignored (the kernel never returns one).
+pub(crate) fn parse(bytes: &[u8]) -> Vec<InputEvent> {
+    let (records, _partial) = bytes.as_chunks::<EVENT_BYTES>();
+    records.iter().map(InputEvent::from_bytes).collect()
 }
 
 /// What a device event means to keycap.
@@ -132,6 +146,21 @@ mod tests {
             ev(EV_KEY, 0x1e, 1).to_bytes()[16..],
             [1, 0, 0x1e, 0, 1, 0, 0, 0]
         );
+    }
+
+    #[test]
+    fn parse_splits_a_read_into_events_and_drops_a_partial_tail() {
+        let events = [
+            ev(EV_KEY, 30, 1),
+            ev(EV_KEY, 30, 0),
+            ev(EV_SYN, SYN_REPORT, 0),
+        ];
+        let mut bytes: Vec<u8> = events.iter().flat_map(|e| e.to_bytes()).collect();
+        assert_eq!(parse(&bytes), events);
+        bytes.extend([1, 2, 3]);
+        assert_eq!(parse(&bytes), events, "partial record dropped");
+        assert_eq!(parse(&[]), []);
+        assert_eq!(InputEvent::SYNC, ev(EV_SYN, SYN_REPORT, 0));
     }
 
     #[test]
