@@ -35,29 +35,38 @@ Bluetooth-era session change are covered by the parser table only.
 `WatchdogSec=2`); whether that holds under load (a burst of events, a slow uinput write) is a
 manual check.
 
-**Combo devices with a touchpad lose their pointer while grabbed.** A receiver that is a
-keyboard and a touchpad in one node (EV_ABS: absolute axes, multitouch slots, `BTN_TOUCH`,
-`BTN_TOOL_*`) is grabbed whole, and the virtual keyboard forwards only EV_KEY and EV_REL, so its
-pointer stops working for as long as the grab holds. Options, none chosen: (1) leave such a
-device ungrabbed (`Eligibility::NotKeyboard` when EV_ABS is present), which keeps the pointer
-and loses the mapping on that keyboard; (2) register the device's axes on the virtual device
-(`UI_ABS_SETUP` per axis, slots and tool bits copied from the source), which needs one virtual
-pointer per source because the axis ranges differ and a keyboard device with a touchscreen's
-axes confuses libinput's device classification; (3) a second virtual device per such source
-that carries only the pointer half, with the keyboard half staying on "keycap keyboard".
-Option 3 is the faithful one and the largest. Unverified on hardware which Apple or third-party
-receivers expose EV_ABS on the keyboard node.
-
-**LEDs are copied only as the desktop changes them.** The compositor sets Caps Lock on the
-virtual keyboard and keycap writes the same change to every grabbed physical keyboard. A
-keyboard grabbed while a lock is already on is not brought in line until the next change; the
-nodes are opened read-write for this, which needs the unit's `input` group to have write access.
-Unverified on hardware.
+**Pointer twins and grab-time LEDs are untested on hardware.** A grabbed combo device whose node
+has EV_ABS or relative axes the keyboard does not register gets a second virtual device,
+`<name> (keycap pointer)`, cloned from the node (axes with `absinfo`, buttons, `INPUT_PROP_*`)
+and carrying every non-key event of that device. Unverified: which Apple or third-party
+receivers expose EV_ABS on the keyboard node; that libinput classes the twin as a touchpad
+(gestures, palm rejection, tap-to-click from the cloned properties); that the twin keeps the
+source's per-device settings; and that writing the remembered lock LEDs to a freshly grabbed
+keyboard needs only the `input` group's write access to the node. A device that reports
+`BTN_TOUCH` or `BTN_TOOL_*` with no EV_ABS is carried by the keyboard as before.
 
 **Manual acceptance, waiting for the user and hardware.** The list is in the README, "Manual
 checks".
 
 ## Standing facts
+
+**A pointer twin's life follows the grab.** It is created right after a device is grabbed (the
+reader compares the grabbed set after every step that can change it) and destroyed, after its
+held buttons are released, when the device is let go: unplugged, paused by the escape chord, or
+a failed recreation of the keyboard. A twin that cannot be created, or whose write fails, is
+logged and dropped; the device's pointer events then pass through "keycap keyboard", which
+registers no absolute axes, so a touchpad stops until the next grab while a mouse keeps working.
+`MSC_*` events are not forwarded: `MSC_SCAN` accompanies every keystroke and the twin registers
+no `EV_MSC`. Absolute-axis state is not tracked: destroying the twin ends any touch the desktop
+saw.
+
+**The lamps are written once per grab.** keycap remembers the last LED state the desktop set on
+the virtual keyboard and writes it to a device when it is grabbed; a lamp the desktop never set
+is not written. Later changes are forwarded as before.
+
+**An undefined focused profile is logged once per config generation.** A `Focus` naming a
+profile the config does not define uses `default`, logs one line per name, and logs it again
+after any config reload.
 
 **A key held across a `SYN_DROPPED` is re-pressed only on its next press.** When a device's
 queue overflows, keycap discards events up to the next `SYN_REPORT` and treats the device as

@@ -2,16 +2,22 @@
 //! the pure remapper and carrying its outputs to the virtual keyboard. It waits on nothing but
 //! `poll`.
 
+mod grabs;
 mod handle;
+#[cfg(test)]
+mod pointer_tests;
 mod run;
 #[cfg(test)]
 mod tests;
+mod twins;
+mod unknown;
 
 use super::buttons::Buttons;
 use super::devices::Devices;
 use super::discover::{DEV_INPUT, SYS_INPUT};
 use super::grabber::EvdevGrabber;
 use super::inbox::Mailbox;
+use super::leds::LedState;
 use super::sdnotify::Notifier;
 use super::settings::Layers;
 use super::socket::SocketHandle;
@@ -21,6 +27,8 @@ use keycap_protocol::Status;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::time::Duration;
+use twins::Twins;
+use unknown::Unknowns;
 
 /// Where the keyboards are listed and where their nodes are.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,7 +60,7 @@ pub(crate) struct Wiring<E> {
 }
 
 /// The reader's state: the pure core, the devices, and the ends of everything it talks to.
-pub(crate) struct Reader<E> {
+pub(crate) struct Reader<E: Emitter> {
     mailbox: Mailbox,
     socket: SocketHandle,
     emitter: E,
@@ -66,6 +74,14 @@ pub(crate) struct Reader<E> {
     devices: Devices,
     /// The mouse buttons written for combo devices, released with the device.
     buttons: Buttons,
+    /// The pointer twins of the grabbed combo devices.
+    twins: Twins<E::Twin>,
+    /// The devices seen grabbed at the last look, to tell which were grabbed or let go since.
+    held: BTreeSet<DeviceId>,
+    /// The lamps the desktop last set on the virtual keyboard.
+    lamps: LedState,
+    /// Focused names the config does not define, already logged.
+    unknowns: Unknowns,
     /// Devices whose queue overflowed and whose events are discarded up to the next
     /// `SYN_REPORT`.
     discarding: BTreeSet<DeviceId>,
@@ -93,6 +109,10 @@ impl<E: Emitter> Reader<E> {
             remapper,
             devices,
             buttons: Buttons::default(),
+            twins: Twins::default(),
+            held: BTreeSet::new(),
+            lamps: LedState::default(),
+            unknowns: Unknowns::default(),
             discarding: BTreeSet::new(),
         }
     }

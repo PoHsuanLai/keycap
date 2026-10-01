@@ -1,9 +1,10 @@
 //! The loop: wait, then mail, devices, gates, status.
 
 use super::Reader;
+use super::twins::Passed;
 use crate::DeviceId;
 use crate::daemon::clock;
-use crate::daemon::devices::{drive, poll_gates, status_of, summary};
+use crate::daemon::devices::{poll_gates, status_of, summary};
 use crate::daemon::discover::scan;
 use crate::daemon::evdev::{End, drain};
 use crate::daemon::readiness::Readiness;
@@ -72,6 +73,7 @@ impl<E: Emitter> Reader<E> {
             &mut self.nodes,
             clock::now(),
         );
+        self.sync_grabs();
         self.publish();
         Ok(())
     }
@@ -135,10 +137,18 @@ impl<E: Emitter> Reader<E> {
     pub(super) fn apply(&mut self, routed: Routed) {
         match routed {
             Routed::Remap(input) => self.feed(input),
-            Routed::Pass { device, events } => {
-                self.buttons = std::mem::take(&mut self.buttons).observe(device, &events);
-                self.write(&events);
-            }
+            Routed::Pass { device, events } => match self.twins.pass(device, &events) {
+                Passed::Written => {}
+                Passed::Lost(e) => eprintln!(
+                    "keycap: writing the pointer of device {} failed: {e}; \
+                     it passes through the keyboard now",
+                    device.0
+                ),
+                Passed::NoTwin => {
+                    self.buttons = std::mem::take(&mut self.buttons).observe(device, &events);
+                    self.write(&events);
+                }
+            },
             Routed::Resync(device) => {
                 eprintln!(
                     "keycap: device {} overflowed its queue; releasing what it held",
@@ -165,7 +175,7 @@ impl<E: Emitter> Reader<E> {
     pub(super) fn lose(&mut self, id: DeviceId) {
         self.discarding.remove(&id);
         self.reset_device(id);
-        let (devices, effects) = std::mem::take(&mut self.devices).gone(id);
-        self.devices = drive(devices, effects, &mut self.nodes, clock::now());
+        let step = std::mem::take(&mut self.devices).gone(id);
+        self.carry_out(step);
     }
 }

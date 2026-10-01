@@ -12,6 +12,7 @@ dependency.
 ```
 evdev (grabbed) ──► GrabGate ──► Remapper::step ──► Vec<RemapOut> ──► dispatch ──► uinput keyboard
    EVIOCGRAB       (no key held)   (pure state)                  │
+   └─ touchpad axes of a combo device ──────────────────────────┴─────────────────► "<name> (keycap pointer)"
 socket ── Focus ───────────────────► Remapper::step (profile)    └─ ReleaseGrabs ─► ungrab, Paused
 socket ── UserConfig ──► config merge ──► Profiles
 /etc/keycap/keycap.toml ── inotify ──► config merge
@@ -97,6 +98,8 @@ Only per-app profiles and the user's own settings wait for a session.
 | Killed mid-chord | The kernel drops the grab and closes the virtual keyboard with the process, so nothing stays down; the restarted daemon starts with a fresh `Remapper` | gate table tests |
 | Keyboard unplugged mid-chord | `DeviceGone` releases exactly what that keyboard's keys wrote | core tests |
 | Profile changed mid-chord | `Focus` applies from the next press; held keys keep what they wrote | core tests |
+| Combo device (keyboard and touchpad in one node) | Its keys are remapped as usual; its absolute axes, buttons and motion go to a second virtual device, `<name> (keycap pointer)`, cloned from the node's axes, ranges and properties, made when the device is grabbed and destroyed when it is let go, unplugged or paused, after its held buttons are released | table tests of the capability value, recording twins in the reader tests; hardware unverified |
+| Focus on a profile the config does not define | The default profile applies and the log says so once per name until the config changes | `Unknowns` table test |
 | Another remapper holds the keyboard | `Grab::Conflict`; the grab is retried after 1 s, doubling to 30 s, never in a loop | devices tests with a fake grabber |
 | Emergency chord | `RemapOut::ReleaseGrabs` and `Status::Paused` | core test |
 
@@ -218,6 +221,9 @@ Waiting for the user and real hardware:
 - Run keyd at the same time: the `Conflict` notification appears.
 - The escape chord, then `Resume`.
 - Bluetooth keyboard reconnect.
+- Grab a keyboard while Caps Lock is on: its light matches the desktop's.
+- A receiver with a touchpad: the pointer keeps working while it is grabbed, and stops with
+  the escape chord only because the device is given back.
 
 ## Tests
 

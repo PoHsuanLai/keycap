@@ -9,5 +9,5 @@ mod step;
 mod tests;
 
 pub(crate) use drive::{drive, poll_gates};
-pub(crate) use model::Devices;
+pub(crate) use model::{DeviceEffect, Devices};
 pub(crate) use status::{status_of, summary};

@@ -7,6 +7,7 @@ use crate::{Edge, Logical, OutEvent, Physical};
 pub(crate) const EV_SYN: u16 = 0x00;
 pub(crate) const EV_KEY: u16 = 0x01;
 pub(crate) const EV_REL: u16 = 0x02;
+pub(crate) const EV_ABS: u16 = 0x03;
 pub(crate) const EV_LED: u16 = 0x11;
 pub(crate) const SYN_REPORT: u16 = 0;
 /// The kernel's marker that a client's event queue overflowed and events were lost.
@@ -71,8 +72,8 @@ pub(crate) fn parse(bytes: &[u8]) -> Vec<InputEvent> {
 pub(crate) enum Decoded {
     /// A keyboard key transition.
     Key(Physical, Edge),
-    /// A pointer event (relative motion or a mouse button) on a combo device: written back
-    /// unchanged.
+    /// A pointer event (relative motion, an absolute axis or a button) on a combo device:
+    /// written back unchanged.
     Pointer(InputEvent),
     /// `SYN_REPORT`.
     Sync,
@@ -95,7 +96,7 @@ pub(crate) fn decode(e: InputEvent) -> Decoded {
     match (e.kind, e.code) {
         (EV_SYN, SYN_REPORT) => Decoded::Sync,
         (EV_SYN, SYN_DROPPED) => Decoded::Dropped,
-        (EV_REL, _) => Decoded::Pointer(e),
+        (EV_REL | EV_ABS, _) => Decoded::Pointer(e),
         (EV_KEY, code) if is_button(code) => Decoded::Pointer(e),
         (EV_KEY, 0) => Decoded::Other,
         (EV_KEY, code) => Edge::from_value(e.value).map_or(Decoded::Other, |edge| {
@@ -211,6 +212,13 @@ mod tests {
                 "REL_HWHEEL_HI_RES",
                 ev(EV_REL, REL_HWHEEL_HI_RES, -120),
                 ptr(EV_REL, REL_HWHEEL_HI_RES, -120),
+            ),
+            ("ABS_X", ev(EV_ABS, 0x00, 812), ptr(EV_ABS, 0x00, 812)),
+            ("ABS_MT_SLOT", ev(EV_ABS, 0x2f, 1), ptr(EV_ABS, 0x2f, 1)),
+            (
+                "BTN_TOOL_FINGER",
+                ev(EV_KEY, 0x145, 1),
+                ptr(EV_KEY, 0x145, 1),
             ),
             ("SYN_REPORT", ev(EV_SYN, SYN_REPORT, 0), Decoded::Sync),
             ("SYN_DROPPED", ev(EV_SYN, 3, 0), Decoded::Dropped),

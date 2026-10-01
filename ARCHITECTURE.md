@@ -41,16 +41,18 @@ Daemon modules:
 
 | Module | Role |
 |---|---|
-| `daemon/sys.rs` | the only `unsafe`: typed ioctls (`EVIOCGRAB`, `EVIOCGKEY`, uinput), each with a `SAFETY` comment, and a test pinning every opcode's number |
-| `daemon/uinput.rs` | the one "keycap keyboard" virtual device, opened read-write, destroyed on `Drop`; passes pointer events through for combo devices and carries the lock LEDs back; the `Emitter` trait and its recording fake |
-| `daemon/buttons.rs` | pure: the mouse buttons each combo device holds, released on unplug, overflow and pause |
-| `daemon/leds.rs` | pure: the lock-LED events the compositor writes to the virtual device, forwarded to every grabbed keyboard |
+| `daemon/sys.rs` | the only `unsafe`: typed ioctls (`EVIOCGRAB`, `EVIOCGKEY`, `EVIOCGBIT`, `EVIOCGPROP`, `EVIOCGABS`, uinput incl. `UI_ABS_SETUP`), each with a `SAFETY` comment, and a test pinning every opcode's number |
+| `daemon/uinput.rs` | the one "keycap keyboard" virtual device, opened read-write, destroyed on `Drop`; passes the pointer events of plain combo devices through and carries the lock LEDs back; the `Emitter` and `PointerSink` traits and their recording fakes |
+| `daemon/twin.rs` | the "<name> (keycap pointer)" virtual device of a combo device whose pointer the keyboard cannot carry (absolute axes): registered from a `PointerCaps`, destroyed on `Drop` |
+| `daemon/pointer.rs` | pure: `PointerCaps`, the pointer half of a device as a value (axes with their `absinfo`, relative axes, buttons, input properties, the twin's name), built from the kernel's masks; `needs_twin` |
+| `daemon/buttons.rs` | pure: the mouse buttons each combo device holds, released on unplug, overflow and pause; the keyboard's record and each twin's are separate values |
+| `daemon/leds.rs` | pure: the lock-LED events the compositor writes to the virtual device, forwarded to every grabbed keyboard, and `LedState`, the last lamps it set, written to a keyboard the moment it is grabbed |
 | `daemon/readiness.rs` | which polled fds are ready, as an enum rather than flags |
 | `daemon/events.rs` | `struct input_event` as bytes, `decode` (what a device sent) and `encode` (what keycap writes), pure |
 | `daemon/discover/` | the /sys scan and `notify` on `/dev/input`; `classify(&Caps, &Identity, Origin) -> Eligibility` is pure and table-tested (virtual devices are never grabbed, which rules out loops with other remappers), sysfs roots injectable |
 | `daemon/devices/` | every keyboard as a pure state machine: `{ identity, layout, gate, grab }` plus the conflict `Backoff`; transitions return `(Devices, Vec<DeviceEffect>)`, `drive` carries the effects out through `Nodes`, `status_of` makes the `Status` a desktop sees |
 | `daemon/grabber.rs` | `Grabber` (grab, ungrab) and `Nodes` (open, close, keys down): the real evdev fds, and `FakeGrabber` in tests |
-| `daemon/reader/` | the main thread: one `poll` over the nodes and the inbox's eventfd, timeout from the next gate or backoff deadline and half the watchdog; the reader waits on nothing but `poll` |
+| `daemon/reader/` | the main thread: one `poll` over the nodes and the inbox's eventfd, timeout from the next gate or backoff deadline and half the watchdog; the reader waits on nothing but `poll`. `grabs.rs` acts on a device just grabbed or let go (LEDs, twin), `twins.rs` holds the twins and the pure `grab_change`, `unknown.rs` the pure `Unknowns` set behind the once-per-generation log of an undefined focused profile |
 | `daemon/route.rs`, `daemon/evdev.rs` | one read of a node (drained until `EAGAIN`) to `RemapInput`s and pointer frames, pure `route` over the drained events |
 | `daemon/inbox.rs`, `daemon/waker.rs` | what other threads send the reader (`Request`, system config, hotplug) over one channel and one eventfd |
 | `daemon/socket/` | the socket thread; `seat.rs` holds the pure parts (`active_uid`, `peer_of` to `Peer { SeatOwner, Observer }`, `request_of`, `Seat::look` for owner leaving or user switch); `limits.rs` the bounds against hostile clients (32 clients, the seat owner exempt from that cap; 8 per uid; 16 messages per client per pass; listener paused 1 s on EMFILE; complaints logged once a minute per uid); `inbound.rs` the bounded read |
@@ -74,6 +76,9 @@ Daemon modules:
 | Every default mapping | `defaults.toml` |
 | Lenient per-key reading, config layers, inheritance flattening | `config::{lenient, ConfigLayer, resolve}` |
 | What each press emitted, and which written keys are lifted | `held::Held` |
+| The pointer half of a combo device | `daemon::pointer::PointerCaps` |
+| Which lamps the desktop last set | `daemon::leds::LedState` |
+| Which undefined profile names were already logged | `daemon::reader::unknown::Unknowns` |
 | When a keyboard may be grabbed | `gate::GrabGate` |
 | The emergency chord | `escape` |
 | The mapping state machine | `remap::Remapper` |
@@ -89,7 +94,8 @@ Daemon modules:
 |---|---|---|
 | `Grabber` (`daemon::grabber`) | grab and ungrab one device, returning a typed error | the real evdev grab, a fake in tests |
 | `Nodes: Grabber` (`daemon::grabber`) | open, close and read the keys down of a device by id | the open evdev fds, a fake in tests |
-| `Emitter` (`daemon::uinput`) | `write` one batch of events to the virtual keyboard, `recreate` it after a failed write, and expose `led_fd` / `leds` for LED forwarding | the uinput device, a recording sink in tests |
+| `Emitter` (`daemon::uinput`) | `write` one batch of events to the virtual keyboard, `recreate` it after a failed write, expose `led_fd` / `leds` for LED forwarding, and `twin` a `PointerSink` for a combo device | the uinput device, a recording sink in tests |
+| `PointerSink` (`daemon::uinput`) | `write` one batch to a pointer twin; the device is destroyed when dropped | the uinput `PointerTwin`, a recording twin in tests |
 | `Setting` (`config::lenient`) | `fn read(v: &toml::Value, key: &str, warn: &mut Vec<Warning>) -> Option<Self>` | every unit newtype and enum |
 
 A trait appears only when two real implementations are swapped at a boundary. **Closed enums
@@ -131,7 +137,7 @@ that stay enums:** `RemapInput`, `RemapOut`, `RuleAction`, `Edge`, `Layout`, `To
 | Stuck keys | a property test: every emitted press has exactly one release |
 | Socket | a private socket in a temp dir and a fake seat file, in `daemon/socket/tests.rs` |
 | Grab conflicts, pause and resume | `daemon/devices` tests: the state machine driven through `FakeGrabber` |
-| The reader's decisions | `daemon/reader/tests.rs`: a recording `Emitter`, a private socket, no node opened |
+| The reader's decisions | `daemon/reader/tests.rs` and `pointer_tests.rs`: a recording `Emitter` whose twins log what they are told and whether they were dropped, a private socket, no node opened |
 | Replay | `command/script.rs` table tests and `command/replay.rs` on a script in a temp dir |
 
 No test creates an input device, opens a real node for writing, or reads a real config
@@ -201,7 +207,7 @@ pub struct Profiles { default: Profile, named: BTreeMap<ProfileName, Profile> }
 ```
 
 Inheritance is resolved at load: a `Profile` is always flat, and `Profiles::resolve(&name)`
-returns `default` for an unknown name (the daemon logs it once). `defaults.toml` is compiled
+returns `default` for an unknown name (the daemon logs `profile "<name>" is not defined; using default` once per name until the config changes). `defaults.toml` is compiled
 in with `include_str!`; `/etc/keycap/keycap.toml` and the seat owner's `UserConfig` have the
 same shape and override per profile, per modmap field and per trigger.
 

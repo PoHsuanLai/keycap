@@ -1,8 +1,8 @@
 //! The rule that says whether a node is a keyboard keycap should grab.
 
 use super::caps::Caps;
-use crate::daemon::events::{EV_KEY, EV_REL, REL_X};
-use crate::daemon::uinput;
+use crate::daemon::events::{EV_ABS, EV_KEY, EV_REL, REL_X};
+use crate::daemon::{pointer, uinput};
 use crate::key::Key;
 use std::path::{Path, PathBuf};
 
@@ -59,9 +59,10 @@ pub(crate) enum Eligibility {
 }
 
 /// Whether the node is one of the virtual devices that must never be grabbed: keycap's own
-/// (grabbing it would feed our output back in) and palmrest's.
+/// keyboard and pointer twins (grabbing them would feed our output back in) and palmrest's.
 fn is_ours_or_palmrests(id: &Identity) -> bool {
     id.name == uinput::NAME
+        || id.name.ends_with(pointer::NAME_SUFFIX)
         || (id.vendor, id.product) == (uinput::VENDOR, uinput::PRODUCT)
         || id.name.starts_with(PALMREST_PREFIX)
 }
@@ -77,7 +78,8 @@ fn has_typing_keys(caps: &Caps) -> bool {
 /// whoever made it: two remappers grabbing each other's output is a feedback loop.
 pub(crate) fn classify(caps: &Caps, id: &Identity, origin: Origin) -> Eligibility {
     let keyboard = caps.ev.has(u32::from(EV_KEY)) && has_typing_keys(caps);
-    let pointer = caps.ev.has(u32::from(EV_REL)) && caps.rel.has(u32::from(REL_X));
+    let pointer = caps.ev.has(u32::from(EV_ABS))
+        || (caps.ev.has(u32::from(EV_REL)) && caps.rel.has(u32::from(REL_X)));
     let excluded = origin == Origin::Virtual || is_ours_or_palmrests(id);
     match (excluded, keyboard, pointer) {
         (true, _, _) | (false, false, _) => Eligibility::NotKeyboard,

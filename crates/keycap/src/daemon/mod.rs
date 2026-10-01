@@ -10,6 +10,7 @@ pub(crate) mod events;
 pub(crate) mod grabber;
 pub(crate) mod inbox;
 pub(crate) mod leds;
+pub(crate) mod pointer;
 pub(crate) mod reader;
 pub(crate) mod readiness;
 pub(crate) mod route;
@@ -20,6 +21,7 @@ pub(crate) mod service;
 pub(crate) mod settings;
 pub(crate) mod socket;
 pub(crate) mod sys;
+pub(crate) mod twin;
 pub(crate) mod uinput;
 pub(crate) mod waker;
 

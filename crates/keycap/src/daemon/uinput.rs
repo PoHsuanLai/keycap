@@ -11,7 +11,9 @@ use super::events::{
     REL_WHEEL_HI_RES, REL_X, REL_Y,
 };
 use super::leds::{LED_CODES, LedEvent, decode as decode_led};
+use super::pointer::PointerCaps;
 use super::sys::{self, BitSet, InputId, UinputSetup};
+use super::twin::PointerTwin;
 use rustix::fd::{AsFd, BorrowedFd, OwnedFd};
 use rustix::fs::{Mode, OFlags};
 use std::io;
@@ -20,7 +22,7 @@ use std::path::Path;
 /// The uinput control node.
 pub(crate) const UINPUT: &str = "/dev/uinput";
 /// `BUS_VIRTUAL`.
-const BUS_VIRTUAL: u16 = 0x06;
+pub(super) const BUS_VIRTUAL: u16 = 0x06;
 /// The environment variable that must be `1` before `--check-uinput` opens anything.
 pub(crate) const PROBE_PERMIT: &str = "KEYCAP_ALLOW_UINPUT_PROBE";
 
@@ -54,8 +56,19 @@ pub(crate) enum OutputError {
     Write(#[from] io::Error),
 }
 
+/// A second virtual device that carries the pointer half of one combo device.
+pub(crate) trait PointerSink {
+    /// Writes `events` in order; one call is one atomic batch.
+    fn write(&mut self, events: &[InputEvent]) -> Result<(), OutputError>;
+}
+
 /// Where written events go.
 pub(crate) trait Emitter {
+    /// What `twin` creates; the device is destroyed when it is dropped.
+    type Twin: PointerSink;
+    /// Creates a virtual pointer with `caps`, for a combo device whose pointer the keyboard
+    /// cannot carry.
+    fn twin(&mut self, caps: &PointerCaps) -> Result<Self::Twin, OutputError>;
     /// Writes `events` in order; one call is one atomic batch.
     fn write(&mut self, events: &[InputEvent]) -> Result<(), OutputError>;
     /// Destroys the device and creates a fresh one, which has every key up. For when a write
@@ -93,18 +106,29 @@ impl Drop for Device {
     }
 }
 
+/// Writes `events` to a uinput fd as one batch; a short write is an error.
+pub(super) fn write_batch(fd: &OwnedFd, events: &[InputEvent]) -> Result<(), OutputError> {
+    if events.is_empty() {
+        return Ok(());
+    }
+    let bytes: Vec<u8> = events.iter().flat_map(|e| e.to_bytes()).collect();
+    let n = rustix::io::write(fd, &bytes).map_err(io::Error::from)?;
+    if n == bytes.len() {
+        Ok(())
+    } else {
+        Err(io::Error::new(io::ErrorKind::WriteZero, "short uinput write").into())
+    }
+}
+
 impl Emitter for Device {
+    type Twin = PointerTwin;
+
+    fn twin(&mut self, caps: &PointerCaps) -> Result<PointerTwin, OutputError> {
+        PointerTwin::create(caps)
+    }
+
     fn write(&mut self, events: &[InputEvent]) -> Result<(), OutputError> {
-        if events.is_empty() {
-            return Ok(());
-        }
-        let bytes: Vec<u8> = events.iter().flat_map(|e| e.to_bytes()).collect();
-        let n = rustix::io::write(&self.fd, &bytes).map_err(io::Error::from)?;
-        if n == bytes.len() {
-            Ok(())
-        } else {
-            Err(io::Error::new(io::ErrorKind::WriteZero, "short uinput write").into())
-        }
+        write_batch(&self.fd, events)
     }
 
     fn recreate(&mut self) -> Result<(), OutputError> {
@@ -128,7 +152,7 @@ impl Emitter for Device {
     }
 }
 
-fn open(node: &Path) -> io::Result<OwnedFd> {
+pub(super) fn open(node: &Path) -> io::Result<OwnedFd> {
     Ok(rustix::fs::open(
         node,
         OFlags::RDWR | OFlags::NONBLOCK | OFlags::CLOEXEC,
@@ -198,11 +222,60 @@ pub(crate) fn probe(permit: ProbePermit, node: &Path) -> Result<(), OutputError>
     }
 }
 
+/// What a recording twin saw: the capabilities it was made with, its batches and whether it
+/// still exists.
+#[cfg(test)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TwinLog {
+    pub caps: PointerCaps,
+    pub batches: Vec<Vec<InputEvent>>,
+    pub life: TwinLife,
+    /// How many of the next writes fail.
+    pub failing: u32,
+}
+
+/// Whether a recording twin has been dropped, as a real one is destroyed.
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TwinLife {
+    Alive,
+    Destroyed,
+}
+
+/// A twin that writes into a log the test keeps.
+#[cfg(test)]
+#[derive(Debug)]
+pub(crate) struct RecordingTwin(std::rc::Rc<std::cell::RefCell<TwinLog>>);
+
+#[cfg(test)]
+impl PointerSink for RecordingTwin {
+    fn write(&mut self, events: &[InputEvent]) -> Result<(), OutputError> {
+        let mut log = self.0.borrow_mut();
+        if log.failing > 0 {
+            log.failing -= 1;
+            return Err(io::Error::other("injected failure").into());
+        }
+        if !events.is_empty() {
+            log.batches.push(events.to_vec());
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+impl Drop for RecordingTwin {
+    fn drop(&mut self) {
+        self.0.borrow_mut().life = TwinLife::Destroyed;
+    }
+}
+
 /// Remembers every batch instead of writing it; fails the writes a test asks it to, counts
-/// recreations, and hands over the LED changes a test queues.
+/// recreations, hands over the LED changes a test queues and logs every twin it makes.
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct RecordingEmitter {
+    /// Every twin made, in order.
+    pub twins: Vec<std::rc::Rc<std::cell::RefCell<TwinLog>>>,
     pub batches: Vec<Vec<InputEvent>>,
     /// How many of the next writes fail.
     pub failing: u32,
@@ -214,6 +287,19 @@ pub(crate) struct RecordingEmitter {
 
 #[cfg(test)]
 impl Emitter for RecordingEmitter {
+    type Twin = RecordingTwin;
+
+    fn twin(&mut self, caps: &PointerCaps) -> Result<RecordingTwin, OutputError> {
+        let log = std::rc::Rc::new(std::cell::RefCell::new(TwinLog {
+            caps: caps.clone(),
+            batches: Vec::new(),
+            life: TwinLife::Alive,
+            failing: 0,
+        }));
+        self.twins.push(log.clone());
+        Ok(RecordingTwin(log))
+    }
+
     fn write(&mut self, events: &[InputEvent]) -> Result<(), OutputError> {
         if self.failing > 0 {
             self.failing -= 1;

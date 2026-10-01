@@ -2,7 +2,8 @@ use super::caps::{Bits, Caps};
 use super::classify::{Eligibility, Origin, classify};
 use super::hotplug::{concerns_us, hotplug_of};
 use super::*;
-use crate::daemon::events::{EV_KEY, EV_REL, EV_SYN, REL_X, REL_Y};
+use crate::daemon::events::{EV_ABS, EV_KEY, EV_REL, EV_SYN, REL_X, REL_Y};
+use crate::daemon::pointer::twin_name;
 use crate::daemon::scratch::Scratch;
 use crate::daemon::uinput;
 use crate::key::Key;
@@ -70,6 +71,20 @@ fn bits_parse_words_most_significant_first() {
     assert!(!b.has(0) && !b.has(2) && !b.has(65));
     assert!(!Bits::parse("").has(0));
     assert!(!Bits::parse("zz").has(0), "an unreadable word is empty");
+}
+
+#[test]
+fn bits_from_ioctl_bytes_are_little_endian_words_least_significant_first() {
+    let b = Bits::from_bytes(&[0b10, 0, 0, 0, 0, 0, 0, 0x80, 0x01]);
+    assert!(b.has(1) && b.has(63), "first word");
+    assert!(b.has(64), "second word's lowest bit");
+    assert!(!b.has(0) && !b.has(2) && !b.has(65));
+    assert!(!Bits::from_bytes(&[]).has(0));
+    assert_eq!(
+        Bits::from_bytes(&[1, 2, 3]),
+        Bits::from_bytes(&[1, 2, 3, 0]),
+        "a short tail pads"
+    );
 }
 
 #[test]
@@ -213,6 +228,27 @@ fn classify_table() {
             caps(&ev_combo, &combo_keys, &[REL_X, REL_Y]),
             identity("remote desktop input", 0, 0),
             Origin::Virtual,
+            Eligibility::NotKeyboard,
+        ),
+        (
+            "a keyboard with a touchpad: absolute axes make it a pointer",
+            caps(&[EV_SYN, EV_KEY, EV_ABS], &combo_keys, &[]),
+            apple.clone(),
+            Origin::Hardware,
+            Eligibility::KeyboardAndPointer,
+        ),
+        (
+            "our own pointer twin, a virtual device with the keys and axes of its original",
+            caps(&[EV_SYN, EV_KEY, EV_ABS], &combo_keys, &[]),
+            identity(&twin_name("Apple Inc. Magic Keyboard"), 0x004c, 0x0267),
+            Origin::Virtual,
+            Eligibility::NotKeyboard,
+        ),
+        (
+            "our own pointer twin, even where it registers as hardware",
+            caps(&[EV_SYN, EV_KEY, EV_ABS], &combo_keys, &[]),
+            identity(&twin_name("Apple Inc. Magic Keyboard"), 0x004c, 0x0267),
+            Origin::Hardware,
             Eligibility::NotKeyboard,
         ),
         (

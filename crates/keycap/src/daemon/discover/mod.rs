@@ -8,6 +8,7 @@ mod scan;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use caps::Bits;
 pub(crate) use classify::Identity;
 pub(crate) use hotplug::{Hotplug, spawn};
 pub(crate) use scan::{DEV_INPUT, SYS_INPUT, scan};

@@ -19,6 +19,21 @@ impl Bits {
         )
     }
 
+    /// The mask an `EVIOCGBIT` or `EVIOCGPROP` ioctl returned: little-endian 64-bit words,
+    /// least significant first, as a 64-bit kernel writes them.
+    pub(crate) fn from_bytes(bytes: &[u8]) -> Self {
+        Self(
+            bytes
+                .chunks(8)
+                .map(|chunk| {
+                    let mut word = [0u8; 8];
+                    word[..chunk.len()].copy_from_slice(chunk);
+                    u64::from_le_bytes(word)
+                })
+                .collect(),
+        )
+    }
+
     /// Whether bit `n` is set.
     pub(crate) fn has(&self, n: u32) -> bool {
         let word = usize::try_from(n / WORD_BITS).unwrap_or(usize::MAX);

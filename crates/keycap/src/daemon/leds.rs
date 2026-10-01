@@ -2,6 +2,7 @@
 //! the grabbed physical ones. Pure; the reads and writes belong to `uinput` and `grabber`.
 
 use super::events::{EV_LED, InputEvent};
+use std::collections::BTreeMap;
 
 /// `LED_NUML`.
 const LED_NUML: u16 = 0x00;
@@ -33,6 +34,28 @@ pub(crate) enum Lamp {
 pub(crate) struct LedEvent {
     pub led: Led,
     pub lamp: Lamp,
+}
+
+/// The lamps the desktop last set on the virtual keyboard, so a keyboard grabbed later can be
+/// brought in line. A LED the desktop never set is absent.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct LedState(BTreeMap<Led, Lamp>);
+
+impl LedState {
+    /// The state after the desktop made `changes`, in order.
+    pub(crate) fn observe(mut self, changes: &[LedEvent]) -> Self {
+        self.0
+            .extend(changes.iter().map(|change| (change.led, change.lamp)));
+        self
+    }
+
+    /// The events that set every LED the desktop has set, in LED order; none if it set none.
+    pub(crate) fn events(&self) -> Vec<InputEvent> {
+        self.0
+            .iter()
+            .map(|(&led, &lamp)| encode(LedEvent { led, lamp }))
+            .collect()
+    }
 }
 
 impl Led {
@@ -142,6 +165,50 @@ mod tests {
             }),
             ev(EV_LED, 1, 1)
         );
+    }
+
+    #[test]
+    fn led_state_remembers_the_last_lamp_of_each_led() {
+        let set = |led, lamp| LedEvent { led, lamp };
+        type Case = (&'static str, &'static [(Led, Lamp)], &'static [InputEvent]);
+        const CASES: &[Case] = &[
+            ("nothing set, nothing to write", &[], &[]),
+            ("caps on", &[(Led::Caps, Lamp::On)], &[ev(EV_LED, 1, 1)]),
+            (
+                "the last change of a LED wins",
+                &[(Led::Caps, Lamp::On), (Led::Caps, Lamp::Off)],
+                &[ev(EV_LED, 1, 0)],
+            ),
+            (
+                "an off lamp is still written: the keyboard may have it lit",
+                &[(Led::Num, Lamp::Off)],
+                &[ev(EV_LED, 0, 0)],
+            ),
+            (
+                "LEDs come out in LED order, not change order",
+                &[(Led::Scroll, Lamp::On), (Led::Num, Lamp::On)],
+                &[ev(EV_LED, 0, 1), ev(EV_LED, 2, 1)],
+            ),
+        ];
+        for &(name, changes, want) in CASES {
+            let changes: Vec<LedEvent> = changes.iter().map(|&(l, m)| set(l, m)).collect();
+            let state = LedState::default().observe(&changes);
+            assert_eq!(state.events(), want, "{name}");
+        }
+    }
+
+    #[test]
+    fn led_state_accumulates_across_observations() {
+        let state = LedState::default()
+            .observe(&[LedEvent {
+                led: Led::Caps,
+                lamp: Lamp::On,
+            }])
+            .observe(&[LedEvent {
+                led: Led::Num,
+                lamp: Lamp::On,
+            }]);
+        assert_eq!(state.events(), [ev(EV_LED, 0, 1), ev(EV_LED, 1, 1)]);
     }
 
     #[test]

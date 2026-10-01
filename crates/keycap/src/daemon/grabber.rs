@@ -1,8 +1,10 @@
 //! `Grabber`: take and release the exclusive grab on one device, by id; `Nodes`: and open it,
 //! close it and ask which keys it holds down.
 
+use super::discover::{Bits, Identity};
 use super::events::InputEvent;
-use super::sys::{self, Grab, GrabError};
+use super::pointer::{AbsAxis, Masks, PointerCaps};
+use super::sys::{self, Capability, Grab, GrabError};
 use crate::{DeviceId, KeysDown};
 use rustix::fd::OwnedFd;
 use rustix::fs::{Mode, OFlags};
@@ -52,6 +54,35 @@ impl EvdevGrabber {
         } else {
             Err(io::Error::from(io::ErrorKind::WriteZero))
         }
+    }
+
+    /// The pointer half of the node of `id`, read from the kernel: the key, relative and
+    /// absolute capabilities, the properties and the range of every absolute axis.
+    pub(crate) fn pointer_caps(
+        &self,
+        id: DeviceId,
+        identity: &Identity,
+    ) -> io::Result<PointerCaps> {
+        let fd = self.fds.get(&id).ok_or_else(not_open)?;
+        let mask = |capability| sys::capability_bits(fd, capability).map(|b| Bits::from_bytes(&b));
+        let masks = Masks {
+            props: mask(Capability::Prop)?,
+            key: mask(Capability::Key)?,
+            rel: mask(Capability::Rel)?,
+            abs: mask(Capability::Abs)?,
+        };
+        let abs = masks
+            .abs_axes()
+            .into_iter()
+            .map(|code| sys::abs_info(fd, code).map(|info| AbsAxis { code, info }))
+            .collect::<io::Result<Vec<_>>>()?;
+        Ok(PointerCaps::new(
+            &identity.name,
+            identity.vendor,
+            identity.product,
+            &masks,
+            abs,
+        ))
     }
 
     /// Every open node, by id.

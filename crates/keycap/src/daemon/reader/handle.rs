@@ -2,7 +2,7 @@
 
 use super::Reader;
 use crate::daemon::clock;
-use crate::daemon::devices::drive;
+use crate::daemon::devices::{DeviceEffect, Devices, drive};
 use crate::daemon::discover::{Hotplug, Identity, scan};
 use crate::daemon::events::{InputEvent, encode};
 use crate::daemon::inbox::{Message, Request};
@@ -54,7 +54,13 @@ impl<E: Emitter> Reader<E> {
 
     fn request(&mut self, request: Request) {
         match request {
-            Request::Focus(profile) => self.feed(RemapInput::Focus(profile)),
+            Request::Focus(profile) => {
+                let (unknowns, notice) =
+                    std::mem::take(&mut self.unknowns).note(&profile, &self.profiles);
+                self.unknowns = unknowns;
+                notice.line().iter().for_each(|line| eprintln!("{line}"));
+                self.feed(RemapInput::Focus(profile));
+            }
             Request::UserConfig { client, toml } => {
                 let (layer, mut warnings) = parse_user(&toml);
                 self.layers = self.layers.with_user(layer);
@@ -66,8 +72,8 @@ impl<E: Emitter> Reader<E> {
                 self.reload();
             }
             Request::Resume => {
-                let (devices, effects) = std::mem::take(&mut self.devices).resumed();
-                self.devices = drive(devices, effects, &mut self.nodes, clock::now());
+                let step = std::mem::take(&mut self.devices).resumed();
+                self.carry_out(step);
                 self.feed(RemapInput::Resume);
             }
         }
@@ -78,12 +84,20 @@ impl<E: Emitter> Reader<E> {
         let (profiles, warnings) = self.layers.resolve();
         warnings.iter().for_each(log_warning);
         self.profiles = profiles;
+        self.unknowns = std::mem::take(&mut self.unknowns).reset();
         warnings
     }
 
     pub(super) fn appear(&mut self, identity: Identity) {
-        let (devices, effects) = std::mem::take(&mut self.devices).appeared(identity);
+        let step = std::mem::take(&mut self.devices).appeared(identity);
+        self.carry_out(step);
+    }
+
+    /// Carries out what the device state machine asked for, then acts on any device that was
+    /// grabbed or let go as a result.
+    pub(super) fn carry_out(&mut self, (devices, effects): (Devices, Vec<DeviceEffect>)) {
         self.devices = drive(devices, effects, &mut self.nodes, clock::now());
+        self.sync_grabs();
     }
 
     /// One input through the remapper, and what it asks for carried out.
@@ -106,6 +120,7 @@ impl<E: Emitter> Reader<E> {
                 self.release_grabs();
                 let (buttons, events) = std::mem::take(&mut self.buttons).release_all();
                 self.buttons = buttons;
+                self.release_twins();
                 match self.write(&events) {
                     Wire::Intact => wire,
                     Wire::Recreated => Wire::Recreated,
@@ -118,8 +133,18 @@ impl<E: Emitter> Reader<E> {
 
     /// Gives every grabbed keyboard back to the kernel.
     fn release_grabs(&mut self) {
-        let (devices, effects) = std::mem::take(&mut self.devices).released();
-        self.devices = drive(devices, effects, &mut self.nodes, clock::now());
+        let step = std::mem::take(&mut self.devices).released();
+        self.carry_out(step);
+    }
+
+    /// Releases every button held on a pointer twin.
+    fn release_twins(&mut self) {
+        for (id, e) in self.twins.release_all() {
+            eprintln!(
+                "keycap: releasing the pointer of device {} failed: {e}",
+                id.0
+            );
+        }
     }
 
     /// Writes `events` to the virtual keyboard. A failed write leaves `Held` out of step with
@@ -162,12 +187,20 @@ impl<E: Emitter> Reader<E> {
         let (buttons, events) = std::mem::take(&mut self.buttons).release_device(id);
         self.buttons = buttons;
         self.write(&events);
+        if let Err(e) = self.twins.release(id) {
+            eprintln!(
+                "keycap: releasing the pointer of device {} failed: {e}",
+                id.0
+            );
+        }
     }
 
     /// Copies the LED changes the desktop made on the virtual keyboard onto every grabbed
     /// physical keyboard: the kernel no longer drives their LEDs once they are grabbed.
     pub(super) fn forward_leds(&mut self) {
-        let events: Vec<InputEvent> = self.emitter.leds().into_iter().map(leds::encode).collect();
+        let changes = self.emitter.leds();
+        self.lamps = std::mem::take(&mut self.lamps).observe(&changes);
+        let events: Vec<InputEvent> = changes.into_iter().map(leds::encode).collect();
         if events.is_empty() {
             return;
         }

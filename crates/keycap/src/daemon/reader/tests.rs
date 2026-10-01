@@ -15,15 +15,15 @@ use keycap_protocol::{Mode, ProfileName, ToClient};
 use rustix::fd::OwnedFd;
 use std::time::Duration;
 
-struct Rig {
+pub(super) struct Rig {
     _dir: Scratch,
     inbox: Inbox,
-    reader: Reader<RecordingEmitter>,
+    pub(super) reader: Reader<RecordingEmitter>,
     client: OwnedFd,
 }
 
 impl Rig {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self::watched(None, None)
     }
 
@@ -65,7 +65,7 @@ impl Rig {
         }
     }
 
-    fn key(&mut self, name: &str, edge: Edge) {
+    pub(super) fn key(&mut self, name: &str, edge: Edge) {
         self.reader.apply(Routed::Remap(RemapInput::Key {
             device: DeviceId(0),
             layout: Layout::Apple,
@@ -75,7 +75,7 @@ impl Rig {
         }));
     }
 
-    fn request(&mut self, request: Request) {
+    pub(super) fn request(&mut self, request: Request) {
         self.reader.handle(Message::Request(request));
     }
 

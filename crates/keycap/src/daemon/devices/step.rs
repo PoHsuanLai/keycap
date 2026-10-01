@@ -177,6 +177,11 @@ impl Devices {
             .map(|t| t.layout)
     }
 
+    /// Who `id` says it is.
+    pub(crate) fn identity(&self, id: DeviceId) -> Option<&Identity> {
+        self.tracked.get(&id).map(|t| &t.identity)
+    }
+
     /// Every keyboard being remapped now: where a LED change is copied to.
     pub(crate) fn grabbed(&self) -> Vec<DeviceId> {
         self.tracked
