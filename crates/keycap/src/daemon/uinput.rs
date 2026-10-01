@@ -1,9 +1,8 @@
 //! The one virtual device keycap writes: "keycap keyboard".
 //!
-//! Compiled and reviewed but deliberately unexercised by the test suite: every test uses
-//! `RecordingEmitter`. The events it writes are the pure `events` functions, which are
-//! tested; what is untested here is only device creation and recreation and the read of LED
-//! changes.
+//! The unit tests use `RecordingEmitter` and never create this device. The events it writes
+//! are the pure `events` functions, which are tested; device creation, recreation and the read
+//! of LED changes run only in the gated device tests (`tests/devices`).
 
 use super::evdev::drain;
 use super::events::{

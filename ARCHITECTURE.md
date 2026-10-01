@@ -12,8 +12,10 @@ how to add the next thing. keycap depends on no desktop crate and runs on any Li
 |---|---|---|---|
 | `keycap-protocol` | `crates/keycap-protocol` | the socket contract: `ToDaemon`, `ToClient`, `Status`, `ProfileName`, `PROTOCOL_VERSION`, `MAX_PACKET`, `encode`, `decode`, `compat` | `serde`, `serde_json`, `thiserror` |
 | `keycap` | `crates/keycap` | the pure core and the daemon; library plus the `keycap` binary | `keycap-protocol`, `serde`, `serde_json`, `thiserror`, `toml`, `notify`, `rustix` |
+| `keycap-devtest` | `crates/keycap-devtest` | test-only (`publish = false`): fake keyboards on `/dev/uinput`, the daemon as a child process, the output device reader, a socket client | `keycap-protocol`, `rustix` |
 
-Edges: `keycap` -> `keycap-protocol` only. `keycap-protocol` depends on no other workspace
+Edges: `keycap` -> `keycap-protocol` only, and `keycap` dev-depends on `keycap-devtest`, which
+depends on `keycap-protocol` and never on `keycap`. `keycap-protocol` depends on no other workspace
 crate, and has no `toml`, `notify` or `rustix`, so a desktop takes it without pulling the
 daemon. sill imports it as a path dependency. There is no boundary script;
 `cargo tree -p keycap-protocol` showing only serde, serde_json and thiserror is the check, run
@@ -49,7 +51,7 @@ Daemon modules:
 | `daemon/leds.rs` | pure: the lock-LED events the compositor writes to the virtual device, forwarded to every grabbed keyboard, and `LedState`, the last lamps it set, written to a keyboard the moment it is grabbed |
 | `daemon/readiness.rs` | which polled fds are ready, as an enum rather than flags |
 | `daemon/events.rs` | `struct input_event` as bytes, `decode` (what a device sent) and `encode` (what keycap writes), pure |
-| `daemon/discover/` | the /sys scan and `notify` on `/dev/input`; `classify(&Caps, &Identity, Origin) -> Eligibility` is pure and table-tested (virtual devices are never grabbed, which rules out loops with other remappers), sysfs roots injectable |
+| `daemon/discover/` | the /sys scan and `notify` on `/dev/input`; `classify(&Caps, &Identity, Origin, &VirtualAllowance) -> Eligibility` is pure and table-tested (virtual devices are never grabbed unless the allowance names one exactly, which rules out loops with other remappers), sysfs roots injectable |
 | `daemon/devices/` | every keyboard as a pure state machine: `{ identity, layout, gate, grab }` plus the conflict `Backoff`; transitions return `(Devices, Vec<DeviceEffect>)`, `drive` carries the effects out through `Nodes`, `status_of` makes the `Status` a desktop sees |
 | `daemon/grabber.rs` | `Grabber` (grab, ungrab) and `Nodes` (open, close, keys down): the real evdev fds, and `FakeGrabber` in tests |
 | `daemon/reader/` | the main thread: one `poll` over the nodes and the inbox's eventfd, timeout from the next gate or backoff deadline and half the watchdog; the reader waits on nothing but `poll`. `grabs.rs` acts on a device just grabbed or let go (LEDs, twin), `twins.rs` holds the twins and the pure `grab_change`, `unknown.rs` the pure `Unknowns` set behind the once-per-generation log of an undefined focused profile |
@@ -59,7 +61,7 @@ Daemon modules:
 | `daemon/settings.rs` | the config layers in force (built-in, system, user) and their resolution |
 | `daemon/service.rs` | `run(env)`: the virtual keyboard, socket thread, watchers, then the reader |
 | `daemon/sdnotify.rs` | `READY=1`, `WATCHDOG=1` and `STATUS=` to `$NOTIFY_SOCKET` |
-| `daemon/env.rs` | `Env::from_lookup`: environment, directories, the seat file |
+| `daemon/env.rs` | `Env::from_lookup`: environment, every directory and file the daemon touches (config, runtime, seat file, `/sys/class/input`, `/dev/input`), the `KEYCAP_GRAB_VIRTUAL` allowance |
 | `daemon/clock.rs` | the one `CLOCK_MONOTONIC` read |
 
 `lib.rs` holds declarations and root re-exports only.
@@ -139,15 +141,30 @@ that stay enums:** `RemapInput`, `RemapOut`, `RuleAction`, `Edge`, `Layout`, `To
 | Grab conflicts, pause and resume | `daemon/devices` tests: the state machine driven through `FakeGrabber` |
 | The reader's decisions | `daemon/reader/tests.rs` and `pointer_tests.rs`: a recording `Emitter` whose twins log what they are told and whether they were dropped, a private socket, no node opened |
 | Replay | `command/script.rs` table tests and `command/replay.rs` on a script in a temp dir |
+| The real kernel path | `crates/keycap/tests/devices/` (gated, see section 7): the built binary, a fake keyboard, the output device and the socket, through `tests/devices/support` (`Scene`, `Rig`) |
+| The unit under systemd | `ci/systemd-test.sh`, the `systemd` CI job |
 
-No test creates an input device, opens a real node for writing, or reads a real config
-directory or a running daemon.
+Outside the gated device tests no test creates an input device, opens a real node for writing,
+or reads a real config directory or a running daemon.
+
+The `keycap-devtest` modules:
+
+| Module | Holds |
+|---|---|
+| `fake` | `FakeKeyboard` (create from a `FakeSpec`: vendor, LEDs, pointer; `press`, `release`, `tap`, `chord`, LED reads), `Leds`, `Pointer` |
+| `output` | `Output`: reads "keycap keyboard", `expect("+leftctrl +c SYN")`, silence, held keys, LED writes |
+| `daemon`, `notify` | `Daemon`: the binary as a child with scratch paths, stderr to a file, `READY=1` and `WATCHDOG=1` recorded with times |
+| `client` | `Client`: `Hello`, `Focus`, `Resume`, `wait_status` |
+| `grab` | `ExternalGrab`: another program's `EVIOCGRAB` |
+| `sys` | the harness's ioctls, the second module allowed `unsafe` |
+| `keys`, `event`, `sysfs`, `scratch`, `failure` | key names, `struct input_event`, finding nodes by name, the scratch directory, the error type |
 
 ## 7. Repo rules
 
 - **Only `daemon` owns threads, sockets, devices, clocks and the environment.** When the core
   seems to need an effect, it returns an `RemapOut` for the daemon to carry out.
-- **`unsafe` lives only in `daemon/sys.rs`**, each block with a `SAFETY` comment.
+- **`unsafe` lives only in `daemon/sys.rs`** and, test-only, in `keycap-devtest/src/sys.rs`,
+  each block with a `SAFETY` comment.
 - **The layering rule:** core modules never name daemon modules.
 - **Units and ids are newtypes:** `Key`, `Physical`, `Logical`, `ProfileName`, `Mono`. `Key` is
   the one bare generic root export, kept deliberately: it is the evdev code vocabulary and every
@@ -160,7 +177,14 @@ directory or a running daemon.
   grab.
 - **The protocol is a crate:** a change to a message is a change to `keycap-protocol`, its
   tests, `PROTOCOL_VERSION` when incompatible, and the desktop, in one change.
-- **Tests never create an input device** (README, "Safety rules").
+- **Tests never create an input device, with one gated exception.** The device tests in
+  `crates/keycap/tests/devices` and the `keycap-devtest` crate they use create fake keyboards on
+  `/dev/uinput` and grab them. Each such test is `#[ignore = "creates input devices; run in CI
+  with KEYCAP_DEVICE_TESTS=1"]` and asserts that variable, so a plain `cargo test` never touches
+  a device. They run as root, one at a time, in the `devices` CI job (README, "Tests"). The
+  daemon they run is the real binary, made to grab a virtual device by
+  `KEYCAP_GRAB_VIRTUAL=<exact name>`; that switch is read in `command::run` like every other
+  variable and widens discovery by one named device (README, "Safety rules").
 - **Gate** (no boundary script):
 
   ```bash

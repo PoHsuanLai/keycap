@@ -1,5 +1,6 @@
 //! The /sys scan: every eligible keyboard node under injectable roots.
 
+use super::allowance::VirtualAllowance;
 use super::caps::{Bits, Caps};
 use super::classify::{Eligibility, Identity, Origin, classify};
 use std::path::{Path, PathBuf};
@@ -19,7 +20,7 @@ pub(crate) struct Candidate {
 /// Every keyboard node listed under `sys_root` (normally `/sys/class/input`), as a path under
 /// `dev_root` (normally `/dev/input`), ordered by node name. Unreadable entries are skipped:
 /// a node that vanishes mid-scan is simply not a candidate.
-pub(crate) fn scan(sys_root: &Path, dev_root: &Path) -> Vec<Candidate> {
+pub(crate) fn scan(sys_root: &Path, dev_root: &Path, allow: &VirtualAllowance) -> Vec<Candidate> {
     let mut nodes: Vec<PathBuf> = std::fs::read_dir(sys_root)
         .into_iter()
         .flatten()
@@ -29,12 +30,12 @@ pub(crate) fn scan(sys_root: &Path, dev_root: &Path) -> Vec<Candidate> {
     nodes.sort();
     nodes
         .iter()
-        .filter_map(|dir| candidate(dir, dev_root))
+        .filter_map(|dir| candidate(dir, dev_root, allow))
         .collect()
 }
 
 /// One sysfs node as a candidate, if it is a keyboard.
-fn candidate(dir: &Path, dev_root: &Path) -> Option<Candidate> {
+fn candidate(dir: &Path, dev_root: &Path, allow: &VirtualAllowance) -> Option<Candidate> {
     let read = |rel: &str| std::fs::read_to_string(dir.join(rel)).unwrap_or_default();
     let hex = |rel: &str| u16::from_str_radix(read(rel).trim(), 16).unwrap_or(0);
     let caps = Caps {
@@ -50,7 +51,7 @@ fn candidate(dir: &Path, dev_root: &Path) -> Option<Candidate> {
     };
     // The class entry is a symlink into the device tree; where it leads says what made the node.
     let origin = Origin::of_sysfs(&std::fs::canonicalize(dir).ok()?);
-    match classify(&caps, &identity, origin) {
+    match classify(&caps, &identity, origin, allow) {
         Eligibility::NotKeyboard => None,
         eligibility => Some(Candidate {
             identity,
