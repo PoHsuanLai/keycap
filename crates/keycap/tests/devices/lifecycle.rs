@@ -69,7 +69,11 @@ fn unplugging_the_keyboard_mid_chord_releases_what_it_wrote() {
     ok(out.expect("-leftctrl SYN"), "after the unplug");
     assert!(out.held().is_empty(), "keys left down: {:?}", out.held());
     ok(
-        client.wait_status("no keyboards", GRAB_WITHIN, |s| s.keyboards.is_empty()),
+        // Only the unplugged keyboard leaves: a machine's own keyboards (a CI runner's AT
+        // keyboard) stay grabbed.
+        client.wait_status("the unplugged keyboard gone", GRAB_WITHIN, |s| {
+            s.keyboards.iter().all(|k| k.info.name != FAKE_NAME)
+        }),
         "status after the unplug",
     );
 }
