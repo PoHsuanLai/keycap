@@ -20,20 +20,26 @@ A receiver that is a keyboard and a pointer in one node is grabbed whole, so its
 are forwarded through the keycap virtual device. Motion, clicks and scroll through that path,
 and their latency, are untested on a real receiver.
 
-**The daemon's device I/O has never run against a kernel. Unverified on hardware.** The reader's
+**The daemon's device I/O is covered by CI device tests once green; not yet run.** The reader's
 `poll` over real evdev fds, `read` until `EAGAIN`, `EVIOCGKEY` and `EVIOCGRAB` through the real
-`EvdevGrabber`, hotplug from `notify` on `/dev/input`, and the uinput device itself are compiled
-and reviewed; the tests drive the same logic through fakes, a recording emitter and socket pairs.
-Needs a machine with a keyboard: boot with the unit, plug and unplug, grab with a key held.
+`EvdevGrabber`, hotplug from `notify` on `/dev/input`, and the uinput device itself are driven by
+`crates/keycap/tests/devices` against a fake keyboard on `/dev/uinput`: mapping, the grab gate,
+unplug and `kill -9` mid-chord, the escape chord and `Resume`, a second grabber. They have not run
+yet; this stays open until the `devices` job has passed on GitHub's runner. What CI cannot show: a
+real keyboard (an Apple or Bluetooth one, which registers under `uhid`) and a physical unplug.
 
-**`SO_PEERCRED` and the seat file on a real logind are untested.** The socket tests use the
-test's own uid and a fake `seat0` file; the real `ACTIVE_UID=` line, a user switch and a
-Bluetooth-era session change are covered by the parser table only.
+**`SO_PEERCRED` is covered by CI device tests once green; the seat file on a real logind is
+untested.** The device tests run the real binary with a fake seat file naming the test's uid and
+check that a client running as another uid is an observer whose `Focus` is refused. The real
+`ACTIVE_UID=` line, a user switch and a session change under logind are covered by the parser table
+only; they stay manual.
 
-**The systemd watchdog loop is proven against a datagram socket, not systemd.** The reader pets
-`WATCHDOG=1` on every pass and sleeps at most half the interval (one second under
-`WatchdogSec=2`); whether that holds under load (a burst of events, a slow uinput write) is a
-manual check.
+**The systemd watchdog loop is covered by CI once green.** The reader pets `WATCHDOG=1` on every
+pass and sleeps at most half the interval (one second under `WatchdogSec=2`). The device tests
+check the ping cadence against a datagram socket, and `ci/systemd-test.sh` checks, under real
+systemd, that `kill -STOP` gets the daemon restarted, that six quick `kill -9`s trip the start
+limit and that `reset-failed` recovers. Neither has run yet. Whether the cadence holds under load
+(a burst of events, a slow uinput write) is a manual check.
 
 **Combo devices with a touchpad lose their pointer while grabbed.** A receiver that is a
 keyboard and a touchpad in one node (EV_ABS: absolute axes, multitouch slots, `BTN_TOUCH`,
@@ -52,10 +58,12 @@ receivers expose EV_ABS on the keyboard node.
 virtual keyboard and keycap writes the same change to every grabbed physical keyboard. A
 keyboard grabbed while a lock is already on is not brought in line until the next change; the
 nodes are opened read-write for this, which needs the unit's `input` group to have write access.
-Unverified on hardware.
+The forwarding itself (a LED written to the virtual keyboard reaches the grabbed one) is covered
+by a CI device test once green; the real keyboard's LED is unverified on hardware.
 
-**Manual acceptance, waiting for the user and hardware.** The list is in the README, "Manual
-checks".
+**Manual acceptance, waiting for the user and hardware.** What remains manual after CI is a real
+Apple or Bluetooth keyboard, a real compositor session (COSMIC, sill's `Focus`), and a logind
+user switch. The list is in the README, "Manual checks".
 
 ## Standing facts
 
@@ -72,10 +80,13 @@ creates a fresh one (every key up) and resets the held state without writing. If
 cannot be made, the keyboards are given back as for the escape chord; `Resume` regrabs. The
 batch that failed is lost.
 
-**Virtual devices are never grabbed.** Every node under `/sys/devices/virtual/input` is left
-alone, so another remapper's output is not fed back through keycap. A keyboard that registers
-there on purpose (a remote-desktop input, a virtual keyboard to be remapped) is not remapped.
-Bluetooth keyboards register under `uhid` and are not affected.
+**Virtual devices are never grabbed, except one named in `KEYCAP_GRAB_VIRTUAL`.** Every node
+under `/sys/devices/virtual/input` is left alone, so another remapper's output is not fed back
+through keycap. A keyboard that registers there on purpose (a remote-desktop input, a virtual
+keyboard to be remapped) is not remapped. Bluetooth keyboards register under `uhid` and are not
+affected. The CI keyboard is a uinput device, so the device tests start the daemon with
+`KEYCAP_GRAB_VIRTUAL=<its exact name>`; the allowance is exact-match, one device, and never covers
+keycap's own keyboard or palmrest's. Only root or the unit's environment can set it.
 
 **A grab that succeeds is checked again.** A key that went down between the gate's check and
 the grab reached the desktop but its release would not, so keycap re-reads `EVIOCGKEY` after
@@ -97,5 +108,5 @@ chord repeats its output.
 **`rustix` is outside the pinned block**, as in palmrest: poll, eventfd, `SOCK_SEQPACKET`,
 `CLOCK_MONOTONIC` and the ioctl plumbing without libc's unsafe surface.
 
-**`unsafe` lives in `daemon/sys.rs` only.** Each block has a SAFETY comment; ioctl opcodes are
-checked by a test.
+**`unsafe` lives in `daemon/sys.rs` and, test-only, `keycap-devtest/src/sys.rs`.** Each block has
+a SAFETY comment; ioctl opcodes are checked by a test in each.

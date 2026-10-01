@@ -126,7 +126,7 @@ pub(crate) fn dev_setup(fd: impl AsFd, setup: UinputSetup) -> io::Result<()> {
         .map_err(io::Error::from)
 }
 
-/// Creates the device. Never called by any test.
+/// Creates the device.
 pub(crate) fn dev_create(fd: impl AsFd) -> io::Result<()> {
     // SAFETY: UI_DEV_CREATE is _IO('U', 1): no argument.
     unsafe { ioctl::ioctl(fd, NoArg::<UI_DEV_CREATE>::new()) }.map_err(io::Error::from)
