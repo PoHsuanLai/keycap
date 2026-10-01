@@ -80,8 +80,8 @@ Daemon modules:
 | `Setting` (`config::lenient`) | `fn read(v: &toml::Value, key: &str, warn: &mut Vec<Warning>) -> Option<Self>` | every unit newtype and enum |
 
 A trait appears only when two real implementations are swapped at a boundary. **Closed enums
-that stay enums:** `Input`, `Out`, `Action`, `Edge`, `Layout`, `Status`, `ToDaemon`, `ToClient`,
-`Peer`, `Eligibility`.
+that stay enums:** `Input`, `Out`, `Action`, `Edge`, `Layout`, `ToDaemon`, `ToClient`,
+`Peer`, `Eligibility`, `Mode`, `Grab`.
 
 ## 5. Recipes
 

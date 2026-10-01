@@ -58,12 +58,13 @@ pub enum ToClient {
     Status(Status),
     ConfigWarnings(Vec<Warning>),
 }
-pub enum Status {
-    Active { keyboards: Vec<KeyboardInfo> },
+pub struct Status { mode: Mode, keyboards: Vec<Keyboard> }  // empty = no keyboards
+pub enum Mode { Running, Paused }                           // Paused = escape chord
+pub struct Keyboard { info: KeyboardInfo, grab: Grab }
+pub enum Grab {
+    Active,
     WaitingForRelease,                // grab gate: a key is held
-    Paused,                           // escape chord
-    Conflict { device: KeyboardInfo },// EVIOCGRAB -> EBUSY: another remapper holds it
-    NoKeyboards,
+    Conflict,                         // EVIOCGRAB -> EBUSY: another remapper holds it
 }
 // ProfileName: validated [a-z0-9_-]+, parsed once at the boundary
 ```
