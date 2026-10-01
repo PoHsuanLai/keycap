@@ -1,7 +1,7 @@
 //! `run`: brings the daemon up and hands the main thread to the reader.
 
 use super::devices::status_of;
-use super::discover::{DEV_INPUT, Hotplug, spawn as watch_nodes};
+use super::discover::{Hotplug, spawn as watch_nodes};
 use super::env::Env;
 use super::inbox::{Inbox, Message, forward, mailbox};
 use super::reader::{Reader, Roots, Wiring};
@@ -32,7 +32,7 @@ pub(crate) fn run(env: Env) -> Result<(), String> {
     )
     .map_err(|e| format!("socket thread: {e}"))?;
     eprintln!("keycap: listening on {}", path.display());
-    let _devices = watch_devices(&inbox)?;
+    let _devices = watch_devices(&env.dev_input, &inbox)?;
     let (layers, _config) = load_config(&env, &inbox);
     Reader::new(Wiring {
         mailbox,
@@ -40,7 +40,7 @@ pub(crate) fn run(env: Env) -> Result<(), String> {
         emitter,
         notifier,
         watchdog: env.watchdog,
-        roots: Roots::system(),
+        roots: Roots::of(&env),
         layers,
     })
     .run()
@@ -95,10 +95,10 @@ fn create_output() -> Result<Device, String> {
 }
 
 /// Watches `/dev/input` for keyboards coming and going. The watcher must be kept alive.
-fn watch_devices(inbox: &Inbox) -> Result<notify::RecommendedWatcher, String> {
+fn watch_devices(dev_input: &Path, inbox: &Inbox) -> Result<notify::RecommendedWatcher, String> {
     let (tx, rx) = mpsc::channel::<Hotplug>();
     let watcher =
-        watch_nodes(Path::new(DEV_INPUT), tx).map_err(|e| format!("watching {DEV_INPUT}: {e}"))?;
+        watch_nodes(dev_input, tx).map_err(|e| format!("watching {}: {e}", dev_input.display()))?;
     forward("hotplug", rx, inbox.clone(), Message::Hotplug)
         .map_err(|e| format!("hotplug thread: {e}"))?;
     Ok(watcher)

@@ -37,7 +37,7 @@ impl<E: Emitter> Reader<E> {
                 self.reload();
             }
             Message::Hotplug(Hotplug::Appeared(path)) => {
-                let found = scan(&self.roots.sys, &self.roots.dev)
+                let found = scan(&self.roots.sys, &self.roots.dev, &self.roots.allow)
                     .into_iter()
                     .find(|c| c.identity.path == path);
                 if let Some(candidate) = found {

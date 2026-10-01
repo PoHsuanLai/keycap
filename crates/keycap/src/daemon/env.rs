@@ -1,6 +1,7 @@
 //! What the daemon takes from the process environment, read once in `command::run` so nothing
 //! below it reads `std::env`.
 
+use super::discover::{DEV_INPUT, SYS_INPUT, VirtualAllowance};
 use super::socket::SEAT_FILE;
 use super::uinput::{PROBE_PERMIT, ProbePermit};
 use std::path::PathBuf;
@@ -24,8 +25,16 @@ pub(crate) struct Env {
     pub config_dir: PathBuf,
     /// `$RUNTIME_DIRECTORY` (systemd's), else `/run/keycap`: where the socket lives.
     pub runtime_dir: PathBuf,
-    /// The seat state file the active user is read from; injectable so tests need no logind.
+    /// `$KEYCAP_SEAT_FILE`, else logind's `seat0` state file: where the active user is read
+    /// from; injectable so tests need no logind.
     pub seat_file: PathBuf,
+    /// `$KEYCAP_SYS_INPUT`, else `/sys/class/input`: where discovery lists the nodes.
+    pub sys_input: PathBuf,
+    /// `$KEYCAP_DEV_INPUT`, else `/dev/input`: where the nodes are opened and watched.
+    pub dev_input: PathBuf,
+    /// `$KEYCAP_GRAB_VIRTUAL`: the one virtual device, by exact name, discovery may grab. Only
+    /// the unit's environment sets it; it exists for tests whose keyboard is a uinput device.
+    pub grab_virtual: VirtualAllowance,
     /// Whether `--check-uinput` may open the uinput node.
     pub probe: ProbePermit,
     /// `$WATCHDOG_USEC` as a duration: how often systemd expects a ping at the latest.
@@ -42,7 +51,12 @@ impl Env {
             notify_socket: non_empty("NOTIFY_SOCKET"),
             config_dir: dir("KEYCAP_CONFIG_DIR", DEFAULT_CONFIG_DIR),
             runtime_dir: dir("RUNTIME_DIRECTORY", DEFAULT_RUNTIME_DIR),
-            seat_file: PathBuf::from(DEFAULT_SEAT_FILE),
+            seat_file: dir("KEYCAP_SEAT_FILE", DEFAULT_SEAT_FILE),
+            sys_input: dir("KEYCAP_SYS_INPUT", SYS_INPUT),
+            dev_input: dir("KEYCAP_DEV_INPUT", DEV_INPUT),
+            grab_virtual: VirtualAllowance::from_env_value(
+                lookup("KEYCAP_GRAB_VIRTUAL").as_deref(),
+            ),
             probe: ProbePermit::from_env_value(lookup(PROBE_PERMIT).as_deref()),
             watchdog: non_empty("WATCHDOG_USEC")
                 .and_then(|s| s.parse::<u64>().ok())
@@ -73,11 +87,21 @@ mod tests {
             ("RUNTIME_DIRECTORY", "/run/keycap"),
             (PROBE_PERMIT, "1"),
             ("WATCHDOG_USEC", "1000000"),
+            ("KEYCAP_SEAT_FILE", "/tmp/seat0"),
+            ("KEYCAP_SYS_INPUT", "/tmp/sys"),
+            ("KEYCAP_DEV_INPUT", "/tmp/dev"),
+            ("KEYCAP_GRAB_VIRTUAL", "test keyboard"),
         ]));
         assert_eq!(env.notify_socket.as_deref(), Some("/run/systemd/notify"));
         assert_eq!(env.config_dir, PathBuf::from("/tmp/cfg"));
         assert_eq!(env.runtime_dir, PathBuf::from("/run/keycap"));
-        assert_eq!(env.seat_file, PathBuf::from("/run/systemd/seats/seat0"));
+        assert_eq!(env.seat_file, PathBuf::from("/tmp/seat0"));
+        assert_eq!(env.sys_input, PathBuf::from("/tmp/sys"));
+        assert_eq!(env.dev_input, PathBuf::from("/tmp/dev"));
+        assert_eq!(
+            env.grab_virtual,
+            VirtualAllowance::Named("test keyboard".to_owned())
+        );
         assert_eq!(env.probe, ProbePermit::Granted);
         assert_eq!(env.watchdog, Some(Duration::from_secs(1)));
     }
@@ -88,6 +112,10 @@ mod tests {
         assert_eq!(env.notify_socket, None);
         assert_eq!(env.config_dir, PathBuf::from("/etc/keycap"));
         assert_eq!(env.runtime_dir, PathBuf::from("/run/keycap"));
+        assert_eq!(env.seat_file, PathBuf::from("/run/systemd/seats/seat0"));
+        assert_eq!(env.sys_input, PathBuf::from("/sys/class/input"));
+        assert_eq!(env.dev_input, PathBuf::from("/dev/input"));
+        assert_eq!(env.grab_virtual, VirtualAllowance::Nobody);
         assert_eq!(env.probe, ProbePermit::Refused);
         assert_eq!(env.watchdog, None);
     }

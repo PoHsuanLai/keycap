@@ -1,5 +1,6 @@
 //! The rule that says whether a node is a keyboard keycap should grab.
 
+use super::allowance::VirtualAllowance;
 use super::caps::Caps;
 use crate::daemon::events::{EV_KEY, EV_REL, REL_X};
 use crate::daemon::uinput;
@@ -73,12 +74,20 @@ fn has_typing_keys(caps: &Caps) -> bool {
     ('a'..='z').all(|c| has(c.encode_utf8(&mut [0; 4]))) && has("space")
 }
 
-/// The rule, on capabilities, identity and origin alone. A virtual device is never grabbed,
-/// whoever made it: two remappers grabbing each other's output is a feedback loop.
-pub(crate) fn classify(caps: &Caps, id: &Identity, origin: Origin) -> Eligibility {
+/// The rule, on capabilities, identity, origin and the allowance. A virtual device is never
+/// grabbed, whoever made it, unless `allow` names it exactly: two remappers grabbing each
+/// other's output is a feedback loop. keycap's own device and palmrest's stay excluded even
+/// when named.
+pub(crate) fn classify(
+    caps: &Caps,
+    id: &Identity,
+    origin: Origin,
+    allow: &VirtualAllowance,
+) -> Eligibility {
     let keyboard = caps.ev.has(u32::from(EV_KEY)) && has_typing_keys(caps);
     let pointer = caps.ev.has(u32::from(EV_REL)) && caps.rel.has(u32::from(REL_X));
-    let excluded = origin == Origin::Virtual || is_ours_or_palmrests(id);
+    let refused_virtual = origin == Origin::Virtual && !allow.admits(&id.name);
+    let excluded = refused_virtual || is_ours_or_palmrests(id);
     match (excluded, keyboard, pointer) {
         (true, _, _) | (false, false, _) => Eligibility::NotKeyboard,
         (false, true, false) => Eligibility::Keyboard,

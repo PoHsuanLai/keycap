@@ -224,7 +224,11 @@ fn classify_table() {
         ),
     ];
     for (name, c, id, origin, want) in cases {
-        assert_eq!(classify(&c, &id, origin), want, "{name}");
+        assert_eq!(
+            classify(&c, &id, origin, &VirtualAllowance::Nobody),
+            want,
+            "{name}"
+        );
     }
 }
 
@@ -341,7 +345,7 @@ fn scan_reads_a_sysfs_tree_and_keeps_only_eligible_keyboards() {
     );
     std::fs::create_dir_all(sys.join("event7")).unwrap();
 
-    let found = scan(&sys, dev);
+    let found = scan(&sys, dev, &VirtualAllowance::Nobody);
     let summary: Vec<(&str, &Path, Eligibility, u16)> = found
         .iter()
         .map(|c| {
@@ -375,7 +379,14 @@ fn scan_reads_a_sysfs_tree_and_keeps_only_eligible_keyboards() {
 #[test]
 fn scan_of_a_missing_root_is_empty() {
     let root = Scratch::new("scan-missing");
-    assert_eq!(scan(&root.path().join("nope"), Path::new("/dev/input")), []);
+    assert_eq!(
+        scan(
+            &root.path().join("nope"),
+            Path::new("/dev/input"),
+            &VirtualAllowance::Nobody
+        ),
+        []
+    );
 }
 
 #[test]

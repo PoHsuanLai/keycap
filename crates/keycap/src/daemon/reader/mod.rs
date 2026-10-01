@@ -9,7 +9,8 @@ mod tests;
 
 use super::buttons::Buttons;
 use super::devices::Devices;
-use super::discover::{DEV_INPUT, SYS_INPUT};
+use super::discover::VirtualAllowance;
+use super::env::Env;
 use super::grabber::EvdevGrabber;
 use super::inbox::Mailbox;
 use super::sdnotify::Notifier;
@@ -22,19 +23,22 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::time::Duration;
 
-/// Where the keyboards are listed and where their nodes are.
+/// What discovery looks at: where the keyboards are listed, where their nodes are, and which
+/// virtual device it may take.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Roots {
     pub sys: PathBuf,
     pub dev: PathBuf,
+    pub allow: VirtualAllowance,
 }
 
 impl Roots {
-    /// `/sys/class/input` and `/dev/input`.
-    pub(crate) fn system() -> Self {
+    /// The roots and the allowance the environment names.
+    pub(crate) fn of(env: &Env) -> Self {
         Self {
-            sys: PathBuf::from(SYS_INPUT),
-            dev: PathBuf::from(DEV_INPUT),
+            sys: env.sys_input.clone(),
+            dev: env.dev_input.clone(),
+            allow: env.grab_virtual.clone(),
         }
     }
 }
