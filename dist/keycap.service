@@ -1,0 +1,36 @@
+# keycap: Mac keyboard mapping daemon. Install to /etc/systemd/system.
+#
+# It grabs the keyboards and writes one virtual keyboard, so a hang would leave the machine
+# without keys: the watchdog kills it after a second and the kernel drops the grab with the
+# process. After five failures in 30 s the unit stays failed and the desktop says so.
+[Unit]
+Description=keycap: Mac keyboard mapping
+Documentation=https://github.com/PoHsuanLai/keycap
+Before=display-manager.service systemd-user-sessions.service
+
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/keycap
+WatchdogSec=1
+Restart=always
+RestartSec=200ms
+StartLimitIntervalSec=30
+StartLimitBurst=5
+
+DynamicUser=yes
+SupplementaryGroups=input
+RuntimeDirectory=keycap
+RuntimeDirectoryMode=0755
+ConfigurationDirectory=keycap
+
+ProtectHome=yes
+ProtectSystem=strict
+PrivateNetwork=yes
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+DevicePolicy=closed
+DeviceAllow=char-input rw
+DeviceAllow=/dev/uinput rw
+
+[Install]
+WantedBy=multi-user.target
