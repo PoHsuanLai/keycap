@@ -1,0 +1,16 @@
+[package]
+name = "keycap-devtest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Test-only harness for keycap: fake keyboards on /dev/uinput, the daemon as a child process, its output device and its socket. Creates input devices; run only through the gated device tests"
+
+[lints]
+workspace = true
+
+[dependencies]
+keycap-protocol = { path = "../keycap-protocol" }
+rustix = { workspace = true, features = ["pipe"] }

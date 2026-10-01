@@ -1,0 +1,28 @@
+[workspace]
+resolver = "3"
+members = ["crates/keycap", "crates/keycap-protocol", "crates/keycap-devtest"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.91"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/PoHsuanLai/keycap"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+serde_json = "1"
+toml = "1"
+notify = "8.2"
+# Poll, SOCK_SEQPACKET, eventfd, CLOCK_MONOTONIC and the ioctl plumbing without libc's unsafe
+# surface.
+rustix = { version = "1", features = ["event", "fs", "net", "time", "process"] }
+
+# A panic must kill the process, so the kernel releases the keyboard grab and systemd restarts
+# it. Only release: tests need unwinding.
+[profile.release]
+panic = "abort"

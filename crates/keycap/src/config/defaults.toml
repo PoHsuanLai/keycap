@@ -1,0 +1,46 @@
+# keycap's built-in mapping: the standard Mac set. `when` names roles (command, option,
+# control, shift) and `then` names written modifiers (ctrl, alt, super, shift). A string `then`
+# holds its stroke while the key is held; a list taps each stroke in order; `then = []`
+# swallows the chord. Keys are names from the key table, never numbers.
+
+[profile.default]
+modmap = { command = "ctrl", option = "alt", control = "super" }
+rules = [
+  { when = "command+left", then = "home" },
+  { when = "command+right", then = "end" },
+  { when = "command+up", then = "ctrl+home" },
+  { when = "command+down", then = "ctrl+end" },
+  { when = "command+shift+left", then = "shift+home" },
+  { when = "command+shift+right", then = "shift+end" },
+  { when = "command+shift+up", then = "ctrl+shift+home" },
+  { when = "command+shift+down", then = "ctrl+shift+end" },
+  { when = "option+left", then = "ctrl+left" },
+  { when = "option+right", then = "ctrl+right" },
+  { when = "option+shift+left", then = "ctrl+shift+left" },
+  { when = "option+shift+right", then = "ctrl+shift+right" },
+  { when = "option+backspace", then = "ctrl+backspace" },
+  { when = "option+delete", then = "ctrl+delete" },
+  { when = "command+backspace", then = ["shift+home", "delete"] },
+  { when = "command+tab", then = "alt+tab", hold = "while_held" },
+  { when = "command+shift+tab", then = "alt+shift+tab", hold = "while_held" },
+  { when = "command+space", then = "super+space" },
+  { when = "command+q", then = "alt+f4" },
+  { when = "control+a", then = "home" },
+  { when = "control+e", then = "end" },
+]
+
+# A terminal keeps physical Control as Control (shell readline and Ctrl+C), and copies and
+# pastes with Ctrl+Shift.
+[profile.terminal]
+inherits = "default"
+modmap = { control = "ctrl" }
+rules = [
+  { when = "command+c", then = "ctrl+shift+c" },
+  { when = "command+v", then = "ctrl+shift+v" },
+  { when = "command+t", then = "ctrl+shift+t" },
+  { when = "command+w", then = "ctrl+shift+w" },
+  { when = "command+n", then = "ctrl+shift+n" },
+  { when = "command+f", then = "ctrl+shift+f" },
+  { when = "control+a", then = "ctrl+a" },
+  { when = "control+e", then = "ctrl+e" },
+]
