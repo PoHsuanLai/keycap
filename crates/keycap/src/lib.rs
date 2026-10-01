@@ -13,6 +13,7 @@ mod held;
 mod key;
 mod layout;
 mod profile;
+mod remap;
 mod role;
 mod time;
 
@@ -25,5 +26,6 @@ pub use held::{Held, Record};
 pub use key::Key;
 pub use layout::{Layout, role};
 pub use profile::{Action, ChordError, Hold, ModMap, Profile, Profiles, Stroke, Trigger};
+pub use remap::{CoreStatus, Input, Out, Remapper};
 pub use role::{OutMod, OutMods, Role, Roles};
 pub use time::Mono;

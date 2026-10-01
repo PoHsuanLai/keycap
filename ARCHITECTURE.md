@@ -62,7 +62,7 @@ Daemon modules:
 | Profile inheritance and lookup | `profile::Profiles` |
 | Every default mapping | `defaults.toml` |
 | Lenient per-key reading, config layers, inheritance flattening | `config::{lenient, Layer, resolve}` |
-| What each press emitted | `held::Held` |
+| What each press emitted, and which written keys are lifted | `held::Held` |
 | When a keyboard may be grabbed | `gate::GrabGate` |
 | The emergency chord | `escape` |
 | The mapping state machine | `remap::Remapper` |
@@ -240,19 +240,48 @@ pub enum Out { Write(Vec<OutEvent>), ReleaseGrabs, Status(CoreStatus) }
 ```
 
 - **Modifiers are written eagerly.** A role press writes its `ModMap` output at once, so
-  Cmd+click reaches the pointer's client as Ctrl+click.
+  Cmd+click reaches the pointer's client as Ctrl+click. The remapper keeps a
+  `(DeviceId, Physical) -> Role` map beside `Held`; the held roles are read through `Held`'s
+  records, so a role key `Held` has let go is no longer a role.
 - **An unmatched key** is written as itself; the modifiers already down apply.
-- **A matched `Map`** writes the minimum change: release written modifiers the stroke does not
-  want, press the ones it wants and lacks, press the key. On the physical release: release the
-  key, then (`Restore`) put the modifiers back as the held roles say. With `WhileHeld` the
-  stroke's modifiers stay down until the last role of the trigger is released (Cmd+Tab keeps
-  the switcher open while Command is held).
-- **A matched `Sequence`** taps each stroke with the same minimum-change rule, then restores.
-- **`Held`** records, per `(DeviceId, Physical)`, exactly what the press wrote. A release writes
-  the inverse of that record and nothing else. `DeviceGone` releases that device's records;
-  `ReleaseAll` releases everything. A key never written is never released.
+- **Lifts.** A role's modifier belongs to the role key's record in `Held` and stays there while
+  a stroke needs it off the wire. `Held::lift(owner, keys)` takes keys some record holds off
+  the wire (a release is written if they were down) and remembers `owner` as the one who lifted
+  them; the records keep them. A key is down on the wire exactly while some record holds it and
+  no owner has lifted it. The owner's release (`Held::release`, or `unlift`) presses back each
+  key that is still held and that no other owner keeps lifted. Releasing a record whose key is
+  lifted writes nothing for that key, and the lift forgets it. A deliberate press of a lifted
+  key (`press`, `extend`) writes it and ends every lift of it, so the held and written views
+  cannot disagree. `drain` releases only what is down and presses nothing back; `device_gone`
+  releases the device's records first, then ends its lifts, so only keys another device holds
+  come back.
+- **A matched `Map`** writes the minimum change. With `Restore` the physical key owns the
+  lift: it lifts every written modifier the stroke does not want, presses the wanted ones that
+  are not down, and presses the key, all in one record at the physical key. On the physical
+  release the record goes in reverse order and then the lift ends, so the modifiers come back as
+  the held roles say. A role key released meanwhile just leaves its record; no write, and the
+  lift forgets the key.
+- **`WhileHeld` ownership.** Cmd+Tab must keep Alt down after Tab is released, until Command
+  is. So the lift, and the stroke's modifiers that were not already down (`Held::extend`), belong
+  to the trigger's non-Shift role key, the lowest `(device, key)` if several, and only the
+  stroke's own key belongs to the physical key. Tab release writes only the Tab release; a
+  second Tab matches again with Alt already down. Command's release ends Alt (it is in Command's
+  record) and does not press Control back, since Command's own record is gone. A trigger with
+  no non-Shift role to own the stroke behaves as `Restore`.
+- **A matched `Sequence`** taps each stroke in order with the minimum-change rule: lift what
+  the stroke does not want, press its modifiers and key, release them. The lifts are kept until
+  the last stroke, then ended. All strokes go out in one `Write` with one `Sync` at the end.
+  Nothing is left in `Held` for the key, so its release writes nothing.
+- **`Swallow`** records nothing and writes nothing; the release writes nothing either.
+- **`Held`** records, per `(DeviceId, Physical)`, exactly what the press wrote, and a release
+  writes the inverse of that record and nothing else (plus the restore of its lifts). `DeviceGone`
+  releases that device's records; `ReleaseAll` releases everything. A key never written is
+  never released, so the release of a key pressed before the grab writes nothing.
 - **`Focus`** takes effect at the next press; held keys keep what they wrote.
 - **Repeat** events are dropped: the compositor repeats.
 - **The escape chord** (both Shift keys + Esc, physical) releases everything and yields
-  `Out::ReleaseGrabs` and `CoreStatus::Paused`; keys are ignored until `Resume`.
-- Every `Write` ends with `SYN_REPORT`.
+  `Out::ReleaseGrabs` and `CoreStatus::Paused`, in that order after the one draining `Write`; the
+  Esc press is not written. Keys are ignored (the chord detector still tracks them) until
+  `Resume`, which yields `Status(Running)`.
+- Every `Write` ends with exactly one `SYN_REPORT` (`OutEvent::Sync`), and a step that writes
+  nothing emits no `Write`.

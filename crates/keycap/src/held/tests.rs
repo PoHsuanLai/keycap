@@ -189,7 +189,12 @@ fn random_sequences_never_stick_or_double_write() {
             let context = format!("seed {seed} step {step}");
             let device = DEVICES[rng.below(2) as usize];
             let phys = rng.below(6) as u16;
-            let (next, events) = match rng.below(10) {
+            let keys = |rng: &mut Xorshift| -> Vec<Logical> {
+                (0..rng.below(4))
+                    .map(|_| l(1 + rng.below(4) as u16))
+                    .collect()
+            };
+            let (next, events) = match rng.below(16) {
                 0..=4 => {
                     let n = rng.below(4);
                     let wants = (0..n)
@@ -203,11 +208,21 @@ fn random_sequences_never_stick_or_double_write() {
                         .collect();
                     held.press(at(device, phys), wants)
                 }
-                5..=8 => held.release(at(device, phys)),
-                _ => held.device_gone(device),
+                5..=6 => held.lift(at(device, phys), keys(&mut rng)),
+                7 => held.extend(at(device, phys), keys(&mut rng)),
+                8 => held.unlift(at(device, phys)),
+                9 => held.release_record(at(device, phys)),
+                10..=12 => held.release(at(device, phys)),
+                13 => held.device_gone(device),
+                14 => held.drain(),
+                _ => held.release(at(device, phys)),
             };
             held = next;
             wire.apply(&events, &context);
+            assert!(
+                held.lifts.values().flatten().all(|&key| held.holds(key)),
+                "{context}: a lift outlived its key"
+            );
             let held_down: BTreeSet<Logical> = held.down().collect();
             assert_eq!(
                 held_down, wire.down,
