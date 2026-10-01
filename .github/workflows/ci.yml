@@ -57,7 +57,7 @@ jobs:
           ls -l /dev/uinput
       - name: Build the device tests, the daemon and the examples
         run: |
-          cargo build -p keycap --examples
+          cargo build -p keycap --bins --examples
           cargo test -p keycap --test devices --no-run --message-format=json > "$RUNNER_TEMP/build.json"
           exe="$(jq -r 'select(.profile.test == true and .target.name == "devices") | .executable' "$RUNNER_TEMP/build.json" | tail -n 1)"
           test -x "$exe"
@@ -94,6 +94,6 @@ jobs:
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@v2
       - name: Build the release binary and the helpers
-        run: cargo build --release -p keycap --examples
+        run: cargo build --release -p keycap --bins --examples
       - name: Run the systemd tier
         run: ci/systemd-test.sh

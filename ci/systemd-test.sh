@@ -6,7 +6,7 @@
 #
 # It installs files under /usr/local and /etc and creates an input device, so it refuses to run
 # anywhere but CI unless KEYCAP_CI_ALLOW_INSTALL=1 is set. Build first:
-#   cargo build --release -p keycap --examples
+#   cargo build --release -p keycap --bins --examples
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -76,7 +76,7 @@ fi
 [ "$(ps -p 1 -o comm=)" = systemd ] || fail "PID 1 is not systemd"
 systemctl --version | head -n 1
 for bin in "$TARGET/keycap" "$TARGET/examples/fake_keyboard" "$TARGET/examples/socket_client"; do
-  [ -x "$bin" ] || fail "$bin is missing; build with: cargo build --release -p keycap --examples"
+  [ -x "$bin" ] || fail "$bin is missing; build with: cargo build --release -p keycap --bins --examples"
 done
 
 step "load uinput"

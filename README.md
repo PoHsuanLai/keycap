@@ -271,7 +271,7 @@ Three tiers, each in its own CI job (`.github/workflows/ci.yml`).
 
    ```bash
    sudo modprobe uinput
-   cargo build -p keycap --examples
+   cargo build -p keycap --bins --examples
    cargo test -p keycap --test devices --no-run     # build as yourself
    sudo -E env "PATH=$PATH" KEYCAP_DEVICE_TESTS=1 \
      target/debug/deps/devices-<hash> --ignored --test-threads=1
