@@ -21,7 +21,7 @@ pub enum NameError {
 
 /// A profile's name, valid by construction: 1 to 64 bytes of `[a-z0-9_-]`. Serde validates on
 /// deserialize, so a name that arrives over the socket needs no second check.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct ProfileName(String);
 

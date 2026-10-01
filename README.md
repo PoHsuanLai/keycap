@@ -30,8 +30,8 @@ touches a device, so a script replays to exactly the outputs the live daemon pro
 | `key` | `Key(u16)` from the name table, `Modifier`, `Side`, `Mods` |
 | `event` | `Edge`, `KeyEvent`, the `Physical` and `Logical` key newtypes |
 | `layout` | `Layout { Apple, Pc }` from the vendor; `role` by key position |
-| `profile` | `Chord`, `Rule`, `Action`, `Profile`, `Profiles` (`default` always exists) |
-| `config` | lenient TOML, built-in defaults, system file, the seat owner's `UserConfig` |
+| `profile` | `Trigger`, `Stroke`, `Action`, `Profile`, `Profiles` (`default` always exists) |
+| `config` | lenient TOML into `Layer`s (built-in defaults, system file, the seat owner's `UserConfig`), folded by `resolve` |
 | `remap` | `Remapper::step(self, Input, &Profiles) -> (Self, Vec<Out>)` |
 | `held` | what each physical press emitted, so its release sends exactly that |
 | `gate` | `GrabGate`: a keyboard is grabbed only once no key is down |
@@ -137,7 +137,8 @@ Three layers, each overriding the one before:
    `~/.config/keycap/keycap.toml`).
 
 `keycap --print-config` prints the merged result. A bad value costs only its own key (logged,
-the layer below used and a `ConfigWarnings` sent); an unknown key is ignored. Profiles are open:
+the layer below used and a `ConfigWarnings` sent); an unknown key is ignored. A rule with
+`then = []` swallows its chord, which removes a rule a profile inherits. Profiles are open:
 a name the config does not define resolves to `default`.
 
 ## The default v1 mapping
@@ -152,8 +153,9 @@ a name the config does not define resolves to `default`.
 | `default` | Cmd+Backspace | Shift+Home, Delete |
 | `default` | Cmd+Tab, Cmd+Space | the desktop's own shortcuts (sill's) |
 | `default` | Cmd+Q | Alt+F4 |
+| `default` | Ctrl+A, Ctrl+E | Home, End |
 | `terminal` | inherits `default`; Cmd+C, V, T, W, N, F | Ctrl+Shift+C, V, T, W, N, F |
-| `terminal` | physical Control | stays Control, so Ctrl+C still stops the program |
+| `terminal` | physical Control | stays Control (modmap, and Ctrl+A, Ctrl+E map to themselves), so Ctrl+C still stops the program and readline keeps its keys |
 
 Modifiers are mapped at press time, so Cmd+click works although the mouse does not pass through
 keycap. When a chord matches a rule, keycap changes only the modifiers that need to change.

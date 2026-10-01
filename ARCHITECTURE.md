@@ -31,7 +31,7 @@ never name `daemon` modules.
 |---|---|---|---|
 | L0 vocabulary | `key` (`Key`, `Modifier`, `Side`, `Mods`), `event` (`Edge`, `KeyEvent`, `Physical`, `Logical`), `time` (`Mono`) | newtypes | `pub` |
 | L1 layout | `layout` (`Layout`, `role`) | pure tables | `pub` |
-| L2 profiles | `profile` (`Chord`, `Rule`, `Action`, `Profile`, `Profiles`), `config` (`lenient`, `load`, `watch`) | pure except `load` and `watch` (file reads, inotify) | `pub` |
+| L2 profiles | `profile` (`Trigger`, `Stroke`, `Action`, `Profile`, `Profiles`), `config` (`Layer`, `resolve`, `lenient`, `load`, `watch`) | pure except `load` and `watch` (file reads, inotify) | `pub` |
 | L3 state | `held`, `gate`, `escape`, `backoff` | pure state machines | `pub` |
 | L4 remapper | `remap` (`Remapper::step`, `Input`, `Out`) | pure composition: `Remapper::step(self, Input, &Profiles) -> (Self, Vec<Out>)` | `pub` |
 | L5 effects | `daemon` (`reader`, `socket`, `discover`, `uinput`, `sdnotify`, `env`, `sys`) | threads, sockets, devices, clocks, ioctls | `pub(crate)` |
@@ -58,10 +58,10 @@ Daemon modules:
 | Evdev key codes and names | `key::Key` (the name table) |
 | Pressed key vs sent key | `event::{Physical, Logical}` |
 | Modifier positions on Apple and PC keyboards | `layout` |
-| What a chord becomes | `profile::{Rule, Action}` |
+| What a chord becomes | `profile::{Trigger, Stroke, Action}` |
 | Profile inheritance and lookup | `profile::Profiles` |
 | Every default mapping | `defaults.toml` |
-| Lenient per-key reading, config layers | `config` |
+| Lenient per-key reading, config layers, inheritance flattening | `config::{lenient, Layer, resolve}` |
 | What each press emitted | `held::Held` |
 | When a keyboard may be grabbed | `gate::GrabGate` |
 | The emergency chord | `escape` |
@@ -205,6 +205,26 @@ rules = [{ when = "command+c", then = "ctrl+shift+c" }]
 `when` uses role names (`command`, `option`, `control`, `shift`), `then` uses output names
 (`ctrl`, `alt`, `super`, `shift`); the parser rejects the other vocabulary on each side. A string
 `then` is `Map`, a list is `Sequence`; `hold` defaults to `restore`.
+`then = []` is `Swallow`: the chord is consumed and nothing is written, which is also how a
+profile removes a rule it inherits. `hold` belongs to a single stroke; on a list it is reported
+and ignored. Shift is the one name both vocabularies share.
+
+Config is read in layers. `Layer::parse(text, Source)` turns one file into a `Layer` (per profile:
+optional `inherits`, the modmap fields it sets, its rules by trigger) and warnings keyed by dotted
+path (`profile.terminal.rules[2].when`), each problem prefixed with the `Source` (`Builtin`,
+`System`, `User`). A bad value costs its own key, or its own rule for a bad `when` or `then`;
+unknown keys are ignored; text that is not TOML is an empty layer and one warning (key `file`).
+Within one file a trigger given twice keeps the later rule.
+
+`config::resolve(&[Layer]) -> (Profiles, Vec<Warning>)` folds the layers (later over earlier, per
+profile, per modmap field, per trigger), then flattens inheritance, child over parent,
+transitively. A profile with no `inherits` inherits `default`; `default` inherits nothing. An
+unknown parent, or a parent chain that leads back to the profile, is a warning and the profile
+inherits `default` instead. The base under `default` is `ModMap::IDENTITY` (each role writes the
+modifier it is named after) and no rules, so `resolve(&[])` still yields a `default`.
+`Profiles::new` is `pub(crate)`: only resolution builds one. `Ord` on `Trigger` and `Stroke`
+(and on `ProfileName`, in `keycap-protocol`) is for `BTreeMap` keys and carries no other meaning.
+
 
 ### `Remapper::step`
 
