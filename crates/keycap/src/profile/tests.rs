@@ -129,10 +129,10 @@ fn hold_names_round_trip_and_restore_is_the_default() {
 #[test]
 fn an_empty_sequence_is_a_swallow() {
     let stroke = Stroke::parse("home").unwrap();
-    assert_eq!(Action::sequence(vec![]), Action::Swallow);
+    assert_eq!(RuleAction::sequence(vec![]), RuleAction::Swallow);
     assert_eq!(
-        Action::sequence(vec![stroke]),
-        Action::Sequence(vec![stroke])
+        RuleAction::sequence(vec![stroke]),
+        RuleAction::Sequence(vec![stroke])
     );
 }
 

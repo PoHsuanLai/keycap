@@ -1,16 +1,16 @@
-//! `Layer`: one TOML file, parsed but not yet resolved against the others.
+//! `ConfigLayer`: one TOML file, parsed but not yet resolved against the others.
 
 use std::collections::BTreeMap;
 use std::fmt;
 
 use keycap_protocol::ProfileName;
 
-use crate::profile::{Action, ModMap, Trigger};
+use crate::profile::{ModMap, RuleAction, Trigger};
 use crate::role::OutMod;
 
 /// Where a layer came from, so a warning says whose file to fix.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Source {
+pub enum ConfigSource {
     /// `defaults.toml`, compiled in.
     Builtin,
     /// `/etc/keycap/keycap.toml`.
@@ -19,12 +19,12 @@ pub enum Source {
     User,
 }
 
-impl fmt::Display for Source {
+impl fmt::Display for ConfigSource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Source::Builtin => "built-in defaults",
-            Source::System => "system config",
-            Source::User => "user config",
+            ConfigSource::Builtin => "built-in defaults",
+            ConfigSource::System => "system config",
+            ConfigSource::User => "user config",
         })
     }
 }
@@ -32,7 +32,7 @@ impl fmt::Display for Source {
 /// The parsed form of one file: per profile, what that file says and nothing it leaves out.
 /// Later layers override earlier ones per profile, per modmap field and per trigger.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Layer {
+pub struct ConfigLayer {
     pub(super) profiles: BTreeMap<ProfileName, ProfileLayer>,
 }
 
@@ -41,7 +41,7 @@ pub struct Layer {
 pub(super) struct ProfileLayer {
     pub(super) inherits: Option<ProfileName>,
     pub(super) modmap: PartialModMap,
-    pub(super) rules: BTreeMap<Trigger, Action>,
+    pub(super) rules: BTreeMap<Trigger, RuleAction>,
 }
 
 /// The modmap fields a file set.

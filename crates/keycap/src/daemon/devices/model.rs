@@ -70,6 +70,9 @@ pub(crate) enum GrabOutcome {
     Granted,
     /// `EBUSY`: another remapper holds the device.
     Busy,
+    /// The grab succeeded but a key was down right after it: the desktop saw that press, so
+    /// the grab was given back and must wait for the release.
+    KeyDown,
     /// Any other failure.
     Failed,
 }

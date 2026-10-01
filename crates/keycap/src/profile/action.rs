@@ -1,4 +1,4 @@
-//! `Action` and `Hold`: what a matched trigger does.
+//! `RuleAction` and `Hold`: what a matched trigger does.
 
 use super::chord::Stroke;
 
@@ -32,7 +32,7 @@ impl Hold {
 
 /// What a matched trigger writes.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Action {
+pub enum RuleAction {
     /// The stroke, held while the physical key is held (so it repeats).
     Map(Stroke, Hold),
     /// Each stroke tapped in order on press; the release sends nothing.
@@ -41,14 +41,14 @@ pub enum Action {
     Swallow,
 }
 
-impl Action {
+impl RuleAction {
     /// Tapping `strokes` in order; no strokes at all is `Swallow`, so a `Sequence` is never
     /// empty.
-    pub fn sequence(strokes: Vec<Stroke>) -> Action {
+    pub fn sequence(strokes: Vec<Stroke>) -> RuleAction {
         if strokes.is_empty() {
-            Action::Swallow
+            RuleAction::Swallow
         } else {
-            Action::Sequence(strokes)
+            RuleAction::Sequence(strokes)
         }
     }
 }

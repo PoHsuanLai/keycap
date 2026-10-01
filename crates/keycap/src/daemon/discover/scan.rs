@@ -1,7 +1,7 @@
 //! The /sys scan: every eligible keyboard node under injectable roots.
 
 use super::caps::{Bits, Caps};
-use super::classify::{Eligibility, Identity, classify};
+use super::classify::{Eligibility, Identity, Origin, classify};
 use std::path::{Path, PathBuf};
 
 /// Where input class devices are listed.
@@ -48,7 +48,9 @@ fn candidate(dir: &Path, dev_root: &Path) -> Option<Candidate> {
         product: hex("device/id/product"),
         path: dev_root.join(dir.file_name()?),
     };
-    match classify(&caps, &identity) {
+    // The class entry is a symlink into the device tree; where it leads says what made the node.
+    let origin = Origin::of_sysfs(&std::fs::canonicalize(dir).ok()?);
+    match classify(&caps, &identity, origin) {
         Eligibility::NotKeyboard => None,
         eligibility => Some(Candidate {
             identity,

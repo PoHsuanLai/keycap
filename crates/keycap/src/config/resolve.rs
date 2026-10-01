@@ -5,7 +5,7 @@ use std::iter::successors;
 
 use keycap_protocol::{ProfileName, Warning};
 
-use super::layer::{Layer, ProfileLayer};
+use super::layer::{ConfigLayer, ProfileLayer};
 use super::lenient::{dotted, warning};
 use crate::profile::{ModMap, Profile, Profiles};
 
@@ -13,7 +13,7 @@ use crate::profile::{ModMap, Profile, Profiles};
 /// per trigger), then flattens inheritance: a child's modmap fields and rules lie over its
 /// parent's, transitively. `default` inherits nothing; a profile naming an unknown parent, or
 /// one that leads back to itself, inherits `default` instead and is reported.
-pub fn resolve(layers: &[Layer]) -> (Profiles, Vec<Warning>) {
+pub fn resolve(layers: &[ConfigLayer]) -> (Profiles, Vec<Warning>) {
     let default_name = ProfileName::default_profile();
     let mut merged = layers.iter().fold(BTreeMap::new(), merge);
     let default_layer = merged.remove(&default_name).unwrap_or_default();
@@ -54,7 +54,7 @@ pub fn resolve(layers: &[Layer]) -> (Profiles, Vec<Warning>) {
 /// `acc` with `layer`'s profiles laid over what it already holds.
 fn merge(
     mut acc: BTreeMap<ProfileName, ProfileLayer>,
-    layer: &Layer,
+    layer: &ConfigLayer,
 ) -> BTreeMap<ProfileName, ProfileLayer> {
     for (name, later) in &layer.profiles {
         let merged = match acc.remove(name) {

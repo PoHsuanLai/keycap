@@ -108,6 +108,8 @@ impl Devices {
                 retry: Retry::Ready(tracked.retry.backoff().reset()),
                 ..tracked
             },
+            // Not a refusal: nobody holds the device, so no backoff; the gate looks again soon.
+            GrabOutcome::KeyDown => tracked.at_gate(Grab::WaitingForRelease),
             GrabOutcome::Busy => refused(tracked, Grab::Conflict, now),
             GrabOutcome::Failed => refused(tracked, Grab::WaitingForRelease, now),
         };
@@ -173,6 +175,15 @@ impl Devices {
             .get(&id)
             .filter(|t| t.grab == Grab::Active)
             .map(|t| t.layout)
+    }
+
+    /// Every keyboard being remapped now: where a LED change is copied to.
+    pub(crate) fn grabbed(&self) -> Vec<DeviceId> {
+        self.tracked
+            .iter()
+            .filter(|(_, t)| t.grab == Grab::Active)
+            .map(|(&id, _)| id)
+            .collect()
     }
 
     /// The keyboards whose gate should be looked at now.

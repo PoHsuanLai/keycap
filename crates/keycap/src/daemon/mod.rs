@@ -1,5 +1,6 @@
 //! Threads, sockets, devices, clocks and the environment: everything with an effect.
 
+pub(crate) mod buttons;
 pub(crate) mod clock;
 pub(crate) mod devices;
 pub(crate) mod discover;
@@ -8,7 +9,9 @@ pub(crate) mod evdev;
 pub(crate) mod events;
 pub(crate) mod grabber;
 pub(crate) mod inbox;
+pub(crate) mod leds;
 pub(crate) mod reader;
+pub(crate) mod readiness;
 pub(crate) mod route;
 #[cfg(test)]
 pub(crate) mod scratch;

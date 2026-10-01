@@ -20,14 +20,14 @@ mod role;
 mod time;
 
 pub use backoff::Backoff;
-pub use config::{DEBOUNCE, FILE_NAME, Layer, Source, builtin, resolve, spawn, system};
+pub use config::{ConfigLayer, ConfigSource, DEBOUNCE, FILE_NAME, builtin, resolve, spawn, system};
 pub use escape::{Escape, EscapeChord};
 pub use event::{DeviceId, Edge, Logical, OutEvent, Physical};
 pub use gate::{Decision, GrabGate, KeysDown};
 pub use held::{Held, Record};
 pub use key::Key;
 pub use layout::{Layout, role};
-pub use profile::{Action, ChordError, Hold, ModMap, Profile, Profiles, Stroke, Trigger};
-pub use remap::{CoreStatus, Input, Out, Remapper};
+pub use profile::{ChordError, Hold, ModMap, Profile, Profiles, RuleAction, Stroke, Trigger};
+pub use remap::{CoreStatus, RemapInput, RemapOut, Remapper};
 pub use role::{OutMod, OutMods, Role, Roles};
 pub use time::Mono;

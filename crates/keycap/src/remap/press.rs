@@ -2,23 +2,28 @@
 
 use super::action::apply;
 use super::batch::Batch;
-use super::model::{Out, Remapper};
+use super::model::{RemapOut, Remapper};
 use crate::event::Logical;
 use crate::held::At;
 use crate::layout::{Layout, role};
-use crate::profile::{Action, Profile, Trigger};
+use crate::profile::{Profile, RuleAction, Trigger};
 use crate::role::Role;
 
 /// What a pressed key is, under the held roles and the focused profile.
 enum Press<'p> {
     Role(Role),
-    Rule(&'p Action),
+    Rule(&'p RuleAction),
     Plain,
 }
 
 impl Remapper {
     /// Handle the press of `at`, a key on a keyboard of `layout`.
-    pub(super) fn press(mut self, profile: &Profile, layout: Layout, at: At) -> (Self, Vec<Out>) {
+    pub(super) fn press(
+        mut self,
+        profile: &Profile,
+        layout: Layout,
+        at: At,
+    ) -> (Self, Vec<RemapOut>) {
         self.roles.remove(&at);
         let kind = classify(profile, self.held_roles(), layout, at);
         let owner = self.chord_owner();

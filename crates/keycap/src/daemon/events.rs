@@ -7,7 +7,10 @@ use crate::{Edge, Logical, OutEvent, Physical};
 pub(crate) const EV_SYN: u16 = 0x00;
 pub(crate) const EV_KEY: u16 = 0x01;
 pub(crate) const EV_REL: u16 = 0x02;
+pub(crate) const EV_LED: u16 = 0x11;
 pub(crate) const SYN_REPORT: u16 = 0;
+/// The kernel's marker that a client's event queue overflowed and events were lost.
+pub(crate) const SYN_DROPPED: u16 = 3;
 pub(crate) const REL_X: u16 = 0x00;
 pub(crate) const REL_Y: u16 = 0x01;
 pub(crate) const REL_HWHEEL: u16 = 0x06;
@@ -73,7 +76,10 @@ pub(crate) enum Decoded {
     Pointer(InputEvent),
     /// `SYN_REPORT`.
     Sync,
-    /// Anything else (`MSC_SCAN`, LEDs, `SYN_DROPPED`, a key with no valid value).
+    /// `SYN_DROPPED`: events were lost before this point and what follows, up to the next
+    /// `SYN_REPORT`, is a fragment.
+    Dropped,
+    /// Anything else (`MSC_SCAN`, LEDs, a key with no valid value).
     Other,
 }
 
@@ -88,6 +94,7 @@ pub(crate) const fn is_button(code: u16) -> bool {
 pub(crate) fn decode(e: InputEvent) -> Decoded {
     match (e.kind, e.code) {
         (EV_SYN, SYN_REPORT) => Decoded::Sync,
+        (EV_SYN, SYN_DROPPED) => Decoded::Dropped,
         (EV_REL, _) => Decoded::Pointer(e),
         (EV_KEY, code) if is_button(code) => Decoded::Pointer(e),
         (EV_KEY, 0) => Decoded::Other,
@@ -206,7 +213,8 @@ mod tests {
                 ptr(EV_REL, REL_HWHEEL_HI_RES, -120),
             ),
             ("SYN_REPORT", ev(EV_SYN, SYN_REPORT, 0), Decoded::Sync),
-            ("SYN_DROPPED", ev(EV_SYN, 3, 0), Decoded::Other),
+            ("SYN_DROPPED", ev(EV_SYN, 3, 0), Decoded::Dropped),
+            ("SYN_CONFIG", ev(EV_SYN, 1, 0), Decoded::Other),
             ("MSC_SCAN", ev(0x04, 4, 458_756), Decoded::Other),
             ("LED", ev(0x11, 1, 1), Decoded::Other),
         ];

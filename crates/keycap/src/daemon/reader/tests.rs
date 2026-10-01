@@ -10,7 +10,7 @@ use crate::daemon::scratch::Scratch;
 use crate::daemon::socket::client::{connect, recv};
 use crate::daemon::socket::{SeatFile, bind, socket_path, spawn};
 use crate::daemon::uinput::RecordingEmitter;
-use crate::{DeviceId, Edge, Input, Key, Layout, Mono, Physical};
+use crate::{DeviceId, Edge, Key, Layout, Mono, Physical, RemapInput};
 use keycap_protocol::{Mode, ProfileName, ToClient};
 use rustix::fd::OwnedFd;
 use std::time::Duration;
@@ -66,7 +66,7 @@ impl Rig {
     }
 
     fn key(&mut self, name: &str, edge: Edge) {
-        self.reader.apply(Routed::Remap(Input::Key {
+        self.reader.apply(Routed::Remap(RemapInput::Key {
             device: DeviceId(0),
             layout: Layout::Apple,
             key: Physical(Key::named(name).unwrap()),
@@ -77,6 +77,21 @@ impl Rig {
 
     fn request(&mut self, request: Request) {
         self.reader.handle(Message::Request(request));
+    }
+
+    /// A combo device's pointer frame with `value` on `BTN_LEFT`, passed through.
+    fn click(&mut self, value: i32) {
+        self.reader.apply(Routed::Pass {
+            device: DeviceId(0),
+            events: vec![
+                InputEvent {
+                    kind: EV_KEY,
+                    code: BTN_LEFT,
+                    value,
+                },
+                InputEvent::SYNC,
+            ],
+        });
     }
 
     /// The `(code, value)` pairs of the last batch written, sync excluded.
@@ -95,6 +110,8 @@ impl Rig {
             .unwrap_or_default()
     }
 }
+
+const BTN_LEFT: u16 = 0x110;
 
 fn code(name: &str) -> u16 {
     Key::named(name).unwrap().code()
@@ -186,7 +203,10 @@ fn pointer_frames_are_written_as_they_came() {
         },
         InputEvent::SYNC,
     ];
-    rig.reader.apply(Routed::Pass(frame.clone()));
+    rig.reader.apply(Routed::Pass {
+        device: DeviceId(0),
+        events: frame.clone(),
+    });
     assert_eq!(rig.reader.emitter.batches, [frame]);
 }
 
@@ -281,4 +301,141 @@ fn every_pass_pets_the_watchdog_and_sleeps_at_most_half_its_interval() {
         let n = listener.recv(&mut buf).unwrap();
         assert_eq!(&buf[..n], b"WATCHDOG=1", "pass {pass}");
     }
+}
+
+#[test]
+fn a_failed_write_recreates_the_device_and_the_core_forgets_what_it_thought_was_down() {
+    let mut rig = Rig::new();
+    rig.reader.emitter.failing = 1;
+    rig.key("leftmeta", Edge::Press);
+    assert_eq!(rig.reader.emitter.recreated, 1, "the device was replaced");
+    assert_eq!(
+        rig.reader.emitter.batches.len(),
+        0,
+        "the failed batch is not retried"
+    );
+
+    // Held was reset: the release of a key whose press never reached the wire writes nothing,
+    // where a stale record would write a Ctrl release the new device never saw pressed.
+    rig.key("leftmeta", Edge::Release);
+    assert_eq!(
+        rig.reader.emitter.batches.len(),
+        0,
+        "nothing to release on the new device"
+    );
+
+    rig.key("c", Edge::Press);
+    assert_eq!(rig.last_write(), [(code("c"), 1)], "the new device works");
+    assert_eq!(
+        rig.reader.emitter.recreated, 1,
+        "and was not replaced again"
+    );
+}
+
+#[test]
+fn a_failed_write_forgets_the_buttons_of_the_old_device() {
+    let mut rig = Rig::new();
+    rig.click(1);
+    rig.reader.emitter.failing = 1;
+    rig.click(0);
+    assert_eq!(rig.reader.emitter.recreated, 1);
+    let before = rig.reader.emitter.batches.len();
+    rig.reader.lose(DeviceId(0));
+    assert_eq!(
+        rig.reader.emitter.batches.len(),
+        before,
+        "the new device has no button down, so none is released"
+    );
+}
+
+#[test]
+fn an_unplugged_combo_device_releases_the_buttons_it_held() {
+    let mut rig = Rig::new();
+    rig.click(1);
+    assert_eq!(rig.reader.emitter.batches.len(), 1);
+    rig.reader.lose(DeviceId(0));
+    assert_eq!(
+        rig.reader.emitter.batches.last(),
+        Some(&vec![
+            InputEvent {
+                kind: EV_KEY,
+                code: BTN_LEFT,
+                value: 0
+            },
+            InputEvent::SYNC
+        ]),
+        "BTN_LEFT up, framed"
+    );
+    rig.reader.lose(DeviceId(0));
+    assert_eq!(rig.reader.emitter.batches.len(), 2, "released once");
+}
+
+#[test]
+fn a_released_button_is_not_released_again_when_the_device_goes() {
+    let mut rig = Rig::new();
+    rig.click(1);
+    rig.click(0);
+    rig.reader.lose(DeviceId(0));
+    assert_eq!(
+        rig.reader.emitter.batches.len(),
+        2,
+        "press and release only"
+    );
+}
+
+#[test]
+fn the_escape_chord_releases_held_buttons_after_the_keys() {
+    let mut rig = Rig::new();
+    rig.click(1);
+    rig.key("leftshift", Edge::Press);
+    rig.key("rightshift", Edge::Press);
+    rig.key("esc", Edge::Press);
+    let batches = &rig.reader.emitter.batches;
+    assert_eq!(
+        batches.last(),
+        Some(&vec![
+            InputEvent {
+                kind: EV_KEY,
+                code: BTN_LEFT,
+                value: 0
+            },
+            InputEvent::SYNC
+        ]),
+        "the last write releases the button: {batches:?}"
+    );
+    let released = batches
+        .iter()
+        .flatten()
+        .filter(|e| e.code == BTN_LEFT && e.value == 0)
+        .count();
+    assert_eq!(released, 1);
+}
+
+#[test]
+fn an_overflowed_device_has_what_it_held_released_and_keeps_being_read() {
+    let mut rig = Rig::new();
+    rig.key("leftmeta", Edge::Press);
+    assert_eq!(rig.last_write(), [(code("leftctrl"), 1)]);
+    rig.click(1);
+    rig.reader.apply(Routed::Resync(DeviceId(0)));
+    let written: Vec<(u16, i32)> = rig
+        .reader
+        .emitter
+        .batches
+        .iter()
+        .flatten()
+        .filter(|e| e.kind == EV_KEY)
+        .map(|e| (e.code, e.value))
+        .collect();
+    assert_eq!(
+        &written[written.len() - 2..],
+        [(code("leftctrl"), 0), (BTN_LEFT, 0)],
+        "Ctrl and the button are up: {written:?}"
+    );
+    rig.key("c", Edge::Press);
+    assert_eq!(
+        rig.last_write(),
+        [(code("c"), 1)],
+        "the next press is mapped from a clean state"
+    );
 }

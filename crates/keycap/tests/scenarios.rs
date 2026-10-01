@@ -54,9 +54,9 @@ fn command_left_released_command_first_never_brings_control_back() {
 fn option_left_lifts_alt_for_control_left() {
     Rig::new().expect(vec![
         (press(0, "leftalt"), "+leftalt SYN"),
-        (press(0, "left"), "-leftalt +leftctrl +left SYN"),
+        (press(0, "left"), "+f24 -f24 -leftalt +leftctrl +left SYN"),
         (release(0, "left"), "-left -leftctrl +leftalt SYN"),
-        (release(0, "leftalt"), "-leftalt SYN"),
+        (release(0, "leftalt"), "+f24 -f24 -leftalt SYN"),
     ]);
 }
 
@@ -96,7 +96,7 @@ fn command_left_while_the_switcher_is_open_gives_alt_back_after() {
         (release(0, "tab"), "-tab SYN"),
         (press(0, "left"), "-leftalt +home SYN"),
         (release(0, "left"), "-home +leftalt SYN"),
-        (release(0, "leftmeta"), "-leftalt SYN"),
+        (release(0, "leftmeta"), "+f24 -f24 -leftalt SYN"),
     ]);
 }
 
@@ -128,9 +128,9 @@ fn control_c_in_terminal_stays_control_c() {
 fn control_a_in_default_is_home_and_in_terminal_control_a() {
     Rig::new().expect(vec![
         (press(0, "leftctrl"), "+leftmeta SYN"),
-        (press(0, "a"), "-leftmeta +home SYN"),
+        (press(0, "a"), "+f24 -f24 -leftmeta +home SYN"),
         (release(0, "a"), "-home +leftmeta SYN"),
-        (release(0, "leftctrl"), "-leftmeta SYN"),
+        (release(0, "leftctrl"), "+f24 -f24 -leftmeta SYN"),
         (focus("terminal"), ""),
         (press(0, "leftctrl"), "+leftctrl SYN"),
         (press(0, "a"), "+a SYN"),
@@ -233,8 +233,9 @@ fn the_escape_chord_fires_again_after_resume() {
         (press(0, "rightshift"), ""),
         (press(0, "esc"), "-leftshift SYN; GRABS-OFF; PAUSED"),
         (resume(), "RUNNING"),
-        (release(0, "esc"), ""),
-        (press(0, "esc"), "GRABS-OFF; PAUSED"),
+        (press(0, "leftshift"), "+leftshift SYN"),
+        (press(0, "rightshift"), ""),
+        (press(0, "esc"), "-leftshift SYN; GRABS-OFF; PAUSED"),
     ]);
 }
 
@@ -246,9 +247,12 @@ fn a_pc_keyboards_alt_acts_as_command_and_its_meta_as_option() {
         (pc_release(1, "left"), "-home +leftctrl SYN"),
         (pc_release(1, "leftalt"), "-leftctrl SYN"),
         (pc_press(1, "leftmeta"), "+leftalt SYN"),
-        (pc_press(1, "left"), "-leftalt +leftctrl +left SYN"),
+        (
+            pc_press(1, "left"),
+            "+f24 -f24 -leftalt +leftctrl +left SYN",
+        ),
         (pc_release(1, "left"), "-left -leftctrl +leftalt SYN"),
-        (pc_release(1, "leftmeta"), "-leftalt SYN"),
+        (pc_release(1, "leftmeta"), "+f24 -f24 -leftalt SYN"),
     ]);
 }
 
@@ -327,4 +331,92 @@ fn single_stroke_rules_write_their_chord() {
         rig.feed(press(0, "leftmeta"));
         assert_eq!(rig.feed(press(0, key)), want, "{name}");
     }
+}
+
+#[test]
+fn a_lone_esc_after_resume_is_written_when_no_release_reached_the_remapper() {
+    let mut rig = Rig::new();
+    rig.expect(vec![
+        (press(0, "leftshift"), "+leftshift SYN"),
+        (press(0, "rightshift"), ""),
+        (press(0, "esc"), "-leftshift SYN; GRABS-OFF; PAUSED"),
+        (resume(), "RUNNING"),
+        (press(0, "a"), "+a SYN"),
+        (release(0, "a"), "-a SYN"),
+        (press(0, "esc"), "+esc SYN"),
+        (release(0, "esc"), "-esc SYN"),
+    ]);
+    assert_eq!(rig.status(), keycap::CoreStatus::Running);
+}
+
+#[test]
+fn release_all_forgets_the_shifts_the_chord_saw() {
+    Rig::new().expect(vec![
+        (press(0, "leftshift"), "+leftshift SYN"),
+        (press(0, "rightshift"), ""),
+        (release_all(), "-leftshift SYN"),
+        (press(0, "esc"), "+esc SYN"),
+    ]);
+}
+
+#[test]
+fn a_shift_on_a_vanished_keyboard_no_longer_arms_the_chord() {
+    Rig::new().expect(vec![
+        (press(0, "leftshift"), "+leftshift SYN"),
+        (gone(0), "-leftshift SYN"),
+        (press(1, "rightshift"), "+leftshift SYN"),
+        (press(1, "esc"), "+esc SYN"),
+    ]);
+}
+
+#[test]
+fn the_two_shifts_may_be_on_different_keyboards() {
+    Rig::new().expect(vec![
+        (press(0, "leftshift"), "+leftshift SYN"),
+        (press(1, "rightshift"), ""),
+        (press(1, "esc"), "-leftshift SYN; GRABS-OFF; PAUSED"),
+    ]);
+}
+
+#[test]
+fn a_modifier_tap_with_no_lift_is_left_alone() {
+    Rig::new().expect(vec![
+        (press(0, "leftalt"), "+leftalt SYN"),
+        (release(0, "leftalt"), "-leftalt SYN"),
+        (press(0, "leftctrl"), "+leftmeta SYN"),
+        (release(0, "leftctrl"), "-leftmeta SYN"),
+    ]);
+}
+
+#[test]
+fn option_then_a_plain_key_needs_no_neutral_tap() {
+    Rig::new().expect(vec![
+        (press(0, "leftalt"), "+leftalt SYN"),
+        (press(0, "a"), "+a SYN"),
+        (release(0, "a"), "-a SYN"),
+        (release(0, "leftalt"), "-leftalt SYN"),
+    ]);
+}
+
+#[test]
+fn a_lift_after_another_key_was_written_needs_no_neutral_tap() {
+    Rig::new().expect(vec![
+        (press(0, "leftalt"), "+leftalt SYN"),
+        (press(0, "a"), "+a SYN"),
+        (press(0, "left"), "-leftalt +leftctrl +left SYN"),
+        (release(0, "left"), "-left -leftctrl +leftalt SYN"),
+        (release(0, "a"), "-a SYN"),
+        (release(0, "leftalt"), "+f24 -f24 -leftalt SYN"),
+    ]);
+}
+
+#[test]
+fn command_left_gets_no_neutral_tap_because_a_control_tap_is_harmless() {
+    let mut rig = Rig::new();
+    rig.expect(vec![
+        (press(0, "leftmeta"), "+leftctrl SYN"),
+        (press(0, "left"), "-leftctrl +home SYN"),
+        (release(0, "left"), "-home +leftctrl SYN"),
+        (release(0, "leftmeta"), "-leftctrl SYN"),
+    ]);
 }

@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use super::action::Action;
+use super::action::RuleAction;
 use super::chord::Trigger;
 use crate::role::{OutMod, Role};
 
@@ -37,5 +37,5 @@ impl ModMap {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Profile {
     pub modmap: ModMap,
-    pub rules: BTreeMap<Trigger, Action>,
+    pub rules: BTreeMap<Trigger, RuleAction>,
 }

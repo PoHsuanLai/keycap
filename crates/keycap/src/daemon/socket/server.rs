@@ -2,16 +2,23 @@
 //! the reader and the reader's status to everyone.
 
 use super::handle::{SocketHandle, ToSocket};
-use super::seat::{Peer, Seat, SeatFile, Tenancy, peer_of, request_of};
+use super::inbound::{Stream, pull};
+use super::limits::{
+    ACCEPTS_PER_PASS, AcceptFailure, Admission, Caps, Complaints, Intake, MESSAGES_PER_PASS, Voice,
+    accept_failure, admit,
+};
+use super::seat::{Peer, Refusal, Seat, SeatFile, Tenancy, peer_of, request_of};
+use crate::daemon::clock;
 use crate::daemon::inbox::{ClientId, Inbox, Message, Request};
+use crate::daemon::readiness::Readiness;
 use crate::daemon::waker::Waker;
 use keycap_protocol::{
-    self as protocol, MAX_PACKET, PROTOCOL_VERSION, ProfileName, Status, ToClient, ToDaemon,
+    self as protocol, PROTOCOL_VERSION, ProfileName, Status, ToClient, ToDaemon,
 };
 use rustix::event::{PollFd, PollFlags, poll};
 use rustix::fd::{AsFd, OwnedFd};
 use rustix::io::Errno;
-use rustix::net::{AddressFamily, RecvFlags, SendFlags, SocketAddrUnix, SocketFlags, SocketType};
+use rustix::net::{AddressFamily, SendFlags, SocketAddrUnix, SocketFlags, SocketType};
 use rustix::time::Timespec;
 use std::io;
 use std::os::unix::fs::PermissionsExt;
@@ -68,6 +75,8 @@ pub(crate) fn spawn(
         inbox,
         clients: Vec::new(),
         next_client: 0,
+        intake: Intake::Open,
+        complaints: Complaints::default(),
         status,
         state: Seat::first_sight(seat.active_uid()),
         seat,
@@ -92,6 +101,10 @@ struct Server {
     inbox: Inbox,
     clients: Vec<Client>,
     next_client: u64,
+    /// Whether the listener is polled: not while `accept` is failing for want of descriptors.
+    intake: Intake,
+    /// When each uid was last complained about in the log.
+    complaints: Complaints,
     status: Status,
     seat: SeatFile,
     state: Seat,
@@ -99,14 +112,25 @@ struct Server {
 
 /// What a poll found readable.
 struct Ready {
-    listener: bool,
-    wake: bool,
+    listener: Readiness,
+    wake: Readiness,
     clients: Vec<ClientId>,
 }
+
+/// Whether a client is still connected after something was done to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Link {
+    Alive,
+    Gone,
+}
+
+/// The reader dropped its end of the channel: the daemon is shutting down.
+struct ReaderGone;
 
 impl Server {
     fn run(mut self) {
         loop {
+            self.intake = self.intake.at(clock::now());
             let ready = match self.wait() {
                 Ok(ready) => ready,
                 Err(e) => {
@@ -116,10 +140,10 @@ impl Server {
             };
             let active = self.seat.active_uid();
             self.watch_seat(active);
-            if ready.listener {
+            if ready.listener == Readiness::Readable {
                 self.accept();
             }
-            if ready.wake && !self.drain() {
+            if ready.wake == Readiness::Readable && self.drain().is_err() {
                 return;
             }
             ready
@@ -131,15 +155,18 @@ impl Server {
     }
 
     fn wait(&self) -> io::Result<Ready> {
+        let sleep = self.intake.sleep(clock::now(), SEAT_RECHECK);
         let timeout = Timespec {
-            tv_sec: SEAT_RECHECK.as_secs().try_into().unwrap_or(1),
-            tv_nsec: 0,
+            tv_sec: sleep.as_secs().try_into().unwrap_or(1),
+            tv_nsec: i64::from(sleep.subsec_nanos()),
         };
         let wake = self.waker.fd();
-        let mut fds = vec![
-            PollFd::new(&self.listener, PollFlags::IN),
-            PollFd::new(&wake, PollFlags::IN),
-        ];
+        let mut fds = vec![PollFd::new(&wake, PollFlags::IN)];
+        let listener_slot = (self.intake == Intake::Open).then(|| {
+            fds.push(PollFd::new(&self.listener, PollFlags::IN));
+            fds.len() - 1
+        });
+        let first_client = fds.len();
         fds.extend(
             self.clients
                 .iter()
@@ -149,45 +176,87 @@ impl Server {
             Ok(_) | Err(Errno::INTR) => {}
             Err(e) => return Err(e.into()),
         }
-        let hit = |f: &PollFd<'_>| !f.revents().is_empty();
         Ok(Ready {
-            listener: hit(&fds[0]),
-            wake: hit(&fds[1]),
+            listener: listener_slot.map_or(Readiness::Quiet, |slot| Readiness::of(&fds[slot])),
+            wake: Readiness::of(&fds[0]),
             clients: self
                 .clients
                 .iter()
-                .zip(&fds[2..])
-                .filter(|(_, f)| hit(f))
+                .zip(&fds[first_client..])
+                .filter(|(_, f)| Readiness::of(f) == Readiness::Readable)
                 .map(|(c, _)| c.id)
                 .collect(),
         })
     }
 
+    /// Accepts what is waiting, a bounded number per pass. A failure that retrying cannot fix
+    /// (no descriptors left) leaves the connection pending, so the listener is not polled for a
+    /// while instead of waking the loop in a spin.
     fn accept(&mut self) {
-        while let Ok(fd) =
-            rustix::net::accept_with(&self.listener, SocketFlags::CLOEXEC | SocketFlags::NONBLOCK)
-        {
-            let Ok(cred) = rustix::net::sockopt::socket_peercred(&fd) else {
-                continue;
-            };
-            let client = Client {
-                id: ClientId(self.next_client),
-                fd,
-                uid: cred.uid.as_raw(),
-            };
-            self.next_client += 1;
-            let hello = ToClient::Hello {
-                version: PROTOCOL_VERSION,
-                status: self.status.clone(),
-            };
-            if send(&client, &hello) {
-                self.clients.push(client);
+        for _ in 0..ACCEPTS_PER_PASS {
+            let accepted = rustix::net::accept_with(
+                &self.listener,
+                SocketFlags::CLOEXEC | SocketFlags::NONBLOCK,
+            );
+            match accepted {
+                Ok(fd) => self.admit(fd),
+                Err(e) => match accept_failure(e) {
+                    AcceptFailure::NothingPending => return,
+                    AcceptFailure::Retry => {}
+                    AcceptFailure::Pause => {
+                        eprintln!("keycap: accept failed: {e}; not accepting for a moment");
+                        self.intake = Intake::paused_at(clock::now());
+                        return;
+                    }
+                },
             }
         }
     }
 
-    /// Delivers what the reader queued; false when the reader has gone (shutdown).
-    fn drain(&mut self) -> bool {
+    /// Lets a connection in, or closes it at once when the daemon or its uid has enough.
+    fn admit(&mut self, fd: OwnedFd) {
+        let Ok(cred) = rustix::net::sockopt::socket_peercred(&fd) else {
+            return;
+        };
+        let uid = cred.uid.as_raw();
+        match admit(
+            self.clients.iter().map(|c| c.uid),
+            uid,
+            self.seat.active_uid(),
+            Caps::SERVICE,
+        ) {
+            Admission::Admit => {}
+            Admission::TooManyClients => return self.complain(uid, "refused: the daemon is full"),
+            Admission::TooManyForUser => {
+                return self.complain(uid, "refused: too many connections for this user");
+            }
+        }
+        let client = Client {
+            id: ClientId(self.next_client),
+            fd,
+            uid,
+        };
+        self.next_client += 1;
+        let hello = ToClient::Hello {
+            version: PROTOCOL_VERSION,
+            status: self.status.clone(),
+        };
+        if send(&client, &hello) == Link::Alive {
+            self.clients.push(client);
+        }
+    }
+
+    /// Writes a complaint about `uid` to the log, at most once a minute per uid.
+    fn complain(&mut self, uid: u32, what: &str) {
+        let (complaints, voice) = std::mem::take(&mut self.complaints).note(uid, clock::now());
+        self.complaints = complaints;
+        if voice == Voice::Speak {
+            eprintln!("keycap: client uid {uid}: {what}");
+        }
+    }
+
+    /// Delivers what the reader queued; an error when the reader has gone (shutdown).
+    fn drain(&mut self) -> Result<(), ReaderGone> {
         self.waker.clear();
         loop {
             match self.rx.try_recv() {
@@ -197,51 +266,51 @@ impl Server {
                 }
                 Ok(ToSocket::Warnings { client, warnings }) => {
                     let reply = ToClient::ConfigWarnings(warnings);
-                    self.clients.retain(|c| c.id != client || send(c, &reply));
+                    self.clients
+                        .retain(|c| c.id != client || send(c, &reply) == Link::Alive);
                 }
-                Err(mpsc::TryRecvError::Empty) => return true,
-                Err(mpsc::TryRecvError::Disconnected) => return false,
+                Err(mpsc::TryRecvError::Empty) => return Ok(()),
+                Err(mpsc::TryRecvError::Disconnected) => return Err(ReaderGone),
             }
         }
     }
 
     fn broadcast(&mut self, message: &ToClient) {
-        self.clients.retain(|c| send(c, message));
+        self.clients.retain(|c| send(c, message) == Link::Alive);
     }
 
-    /// Reads what client `id` sent. A client that closes, errors or sends anything that is not
-    /// a message of the protocol is dropped; nobody else is affected.
+    /// Reads what client `id` sent, a bounded number of messages per pass. A client that
+    /// closes, errors, sends anything that is not a message of the protocol, or sends a
+    /// request without owning the seat is dropped; nobody else is affected.
     fn receive(&mut self, id: ClientId, active: Option<u32>) {
         let Some(client) = self.clients.iter().find(|c| c.id == id) else {
             return;
         };
-        let peer = peer_of(client.uid, active);
-        let mut buf = vec![0u8; MAX_PACKET + 1];
-        let keep = loop {
-            match rustix::net::recv(&client.fd, &mut buf, RecvFlags::DONTWAIT) {
-                Ok((0, _)) => break false,
-                Ok((n, _)) => match protocol::decode::<ToDaemon>(&buf[..n]) {
-                    Ok(message) => self.relay(peer, id, message),
-                    Err(e) => {
-                        eprintln!("keycap: dropping a client that sent a malformed message: {e}");
-                        break false;
+        let (uid, peer) = (client.uid, peer_of(client.uid, active));
+        let pulled = pull(&client.fd, MESSAGES_PER_PASS);
+        let mut link = match pulled.stream {
+            Stream::Closed => Link::Gone,
+            Stream::More | Stream::Idle => Link::Alive,
+        };
+        for packet in pulled.packets {
+            match protocol::decode::<ToDaemon>(&packet) {
+                Ok(message) => match request_of(peer, id, message) {
+                    Ok(request) => self.inbox.send(Message::Request(request)),
+                    Err(Refusal::NotSeatOwner) => {
+                        self.complain(uid, "sent a request without owning the seat; dropped");
+                        link = Link::Gone;
+                        break;
                     }
                 },
-                Err(Errno::AGAIN) => break true,
-                Err(_) => break false,
+                Err(e) => {
+                    self.complain(uid, &format!("sent a malformed message ({e}); dropped"));
+                    link = Link::Gone;
+                    break;
+                }
             }
-        };
-        if !keep {
-            self.clients.retain(|c| c.id != id);
         }
-    }
-
-    fn relay(&self, peer: Peer, client: ClientId, message: ToDaemon) {
-        match request_of(peer, client, message) {
-            Some(request) => self.inbox.send(Message::Request(request)),
-            None => {
-                eprintln!("keycap: ignoring a message from a client that does not own the seat")
-            }
+        if link == Link::Gone {
+            self.clients.retain(|c| c.id != id);
         }
     }
 
@@ -264,14 +333,14 @@ impl Server {
     }
 }
 
-/// Sends one message; false if the client is gone. A full queue drops the message only.
-fn send(client: &Client, message: &ToClient) -> bool {
+/// Sends one message; `Gone` if the client is. A full queue drops the message only.
+fn send(client: &Client, message: &ToClient) -> Link {
     match rustix::net::send(
         client.fd.as_fd(),
         &protocol::encode(message),
         SendFlags::DONTWAIT | SendFlags::NOSIGNAL,
     ) {
-        Ok(_) | Err(Errno::AGAIN) => true,
-        Err(_) => false,
+        Ok(_) | Err(Errno::AGAIN) => Link::Alive,
+        Err(_) => Link::Gone,
     }
 }

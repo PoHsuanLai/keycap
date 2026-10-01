@@ -10,7 +10,7 @@ dependency.
 ## Architecture
 
 ```
-evdev (grabbed) ──► GrabGate ──► Remapper::step ──► Vec<Out> ──► dispatch ──► uinput keyboard
+evdev (grabbed) ──► GrabGate ──► Remapper::step ──► Vec<RemapOut> ──► dispatch ──► uinput keyboard
    EVIOCGRAB       (no key held)   (pure state)                  │
 socket ── Focus ───────────────────► Remapper::step (profile)    └─ ReleaseGrabs ─► ungrab, Paused
 socket ── UserConfig ──► config merge ──► Profiles
@@ -30,9 +30,9 @@ touches a device, so a script replays to exactly the outputs the live daemon pro
 | `key` | `Key(u16)` from the name table, `Modifier`, `Side`, `Mods` |
 | `event` | `Edge`, `KeyEvent`, the `Physical` and `Logical` key newtypes |
 | `layout` | `Layout { Apple, Pc }` from the vendor; `role` by key position |
-| `profile` | `Trigger`, `Stroke`, `Action`, `Profile`, `Profiles` (`default` always exists) |
-| `config` | lenient TOML into `Layer`s (built-in defaults, system file, the seat owner's `UserConfig`), folded by `resolve` |
-| `remap` | `Remapper::step(self, Input, &Profiles) -> (Self, Vec<Out>)` |
+| `profile` | `Trigger`, `Stroke`, `RuleAction`, `Profile`, `Profiles` (`default` always exists) |
+| `config` | lenient TOML into `ConfigLayer`s (built-in defaults, system file, the seat owner's `UserConfig`), folded by `resolve` |
+| `remap` | `Remapper::step(self, RemapInput, &Profiles) -> (Self, Vec<RemapOut>)` |
 | `held` | what each physical press emitted, so its release sends exactly that |
 | `gate` | `GrabGate`: a keyboard is grabbed only once no key is down |
 | `escape` | the emergency chord, both Shifts + Esc |
@@ -92,11 +92,16 @@ Only per-app profiles and the user's own settings wait for a session.
 | Failure | What keycap does | Proven by |
 | --- | --- | --- |
 | Crash or panic (`panic = "abort"`) | The kernel releases the grab, systemd restarts keycap within 200 ms, and the grab gate waits for keys to be released before grabbing again | gate table tests, `Held::drain` tests |
-| Hang | Watchdog kill after 1 s, then the crash path | manual check |
+| Hang | Watchdog kill after 2 s (the reader wakes at least every second), then the crash path | manual check |
 | Crash loop | The unit becomes failed after 5 restarts; the desktop notices | manual check |
-| Killed mid-chord, keyboard unplugged mid-chord, profile changed mid-chord | `ReleaseAll` releases exactly what `Held` recorded | core tests |
+| Killed mid-chord | The kernel drops the grab and closes the virtual keyboard with the process, so nothing stays down; the restarted daemon starts with a fresh `Remapper` | gate table tests |
+| Keyboard unplugged mid-chord | `DeviceGone` releases exactly what that keyboard's keys wrote | core tests |
+| Profile changed mid-chord | `Focus` applies from the next press; held keys keep what they wrote | core tests |
 | Another remapper holds the keyboard | `Grab::Conflict`; the grab is retried after 1 s, doubling to 30 s, never in a loop | devices tests with a fake grabber |
-| Emergency chord | `Out::ReleaseGrabs` and `Status::Paused` | core test |
+| Emergency chord | `RemapOut::ReleaseGrabs` and `Status::Paused` | core test |
+
+`RemapInput::ReleaseAll` is the core's drain entry point, used by the tests and by `keycap replay`
+(`release-all`); the daemon never sends it, because a process that dies takes its grab with it.
 
 ## Safety rules
 
@@ -217,7 +222,7 @@ Waiting for the user and real hardware:
 ## Tests
 
 `cargo test` runs the unit tables and the core scenario suite: every v1 mapping in both
-profiles, Cmd held across a profile switch, unplug mid-chord, kill mid-chord then `ReleaseAll`,
+profiles, Cmd held across a profile switch, unplug mid-chord, `ReleaseAll` and `Resume` after the escape chord,
 the escape chord, the grab gate with a key held, Apple vs PC layout, and a property test that
 every emitted press has exactly one release. Socket tests run on a private socket in a temp
 directory. Scripts are synthesised in `tests/support`.

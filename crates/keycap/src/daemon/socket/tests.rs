@@ -189,7 +189,7 @@ fn a_user_config_reaches_the_reader_and_its_warnings_come_back_to_that_client_on
 }
 
 #[test]
-fn an_observer_is_ignored_and_a_malformed_packet_closes_only_its_sender() {
+fn an_observer_that_sends_a_request_is_dropped_and_nothing_is_relayed() {
     let h = Harness::new(Some(own_uid() + 1));
     let observer = connect(&h.socket);
     let bystander = connect(&h.socket);
@@ -197,28 +197,115 @@ fn an_observer_is_ignored_and_a_malformed_packet_closes_only_its_sender() {
     assert_eq!(recv(&bystander), Some(hello(running())));
 
     send(&observer, &focus("terminal"));
-    send(
-        &observer,
-        &ToDaemon::UserConfig {
-            toml: String::new(),
-        },
-    );
-    send(&observer, &ToDaemon::Resume);
-    // Garbage ends the conversation; by the time the daemon hangs up, it has read the
-    // messages before it.
-    rustix::net::send(&observer, b"not json", SendFlags::NOSIGNAL).unwrap();
-    assert_eq!(recv(&observer), None, "the sender of garbage is dropped");
-    assert!(
-        h.nothing_queued(),
-        "the observer's requests were not relayed"
-    );
+    assert_eq!(recv(&observer), None, "an observer has no business asking");
+    assert!(h.nothing_queued(), "the observer's request was not relayed");
 
     h.handle.send(ToSocket::Status(paused()));
     assert_eq!(
         recv(&bystander),
         Some(ToClient::Status(paused())),
-        "others are unaffected"
+        "others are unaffected, and still listening"
     );
+}
+
+#[test]
+fn every_kind_of_request_from_an_observer_ends_its_connection() {
+    let h = Harness::new(Some(own_uid() + 1));
+    let requests = [
+        focus("terminal"),
+        ToDaemon::UserConfig {
+            toml: String::new(),
+        },
+        ToDaemon::Resume,
+    ];
+    for request in requests {
+        let observer = connect(&h.socket);
+        assert_eq!(recv(&observer), Some(hello(running())));
+        send(&observer, &request);
+        assert_eq!(recv(&observer), None, "{request:?}");
+    }
+    assert!(h.nothing_queued());
+}
+
+#[test]
+fn a_malformed_packet_closes_only_its_sender() {
+    let h = Harness::new(Some(own_uid()));
+    let sender = connect(&h.socket);
+    let bystander = connect(&h.socket);
+    assert_eq!(recv(&sender), Some(hello(running())));
+    assert_eq!(recv(&bystander), Some(hello(running())));
+
+    send(&sender, &focus("terminal"));
+    rustix::net::send(&sender, b"not json", SendFlags::NOSIGNAL).unwrap();
+    assert_eq!(recv(&sender), None, "the sender of garbage is dropped");
+    assert_eq!(
+        h.requests(1),
+        [Request::Focus(ProfileName::parse("terminal").unwrap())],
+        "the message before the garbage was read"
+    );
+    assert!(h.nothing_queued());
+
+    h.handle.send(ToSocket::Status(paused()));
+    assert_eq!(recv(&bystander), Some(ToClient::Status(paused())));
+}
+
+#[test]
+fn a_client_beyond_the_per_user_cap_is_closed_at_once_and_the_others_are_served() {
+    let h = Harness::new(Some(own_uid()));
+    let admitted: Vec<_> = (0..limits::MAX_CLIENTS_PER_UID)
+        .map(|_| {
+            let c = connect(&h.socket);
+            assert_eq!(recv(&c), Some(hello(running())));
+            c
+        })
+        .collect();
+    let refused = connect(&h.socket);
+    assert_eq!(recv(&refused), None, "closed without a hello");
+
+    h.handle.send(ToSocket::Status(paused()));
+    for client in &admitted {
+        assert_eq!(recv(client), Some(ToClient::Status(paused())));
+    }
+
+    drop(admitted);
+    drop(refused);
+    // Their places are free again once the daemon has seen them go: a new client is let in.
+    let deadline = Instant::now() + WAIT;
+    let welcomed = loop {
+        let c = connect(&h.socket);
+        if let Some(ToClient::Hello { .. }) = recv(&c) {
+            break true;
+        }
+        if Instant::now() > deadline {
+            break false;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    assert!(
+        welcomed,
+        "the cap is on live clients, not on connections ever made"
+    );
+}
+
+#[test]
+fn a_flood_from_one_client_is_all_delivered_in_order_without_starving_the_others() {
+    let h = Harness::new(Some(own_uid()));
+    let flooder = connect(&h.socket);
+    let other = connect(&h.socket);
+    assert_eq!(recv(&flooder), Some(hello(running())));
+    assert_eq!(recv(&other), Some(hello(running())));
+
+    let names: Vec<String> = (0..40).map(|i| format!("p{i}")).collect();
+    names.iter().for_each(|n| send(&flooder, &focus(n)));
+    let got = h.requests(names.len());
+    let want: Vec<Request> = names
+        .iter()
+        .map(|n| Request::Focus(ProfileName::parse(n).unwrap()))
+        .collect();
+    assert_eq!(got, want, "every message arrives, in order, across passes");
+
+    h.handle.send(ToSocket::Status(paused()));
+    assert_eq!(recv(&other), Some(ToClient::Status(paused())));
 }
 
 #[test]
@@ -292,9 +379,8 @@ fn a_new_active_user_resets_the_reader_and_the_old_owner_is_no_longer_obeyed() {
         "noticed within the periodic re-read"
     );
     send(&client, &focus("terminal"));
-    rustix::net::send(&client, b"x", SendFlags::NOSIGNAL).unwrap();
-    assert_eq!(recv(&client), None);
-    assert!(h.nothing_queued(), "the former owner is now an observer");
+    assert_eq!(recv(&client), None, "the former owner is now an observer");
+    assert!(h.nothing_queued(), "and its request was not relayed");
 }
 
 #[test]
@@ -304,7 +390,6 @@ fn no_seat_file_means_nobody_is_obeyed() {
     let client = connect(&h.socket);
     assert_eq!(recv(&client), Some(hello(running())));
     send(&client, &focus("terminal"));
-    rustix::net::send(&client, b"x", SendFlags::NOSIGNAL).unwrap();
-    assert_eq!(recv(&client), None);
+    assert_eq!(recv(&client), None, "an observer asking is dropped");
     assert!(h.nothing_queued());
 }

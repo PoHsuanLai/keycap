@@ -6,8 +6,8 @@
 use std::collections::BTreeSet;
 
 use keycap::{
-    CoreStatus, DeviceId, Edge, Input, Key, Layout, Logical, Mono, Out, OutEvent, Physical,
-    Profiles, Remapper, builtin, resolve,
+    CoreStatus, DeviceId, Edge, Key, Layout, Logical, Mono, OutEvent, Physical, Profiles,
+    RemapInput, RemapOut, Remapper, builtin, resolve,
 };
 use keycap_protocol::ProfileName;
 
@@ -22,8 +22,8 @@ fn physical(name: &str) -> Physical {
     Physical(Key::named(name).unwrap_or_else(|| panic!("no key named {name:?}")))
 }
 
-fn key_input(layout: Layout, dev: u32, name: &str, edge: Edge) -> Input {
-    Input::Key {
+fn key_input(layout: Layout, dev: u32, name: &str, edge: Edge) -> RemapInput {
+    RemapInput::Key {
         device: DeviceId(dev),
         layout,
         key: physical(name),
@@ -33,62 +33,62 @@ fn key_input(layout: Layout, dev: u32, name: &str, edge: Edge) -> Input {
 }
 
 /// `name` pressed on the Apple keyboard `dev`.
-pub fn press(dev: u32, name: &str) -> Input {
+pub fn press(dev: u32, name: &str) -> RemapInput {
     key_input(Layout::Apple, dev, name, Edge::Press)
 }
 
 /// `name` released on the Apple keyboard `dev`.
-pub fn release(dev: u32, name: &str) -> Input {
+pub fn release(dev: u32, name: &str) -> RemapInput {
     key_input(Layout::Apple, dev, name, Edge::Release)
 }
 
 /// `name` auto-repeating on the Apple keyboard `dev`.
-pub fn repeat(dev: u32, name: &str) -> Input {
+pub fn repeat(dev: u32, name: &str) -> RemapInput {
     key_input(Layout::Apple, dev, name, Edge::Repeat)
 }
 
 /// `name` pressed on the PC keyboard `dev`.
-pub fn pc_press(dev: u32, name: &str) -> Input {
+pub fn pc_press(dev: u32, name: &str) -> RemapInput {
     key_input(Layout::Pc, dev, name, Edge::Press)
 }
 
 /// `name` released on the PC keyboard `dev`.
-pub fn pc_release(dev: u32, name: &str) -> Input {
+pub fn pc_release(dev: u32, name: &str) -> RemapInput {
     key_input(Layout::Pc, dev, name, Edge::Release)
 }
 
 /// The desktop focusing the profile `name`.
-pub fn focus(name: &str) -> Input {
-    Input::Focus(ProfileName::parse(name).expect("a valid profile name"))
+pub fn focus(name: &str) -> RemapInput {
+    RemapInput::Focus(ProfileName::parse(name).expect("a valid profile name"))
 }
 
 /// A keyboard unplugged.
-pub fn gone(dev: u32) -> Input {
-    Input::DeviceGone(DeviceId(dev))
+pub fn gone(dev: u32) -> RemapInput {
+    RemapInput::DeviceGone(DeviceId(dev))
 }
 
 /// The daemon's reset.
-pub fn release_all() -> Input {
-    Input::ReleaseAll
+pub fn release_all() -> RemapInput {
+    RemapInput::ReleaseAll
 }
 
 /// Leaving the escape pause.
-pub fn resume() -> Input {
-    Input::Resume
+pub fn resume() -> RemapInput {
+    RemapInput::Resume
 }
 
 /// The outputs of one step as text: `+key` and `-key` for presses and releases, `SYN` for the
 /// sync, `GRABS-OFF`, `PAUSED` and `RUNNING` for the rest, separated by `; ` between outputs.
-pub fn render(outs: &[Out]) -> String {
-    let one = |out: &Out| match out {
-        Out::Write(events) => events
+pub fn render(outs: &[RemapOut]) -> String {
+    let one = |out: &RemapOut| match out {
+        RemapOut::Write(events) => events
             .iter()
             .map(render_event)
             .collect::<Vec<_>>()
             .join(" "),
-        Out::ReleaseGrabs => "GRABS-OFF".to_owned(),
-        Out::Status(CoreStatus::Paused) => "PAUSED".to_owned(),
-        Out::Status(CoreStatus::Running) => "RUNNING".to_owned(),
+        RemapOut::ReleaseGrabs => "GRABS-OFF".to_owned(),
+        RemapOut::Status(CoreStatus::Paused) => "PAUSED".to_owned(),
+        RemapOut::Status(CoreStatus::Running) => "RUNNING".to_owned(),
     };
     outs.iter().map(one).collect::<Vec<_>>().join("; ")
 }
@@ -127,17 +127,17 @@ impl Rig {
     }
 
     /// Feed `input`, check the writes against the wire, return them rendered.
-    pub fn feed(&mut self, input: Input) -> String {
+    pub fn feed(&mut self, input: RemapInput) -> String {
         self.feed_outs(input).1
     }
 
     /// Feed `input` and return the raw outputs with their rendering.
-    pub fn feed_outs(&mut self, input: Input) -> (Vec<Out>, String) {
+    pub fn feed_outs(&mut self, input: RemapInput) -> (Vec<RemapOut>, String) {
         self.try_feed(input).unwrap_or_else(|why| panic!("{why}"))
     }
 
     /// Feed `input`; an impossible write is an `Err` saying what it was.
-    pub fn try_feed(&mut self, input: Input) -> Result<(Vec<Out>, String), String> {
+    pub fn try_feed(&mut self, input: RemapInput) -> Result<(Vec<RemapOut>, String), String> {
         let remapper = std::mem::take(&mut self.remapper);
         let (next, outs) = remapper.step(input, &self.profiles);
         self.remapper = next;
@@ -147,7 +147,7 @@ impl Rig {
     }
 
     /// Feed each input and compare its rendering with the expectation beside it.
-    pub fn expect(&mut self, script: Vec<(Input, &str)>) {
+    pub fn expect(&mut self, script: Vec<(RemapInput, &str)>) {
         for (i, (input, want)) in script.into_iter().enumerate() {
             let label = format!("{input:?}");
             assert_eq!(self.feed(input), want, "step {i}: {label}");
@@ -163,8 +163,8 @@ impl Rig {
         self.remapper.status()
     }
 
-    fn apply(&mut self, out: &Out) -> Result<(), String> {
-        let Out::Write(events) = out else {
+    fn apply(&mut self, out: &RemapOut) -> Result<(), String> {
+        let RemapOut::Write(events) = out else {
             return Ok(());
         };
         let Some((OutEvent::Sync, body)) = events.split_last() else {

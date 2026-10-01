@@ -9,4 +9,4 @@ mod step;
 #[cfg(test)]
 mod tests;
 
-pub use model::{CoreStatus, Input, Out, Remapper};
+pub use model::{CoreStatus, RemapInput, RemapOut, Remapper};

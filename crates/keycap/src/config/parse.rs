@@ -1,24 +1,24 @@
-//! `Layer::parse`: TOML text to a `Layer`, key by key.
+//! `ConfigLayer::parse`: TOML text to a `ConfigLayer`, key by key.
 
 use std::collections::BTreeMap;
 
 use keycap_protocol::{ProfileName, Warning};
 use toml::{Table, Value};
 
-use super::layer::{Layer, PartialModMap, ProfileLayer, Source};
+use super::layer::{ConfigLayer, ConfigSource, PartialModMap, ProfileLayer};
 use super::lenient::{Setting, dotted, field, section, warning};
-use crate::profile::{Action, Hold, Stroke, Trigger};
+use crate::profile::{Hold, RuleAction, Stroke, Trigger};
 
-impl Layer {
+impl ConfigLayer {
     /// Reads one file's text. Unknown keys are ignored; a bad value costs only its own key (or
     /// its own rule), reported under its dotted path such as `profile.terminal.rules[2].when`;
     /// text that is not TOML is an empty layer and one warning. Where one file gives a trigger
     /// twice, the later rule wins.
-    pub fn parse(text: &str, source: Source) -> (Layer, Vec<Warning>) {
+    pub fn parse(text: &str, source: ConfigSource) -> (ConfigLayer, Vec<Warning>) {
         let (layer, warnings) = match text.parse::<Table>() {
             Ok(root) => read_layer(&root),
             Err(e) => (
-                Layer::default(),
+                ConfigLayer::default(),
                 vec![warning("file", format!("is not valid TOML: {e}"))],
             ),
         };
@@ -33,13 +33,13 @@ impl Layer {
     }
 }
 
-fn read_layer(root: &Table) -> (Layer, Vec<Warning>) {
+fn read_layer(root: &Table) -> (ConfigLayer, Vec<Warning>) {
     let mut warn = Vec::new();
     let profiles = section(root, "", "profile", &mut warn)
         .iter()
         .filter_map(|(name, v)| read_profile(name, v, &mut warn))
         .collect();
-    (Layer { profiles }, warn)
+    (ConfigLayer { profiles }, warn)
 }
 
 fn read_profile(
@@ -75,7 +75,7 @@ fn read_modmap(table: &Table, path: &str, warn: &mut Vec<Warning>) -> PartialMod
     }
 }
 
-fn read_rules(table: &Table, path: &str, warn: &mut Vec<Warning>) -> BTreeMap<Trigger, Action> {
+fn read_rules(table: &Table, path: &str, warn: &mut Vec<Warning>) -> BTreeMap<Trigger, RuleAction> {
     let key = dotted(path, "rules");
     match table.get("rules") {
         None => BTreeMap::new(),
@@ -92,7 +92,7 @@ fn read_rules(table: &Table, path: &str, warn: &mut Vec<Warning>) -> BTreeMap<Tr
 }
 
 /// One rule. A bad `when` or `then` costs the rule; a bad `hold` costs only the hold.
-fn read_rule(v: &Value, path: &str, warn: &mut Vec<Warning>) -> Option<(Trigger, Action)> {
+fn read_rule(v: &Value, path: &str, warn: &mut Vec<Warning>) -> Option<(Trigger, RuleAction)> {
     let Some(table) = v.as_table() else {
         warn.push(warning(path, "is not a table"));
         return None;
@@ -106,7 +106,7 @@ fn read_rule(v: &Value, path: &str, warn: &mut Vec<Warning>) -> Option<(Trigger,
             None
         }
     };
-    if hold.is_some() && !matches!(then, Some(Action::Map(..)) | None) {
+    if hold.is_some() && !matches!(then, Some(RuleAction::Map(..)) | None) {
         warn.push(warning(
             &dotted(path, "hold"),
             "applies to a single stroke, not a list; ignored",
@@ -127,7 +127,12 @@ fn required(table: &Table, path: &str, key: &str, warn: &mut Vec<Warning>) -> Op
 
 /// A string is one `Map` stroke; a list is a `Sequence`, and the empty list is `Swallow`.
 /// `hold` belongs to `Map` alone, and the caller reports it on a list.
-fn read_then(v: &Value, path: &str, hold: Option<Hold>, warn: &mut Vec<Warning>) -> Option<Action> {
+fn read_then(
+    v: &Value,
+    path: &str,
+    hold: Option<Hold>,
+    warn: &mut Vec<Warning>,
+) -> Option<RuleAction> {
     match v {
         Value::Array(items) => {
             let strokes: Vec<Option<Stroke>> = items
@@ -138,9 +143,9 @@ fn read_then(v: &Value, path: &str, hold: Option<Hold>, warn: &mut Vec<Warning>)
             strokes
                 .into_iter()
                 .collect::<Option<Vec<_>>>()
-                .map(Action::sequence)
+                .map(RuleAction::sequence)
         }
         single => Stroke::read(single, path, warn)
-            .map(|stroke| Action::Map(stroke, hold.unwrap_or_default())),
+            .map(|stroke| RuleAction::Map(stroke, hold.unwrap_or_default())),
     }
 }

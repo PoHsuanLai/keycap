@@ -10,7 +10,7 @@
 //!
 //! `#` starts a comment; blank lines are skipped.
 
-use crate::{DeviceId, Edge, Input, Key, Layout, Mono, Physical};
+use crate::{DeviceId, Edge, Key, Layout, Mono, Physical, RemapInput};
 use keycap_protocol::{NameError, ProfileName};
 
 /// One input of the script, with the line it came from as written (comments and extra
@@ -18,7 +18,7 @@ use keycap_protocol::{NameError, ProfileName};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Step {
     pub text: String,
-    pub input: Input,
+    pub input: RemapInput,
 }
 
 /// What is wrong with one line.
@@ -82,7 +82,7 @@ fn parse_line(line: &str) -> Result<Option<Step>, Problem> {
     })
 }
 
-fn input_of(at: Mono, words: &[&str]) -> Result<Input, Problem> {
+fn input_of(at: Mono, words: &[&str]) -> Result<RemapInput, Problem> {
     let shape = |verb: &str, shape: &'static str| Problem::Shape {
         verb: verb.to_owned(),
         shape,
@@ -97,7 +97,7 @@ fn input_of(at: Mono, words: &[&str]) -> Result<Input, Problem> {
             let [device, layout, key] = rest else {
                 return Err(shape(verb, "<dev> <apple|pc> <keyname>"));
             };
-            Ok(Input::Key {
+            Ok(RemapInput::Key {
                 device: device_of(device)?,
                 layout: layout_of(layout)?,
                 key: Physical(Key::named(key).ok_or_else(|| Problem::Key((*key).to_owned()))?),
@@ -106,15 +106,15 @@ fn input_of(at: Mono, words: &[&str]) -> Result<Input, Problem> {
             })
         }
         ["focus", rest @ ..] => match rest {
-            [profile] => Ok(Input::Focus(ProfileName::parse(profile)?)),
+            [profile] => Ok(RemapInput::Focus(ProfileName::parse(profile)?)),
             _ => Err(shape("focus", "<profile>")),
         },
         ["gone", rest @ ..] => match rest {
-            [device] => Ok(Input::DeviceGone(device_of(device)?)),
+            [device] => Ok(RemapInput::DeviceGone(device_of(device)?)),
             _ => Err(shape("gone", "<dev>")),
         },
-        ["release-all"] => Ok(Input::ReleaseAll),
-        ["resume"] => Ok(Input::Resume),
+        ["release-all"] => Ok(RemapInput::ReleaseAll),
+        ["resume"] => Ok(RemapInput::Resume),
         [verb @ ("release-all" | "resume"), ..] => Err(shape(verb, "no arguments")),
         [verb, ..] => Err(Problem::Verb((*verb).to_owned())),
         [] => Err(Problem::Verb(String::new())),
@@ -139,8 +139,8 @@ fn layout_of(word: &str) -> Result<Layout, Problem> {
 mod tests {
     use super::*;
 
-    fn key(device: u32, layout: Layout, name: &str, edge: Edge, ms: u64) -> Input {
-        Input::Key {
+    fn key(device: u32, layout: Layout, name: &str, edge: Edge, ms: u64) -> RemapInput {
+        RemapInput::Key {
             device: DeviceId(device),
             layout,
             key: Physical(Key::named(name).unwrap()),
@@ -151,8 +151,12 @@ mod tests {
 
     #[test]
     fn line_table() {
-        let focus = |s: &str| Input::Focus(ProfileName::parse(s).unwrap());
-        type Case = (&'static str, &'static str, Result<Option<Input>, Problem>);
+        let focus = |s: &str| RemapInput::Focus(ProfileName::parse(s).unwrap());
+        type Case = (
+            &'static str,
+            &'static str,
+            Result<Option<RemapInput>, Problem>,
+        );
         let cases: &[Case] = &[
             ("blank", "", Ok(None)),
             ("spaces", "   \t ", Ok(None)),
@@ -177,10 +181,14 @@ mod tests {
             (
                 "gone",
                 "60 gone 3",
-                Ok(Some(Input::DeviceGone(DeviceId(3)))),
+                Ok(Some(RemapInput::DeviceGone(DeviceId(3)))),
             ),
-            ("release all", "70 release-all", Ok(Some(Input::ReleaseAll))),
-            ("resume", "80 resume", Ok(Some(Input::Resume))),
+            (
+                "release all",
+                "70 release-all",
+                Ok(Some(RemapInput::ReleaseAll)),
+            ),
+            ("resume", "80 resume", Ok(Some(RemapInput::Resume))),
             (
                 "time is not a number",
                 "soon press 1 apple c",

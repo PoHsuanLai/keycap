@@ -2,14 +2,17 @@
 //!
 //! Compiled and reviewed but deliberately unexercised by the test suite: every test uses
 //! `RecordingEmitter`. The events it writes are the pure `events` functions, which are
-//! tested; what is untested here is only device creation.
+//! tested; what is untested here is only device creation and recreation and the read of LED
+//! changes.
 
+use super::evdev::drain;
 use super::events::{
-    EV_KEY, EV_REL, EV_SYN, InputEvent, MAX_CODE, REL_HWHEEL, REL_HWHEEL_HI_RES, REL_WHEEL,
+    EV_KEY, EV_LED, EV_REL, EV_SYN, InputEvent, MAX_CODE, REL_HWHEEL, REL_HWHEEL_HI_RES, REL_WHEEL,
     REL_WHEEL_HI_RES, REL_X, REL_Y,
 };
+use super::leds::{LED_CODES, LedEvent, decode as decode_led};
 use super::sys::{self, BitSet, InputId, UinputSetup};
-use rustix::fd::OwnedFd;
+use rustix::fd::{AsFd, BorrowedFd, OwnedFd};
 use rustix::fs::{Mode, OFlags};
 use std::io;
 use std::path::Path;
@@ -55,6 +58,13 @@ pub(crate) enum OutputError {
 pub(crate) trait Emitter {
     /// Writes `events` in order; one call is one atomic batch.
     fn write(&mut self, events: &[InputEvent]) -> Result<(), OutputError>;
+    /// Destroys the device and creates a fresh one, which has every key up. For when a write
+    /// failed and what the device holds is no longer known.
+    fn recreate(&mut self) -> Result<(), OutputError>;
+    /// The fd that becomes readable when the desktop sets a LED, for the reader's `poll`.
+    fn led_fd(&self) -> Option<BorrowedFd<'_>>;
+    /// The LED changes the desktop wrote to the device since the last call.
+    fn leds(&mut self) -> Vec<LedEvent>;
 }
 
 /// A created uinput device; destroyed on drop.
@@ -96,19 +106,40 @@ impl Emitter for Device {
             Err(io::Error::new(io::ErrorKind::WriteZero, "short uinput write").into())
         }
     }
+
+    fn recreate(&mut self) -> Result<(), OutputError> {
+        // The old device goes first so the desktop never sees two keycap keyboards. Should the
+        // new one fail, the old fd stays, its writes fail, and the caller decides what next.
+        let _ = sys::dev_destroy(&self.fd);
+        *self = Device::create()?;
+        Ok(())
+    }
+
+    fn led_fd(&self) -> Option<BorrowedFd<'_>> {
+        Some(self.fd.as_fd())
+    }
+
+    fn leds(&mut self) -> Vec<LedEvent> {
+        drain(&self.fd)
+            .events
+            .into_iter()
+            .filter_map(decode_led)
+            .collect()
+    }
 }
 
 fn open(node: &Path) -> io::Result<OwnedFd> {
     Ok(rustix::fs::open(
         node,
-        OFlags::WRONLY | OFlags::NONBLOCK | OFlags::CLOEXEC,
+        OFlags::RDWR | OFlags::NONBLOCK | OFlags::CLOEXEC,
         Mode::empty(),
     )?)
 }
 
-/// Declares every event type, key and axis the device can write.
+/// Declares every event type, key, axis and LED the device can write; the LEDs are what the
+/// desktop writes back to it.
 fn register(fd: &OwnedFd) -> io::Result<()> {
-    [EV_SYN, EV_KEY, EV_REL]
+    [EV_SYN, EV_KEY, EV_REL, EV_LED]
         .into_iter()
         .try_for_each(|kind| sys::set_bit(fd, BitSet::Ev, kind))?;
     CODES
@@ -116,7 +147,10 @@ fn register(fd: &OwnedFd) -> io::Result<()> {
         .try_for_each(|code| sys::set_bit(fd, BitSet::Key, code))?;
     REL_AXES
         .into_iter()
-        .try_for_each(|axis| sys::set_bit(fd, BitSet::Rel, axis))
+        .try_for_each(|axis| sys::set_bit(fd, BitSet::Rel, axis))?;
+    LED_CODES
+        .into_iter()
+        .try_for_each(|led| sys::set_bit(fd, BitSet::Led, led))
 }
 
 /// The identity the device is created under.
@@ -164,18 +198,45 @@ pub(crate) fn probe(permit: ProbePermit, node: &Path) -> Result<(), OutputError>
     }
 }
 
-/// Remembers every batch instead of writing it.
+/// Remembers every batch instead of writing it; fails the writes a test asks it to, counts
+/// recreations, and hands over the LED changes a test queues.
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct RecordingEmitter {
     pub batches: Vec<Vec<InputEvent>>,
+    /// How many of the next writes fail.
+    pub failing: u32,
+    /// How many times the device was recreated.
+    pub recreated: u32,
+    /// What `leds` returns next.
+    pub queued_leds: Vec<LedEvent>,
 }
 
 #[cfg(test)]
 impl Emitter for RecordingEmitter {
     fn write(&mut self, events: &[InputEvent]) -> Result<(), OutputError> {
+        if self.failing > 0 {
+            self.failing -= 1;
+            return Err(io::Error::other("injected failure").into());
+        }
+        if events.is_empty() {
+            return Ok(());
+        }
         self.batches.push(events.to_vec());
         Ok(())
+    }
+
+    fn recreate(&mut self) -> Result<(), OutputError> {
+        self.recreated += 1;
+        Ok(())
+    }
+
+    fn led_fd(&self) -> Option<BorrowedFd<'_>> {
+        None
+    }
+
+    fn leds(&mut self) -> Vec<LedEvent> {
+        std::mem::take(&mut self.queued_leds)
     }
 }
 
@@ -225,6 +286,7 @@ mod tests {
         assert!(is_button(0x110) && CODES.contains(&0x110), "BTN_LEFT");
         assert!(CODES.contains(&0x160), "KEY_OK");
         assert!(REL_AXES.contains(&REL_X) && REL_AXES.contains(&REL_HWHEEL_HI_RES));
+        assert_eq!(LED_CODES, [0, 1, 2], "num, caps and scroll lock");
     }
 
     #[test]

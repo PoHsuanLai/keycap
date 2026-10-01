@@ -1,21 +1,24 @@
 # keycap: Mac keyboard mapping daemon. Install to /etc/systemd/system.
 #
 # It grabs the keyboards and writes one virtual keyboard, so a hang would leave the machine
-# without keys: the watchdog kills it after a second and the kernel drops the grab with the
-# process. After five failures in 30 s the unit stays failed and the desktop says so.
+# without keys: the watchdog kills it after two seconds and the kernel drops the grab with the
+# process. After five failures in 30 s the unit stays failed and the desktop says so. It is
+# ordered before the display manager, so startup is bounded: keycap gives up on a missing
+# /dev/uinput after five seconds, well inside TimeoutStartSec.
 [Unit]
 Description=keycap: Mac keyboard mapping
 Documentation=https://github.com/PoHsuanLai/keycap
 Before=display-manager.service systemd-user-sessions.service
+StartLimitIntervalSec=30
+StartLimitBurst=5
 
 [Service]
 Type=notify
 ExecStart=/usr/local/bin/keycap
-WatchdogSec=1
+TimeoutStartSec=10
+WatchdogSec=2
 Restart=always
 RestartSec=200ms
-StartLimitIntervalSec=30
-StartLimitBurst=5
 
 DynamicUser=yes
 SupplementaryGroups=input
@@ -25,9 +28,21 @@ ConfigurationDirectory=keycap
 
 ProtectHome=yes
 ProtectSystem=strict
+PrivateTmp=yes
 PrivateNetwork=yes
 NoNewPrivileges=yes
-RestrictAddressFamilies=AF_UNIX AF_NETLINK
+CapabilityBoundingSet=
+# Only the control socket and $NOTIFY_SOCKET: the hotplug and config watches are inotify.
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
 DevicePolicy=closed
 DeviceAllow=char-input rw
 DeviceAllow=/dev/uinput rw

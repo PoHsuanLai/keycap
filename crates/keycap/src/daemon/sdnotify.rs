@@ -72,6 +72,8 @@ impl Notifier {
         self.send(&Message::Status(text))
     }
 
+    /// Never blocks: a notify socket whose queue is full fails the send with `WouldBlock`, and
+    /// the reader, which must keep polling, goes on.
     fn send(&self, message: &Message<'_>) -> io::Result<()> {
         let Some(target) = &self.0 else {
             return Ok(());
@@ -79,7 +81,7 @@ impl Notifier {
         net::sendto(
             &target.fd,
             message.payload().as_bytes(),
-            SendFlags::empty(),
+            SendFlags::DONTWAIT,
             &target.addr,
         )?;
         Ok(())
@@ -151,5 +153,23 @@ mod tests {
         let path = dir.path().join("nobody.sock");
         let notifier = Notifier::new(path.to_str()).unwrap();
         assert!(notifier.ready().is_err());
+    }
+
+    #[test]
+    fn a_full_notify_socket_fails_the_send_instead_of_blocking_it() {
+        let dir = Scratch::new("notify-full");
+        let path = dir.path().join("full.sock");
+        // Bound and never read: its queue fills.
+        let _listener = UnixDatagram::bind(&path).unwrap();
+        let notifier = Notifier::new(path.to_str()).unwrap();
+        let (done, outcome) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let failure = (0..100_000).find_map(|_| notifier.watchdog().err());
+            let _ = done.send(failure.map(|e| e.kind()));
+        });
+        let failure = outcome
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("the sender must not block on a full socket");
+        assert_eq!(failure, Some(io::ErrorKind::WouldBlock));
     }
 }

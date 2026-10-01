@@ -32,13 +32,12 @@ impl Held {
         let Some(record) = self.records.remove(&at) else {
             return (self, Vec::new());
         };
-        let events = record
-            .down
-            .iter()
-            .rev()
-            .filter(|&&key| !self.holds(key) && !self.is_lifted(key))
-            .map(|&key| key_event(key, Edge::Release))
-            .collect();
+        let mut events = Vec::new();
+        for &key in record.down.iter().rev() {
+            if !self.holds(key) && !self.is_lifted(key) {
+                events.extend(self.write_release(key));
+            }
+        }
         self.lifts = prune(self.lifts, &self.records);
         (self, events)
     }
@@ -86,6 +85,7 @@ impl Held {
                     (held, events)
                 });
         held.lifts.clear();
+        held.bare.clear();
         (held, events)
     }
 

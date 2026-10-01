@@ -1,6 +1,7 @@
 //! `Grabber`: take and release the exclusive grab on one device, by id; `Nodes`: and open it,
 //! close it and ask which keys it holds down.
 
+use super::events::InputEvent;
 use super::sys::{self, Grab, GrabError};
 use crate::{DeviceId, KeysDown};
 use rustix::fd::OwnedFd;
@@ -19,7 +20,8 @@ pub(crate) trait Grabber {
 
 /// The device nodes keycap holds open, on top of the grab.
 pub(crate) trait Nodes: Grabber {
-    /// Opens the node for reading and starts managing it under `id`.
+    /// Opens the node for reading and for injecting LED events, and starts managing it under
+    /// `id`.
     fn open(&mut self, id: DeviceId, path: &Path) -> io::Result<()>;
     /// Stops managing the device and closes it; the kernel drops its grab with the fd.
     fn close(&mut self, id: DeviceId);
@@ -39,6 +41,19 @@ impl EvdevGrabber {
         self.fds.get(&id)
     }
 
+    /// Writes `events` to the node of `id`: how a LED reaches the keyboard it is lit on. The
+    /// node is open for writing so the grab holder can inject events.
+    pub(crate) fn write(&self, id: DeviceId, events: &[InputEvent]) -> io::Result<()> {
+        let fd = self.fds.get(&id).ok_or_else(not_open)?;
+        let bytes: Vec<u8> = events.iter().flat_map(|e| e.to_bytes()).collect();
+        let n = rustix::io::write(fd, &bytes)?;
+        if n == bytes.len() {
+            Ok(())
+        } else {
+            Err(io::Error::from(io::ErrorKind::WriteZero))
+        }
+    }
+
     /// Every open node, by id.
     pub(crate) fn fds(&self) -> impl Iterator<Item = (DeviceId, &OwnedFd)> {
         self.fds.iter().map(|(&id, fd)| (id, fd))
@@ -53,7 +68,7 @@ impl Nodes for EvdevGrabber {
     fn open(&mut self, id: DeviceId, path: &Path) -> io::Result<()> {
         let fd = rustix::fs::open(
             path,
-            OFlags::RDONLY | OFlags::NONBLOCK | OFlags::CLOEXEC,
+            OFlags::RDWR | OFlags::NONBLOCK | OFlags::CLOEXEC,
             Mode::empty(),
         )?;
         self.fds.insert(id, fd);
@@ -104,6 +119,7 @@ mod fake {
         open: BTreeSet<DeviceId>,
         keys: BTreeSet<DeviceId>,
         unopenable: BTreeSet<DeviceId>,
+        pressed_by_grab: BTreeSet<DeviceId>,
     }
 
     impl FakeGrabber {
@@ -135,6 +151,12 @@ mod fake {
             self.keys.remove(&id);
         }
 
+        /// A key goes down on `id` in the instant its grab succeeds: the press the compositor
+        /// saw and the grab then hid.
+        pub(crate) fn press_key_on_grab(&mut self, id: DeviceId) {
+            self.pressed_by_grab.insert(id);
+        }
+
         /// Opening `id` fails, as for a node the user may not read yet.
         pub(crate) fn refuse_open(&mut self, id: DeviceId) {
             self.unopenable.insert(id);
@@ -155,6 +177,9 @@ mod fake {
                 return Err(GrabError::Busy);
             }
             self.held.insert(id);
+            if self.pressed_by_grab.remove(&id) {
+                self.keys.insert(id);
+            }
             Ok(())
         }
 

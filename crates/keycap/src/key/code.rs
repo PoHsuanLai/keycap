@@ -20,6 +20,7 @@ impl Key {
     pub const LEFTSHIFT: Key = Key(42);
     pub const RIGHTSHIFT: Key = Key(54);
     pub const LEFTALT: Key = Key(56);
+    pub const F24: Key = Key(194);
     pub const RIGHTCTRL: Key = Key(97);
     pub const RIGHTALT: Key = Key(100);
     pub const LEFTMETA: Key = Key(125);

@@ -31,9 +31,9 @@ never name `daemon` modules.
 |---|---|---|---|
 | L0 vocabulary | `key` (`Key`, `Modifier`, `Side`, `Mods`), `event` (`Edge`, `KeyEvent`, `Physical`, `Logical`), `time` (`Mono`) | newtypes | `pub` |
 | L1 layout | `layout` (`Layout`, `role`) | pure tables | `pub` |
-| L2 profiles | `profile` (`Trigger`, `Stroke`, `Action`, `Profile`, `Profiles`), `config` (`Layer`, `resolve`, `lenient`, `load`, `watch`) | pure except `load` and `watch` (file reads, inotify) | `pub` |
+| L2 profiles | `profile` (`Trigger`, `Stroke`, `RuleAction`, `Profile`, `Profiles`), `config` (`ConfigLayer`, `resolve`, `lenient`, `load`, `watch`) | pure except `load` and `watch` (file reads, inotify) | `pub` |
 | L3 state | `held`, `gate`, `escape`, `backoff` | pure state machines | `pub` |
-| L4 remapper | `remap` (`Remapper::step`, `Input`, `Out`) | pure composition: `Remapper::step(self, Input, &Profiles) -> (Self, Vec<Out>)` | `pub` |
+| L4 remapper | `remap` (`Remapper::step`, `RemapInput`, `RemapOut`) | pure composition: `Remapper::step(self, RemapInput, &Profiles) -> (Self, Vec<RemapOut>)` | `pub` |
 | L5 effects | `daemon` (`reader`, `socket`, `discover`, `uinput`, `sdnotify`, `env`, `sys`) | threads, sockets, devices, clocks, ioctls | `pub(crate)` |
 | L6 entry | `command` | argument parsing, one `run(args)`; reads `std::env` once into `daemon::Env`; `--print-config`, `--check-uinput`, `replay FILE` (a pure script parser, `script.rs`) | `pub` (one fn) |
 
@@ -42,15 +42,18 @@ Daemon modules:
 | Module | Role |
 |---|---|
 | `daemon/sys.rs` | the only `unsafe`: typed ioctls (`EVIOCGRAB`, `EVIOCGKEY`, uinput), each with a `SAFETY` comment, and a test pinning every opcode's number |
-| `daemon/uinput.rs` | the one "keycap keyboard" virtual device, destroyed on `Drop`; passes pointer events through for combo devices; the `Emitter` trait and its recording fake |
+| `daemon/uinput.rs` | the one "keycap keyboard" virtual device, opened read-write, destroyed on `Drop`; passes pointer events through for combo devices and carries the lock LEDs back; the `Emitter` trait and its recording fake |
+| `daemon/buttons.rs` | pure: the mouse buttons each combo device holds, released on unplug, overflow and pause |
+| `daemon/leds.rs` | pure: the lock-LED events the compositor writes to the virtual device, forwarded to every grabbed keyboard |
+| `daemon/readiness.rs` | which polled fds are ready, as an enum rather than flags |
 | `daemon/events.rs` | `struct input_event` as bytes, `decode` (what a device sent) and `encode` (what keycap writes), pure |
-| `daemon/discover/` | the /sys scan and `notify` on `/dev/input`; `classify(&Caps) -> Eligibility` is pure and table-tested, sysfs roots injectable |
+| `daemon/discover/` | the /sys scan and `notify` on `/dev/input`; `classify(&Caps, &Identity, Origin) -> Eligibility` is pure and table-tested (virtual devices are never grabbed, which rules out loops with other remappers), sysfs roots injectable |
 | `daemon/devices/` | every keyboard as a pure state machine: `{ identity, layout, gate, grab }` plus the conflict `Backoff`; transitions return `(Devices, Vec<DeviceEffect>)`, `drive` carries the effects out through `Nodes`, `status_of` makes the `Status` a desktop sees |
 | `daemon/grabber.rs` | `Grabber` (grab, ungrab) and `Nodes` (open, close, keys down): the real evdev fds, and `FakeGrabber` in tests |
 | `daemon/reader/` | the main thread: one `poll` over the nodes and the inbox's eventfd, timeout from the next gate or backoff deadline and half the watchdog; the reader waits on nothing but `poll` |
-| `daemon/route.rs`, `daemon/evdev.rs` | one read of a node (drained until `EAGAIN`) to `Input`s and pointer frames, pure `route` over the drained events |
+| `daemon/route.rs`, `daemon/evdev.rs` | one read of a node (drained until `EAGAIN`) to `RemapInput`s and pointer frames, pure `route` over the drained events |
 | `daemon/inbox.rs`, `daemon/waker.rs` | what other threads send the reader (`Request`, system config, hotplug) over one channel and one eventfd |
-| `daemon/socket/` | the socket thread; `seat.rs` holds the pure parts (`active_uid`, `peer_of` to `Peer { SeatOwner, Observer }`, `request_of`, `Seat::look` for owner leaving or user switch) |
+| `daemon/socket/` | the socket thread; `seat.rs` holds the pure parts (`active_uid`, `peer_of` to `Peer { SeatOwner, Observer }`, `request_of`, `Seat::look` for owner leaving or user switch); `limits.rs` the bounds against hostile clients (32 clients, the seat owner exempt from that cap; 8 per uid; 16 messages per client per pass; listener paused 1 s on EMFILE; complaints logged once a minute per uid); `inbound.rs` the bounded read |
 | `daemon/settings.rs` | the config layers in force (built-in, system, user) and their resolution |
 | `daemon/service.rs` | `run(env)`: the virtual keyboard, socket thread, watchers, then the reader |
 | `daemon/sdnotify.rs` | `READY=1`, `WATCHDOG=1` and `STATUS=` to `$NOTIFY_SOCKET` |
@@ -66,10 +69,10 @@ Daemon modules:
 | Evdev key codes and names | `key::Key` (the name table) |
 | Pressed key vs sent key | `event::{Physical, Logical}` |
 | Modifier positions on Apple and PC keyboards | `layout` |
-| What a chord becomes | `profile::{Trigger, Stroke, Action}` |
+| What a chord becomes | `profile::{Trigger, Stroke, RuleAction}` |
 | Profile inheritance and lookup | `profile::Profiles` |
 | Every default mapping | `defaults.toml` |
-| Lenient per-key reading, config layers, inheritance flattening | `config::{lenient, Layer, resolve}` |
+| Lenient per-key reading, config layers, inheritance flattening | `config::{lenient, ConfigLayer, resolve}` |
 | What each press emitted, and which written keys are lifted | `held::Held` |
 | When a keyboard may be grabbed | `gate::GrabGate` |
 | The emergency chord | `escape` |
@@ -86,11 +89,11 @@ Daemon modules:
 |---|---|---|
 | `Grabber` (`daemon::grabber`) | grab and ungrab one device, returning a typed error | the real evdev grab, a fake in tests |
 | `Nodes: Grabber` (`daemon::grabber`) | open, close and read the keys down of a device by id | the open evdev fds, a fake in tests |
-| `Emitter` (`daemon::uinput`) | write one batch of events to the virtual keyboard | the uinput device, a recording sink in tests |
+| `Emitter` (`daemon::uinput`) | `write` one batch of events to the virtual keyboard, `recreate` it after a failed write, and expose `led_fd` / `leds` for LED forwarding | the uinput device, a recording sink in tests |
 | `Setting` (`config::lenient`) | `fn read(v: &toml::Value, key: &str, warn: &mut Vec<Warning>) -> Option<Self>` | every unit newtype and enum |
 
 A trait appears only when two real implementations are swapped at a boundary. **Closed enums
-that stay enums:** `Input`, `Out`, `Action`, `Edge`, `Layout`, `ToDaemon`, `ToClient`,
+that stay enums:** `RemapInput`, `RemapOut`, `RuleAction`, `Edge`, `Layout`, `ToDaemon`, `ToClient`,
 `Peer`, `Eligibility`, `Mode`, `Grab`.
 
 ## 5. Recipes
@@ -100,7 +103,7 @@ that stay enums:** `Input`, `Out`, `Action`, `Edge`, `Layout`, `ToDaemon`, `ToCl
 1. `defaults.toml`: a `[[profile.NAME.rules]]` entry with `when` and `then` chords, in the
    profile it belongs to. Keys are names from the table in `key`, never numbers.
 2. A scenario test beside the others in `tests/`: a synthesised script of key events, asserting
-   the `Out`s, including the release order and that nothing is left held.
+   the `RemapOut`s, including the release order and that nothing is left held.
 3. The README mapping table gains a row.
 
 ### Add a profile
@@ -124,7 +127,7 @@ that stay enums:** `Input`, `Out`, `Action`, `Edge`, `Layout`, `ToDaemon`, `ToCl
 | Kind of thing | Test |
 |---|---|
 | Key names, layout, classify, opcodes, protocol | table tests beside the code |
-| Whole-core behaviour | scripts of `Input`s through `Remapper::step`, asserting `Out`s, in `tests/` |
+| Whole-core behaviour | scripts of `RemapInput`s through `Remapper::step`, asserting `RemapOut`s, in `tests/` |
 | Stuck keys | a property test: every emitted press has exactly one release |
 | Socket | a private socket in a temp dir and a fake seat file, in `daemon/socket/tests.rs` |
 | Grab conflicts, pause and resume | `daemon/devices` tests: the state machine driven through `FakeGrabber` |
@@ -137,10 +140,13 @@ directory or a running daemon.
 ## 7. Repo rules
 
 - **Only `daemon` owns threads, sockets, devices, clocks and the environment.** When the core
-  seems to need an effect, it returns an `Out` for the daemon to carry out.
+  seems to need an effect, it returns an `RemapOut` for the daemon to carry out.
 - **`unsafe` lives only in `daemon/sys.rs`**, each block with a `SAFETY` comment.
 - **The layering rule:** core modules never name daemon modules.
-- **Units and ids are newtypes:** `Key`, `Physical`, `Logical`, `ProfileName`, `Mono`.
+- **Units and ids are newtypes:** `Key`, `Physical`, `Logical`, `ProfileName`, `Mono`. `Key` is
+  the one bare generic root export, kept deliberately: it is the evdev code vocabulary and every
+  other name here is built on it. Every other root export carries its concept in its name
+  (`RemapInput`, `RemapOut`, `ConfigSource`, `ConfigLayer`, `RuleAction`).
 - **No `bool` in a field, parameter or key.** A choice is an enum.
 - **Release is exact:** a key's release sends what its press sent (`Held`), and `drain` empties
   it; a stuck modifier cannot be produced.
@@ -185,12 +191,12 @@ pub struct ModMap { pub command: OutMod, pub option: OutMod, pub control: OutMod
 pub struct Trigger { pub roles: Roles, pub key: Key }        // exact match on held roles
 pub struct Stroke { pub mods: OutMods, pub key: Key }
 pub enum Hold { Restore, WhileHeld }
-pub enum Action {
+pub enum RuleAction {
     Map(Stroke, Hold),       // held while the physical key is held (so it repeats)
     Sequence(Vec<Stroke>),   // tapped in order on press; the release sends nothing
     Swallow,
 }
-pub struct Profile { pub modmap: ModMap, pub rules: BTreeMap<Trigger, Action> }
+pub struct Profile { pub modmap: ModMap, pub rules: BTreeMap<Trigger, RuleAction> }
 pub struct Profiles { default: Profile, named: BTreeMap<ProfileName, Profile> }
 ```
 
@@ -221,14 +227,14 @@ rules = [{ when = "command+c", then = "ctrl+shift+c" }]
 profile removes a rule it inherits. `hold` belongs to a single stroke; on a list it is reported
 and ignored. Shift is the one name both vocabularies share.
 
-Config is read in layers. `Layer::parse(text, Source)` turns one file into a `Layer` (per profile:
+Config is read in layers. `ConfigLayer::parse(text, ConfigSource)` turns one file into a `ConfigLayer` (per profile:
 optional `inherits`, the modmap fields it sets, its rules by trigger) and warnings keyed by dotted
-path (`profile.terminal.rules[2].when`), each problem prefixed with the `Source` (`Builtin`,
+path (`profile.terminal.rules[2].when`), each problem prefixed with the `ConfigSource` (`Builtin`,
 `System`, `User`). A bad value costs its own key, or its own rule for a bad `when` or `then`;
 unknown keys are ignored; text that is not TOML is an empty layer and one warning (key `file`).
 Within one file a trigger given twice keeps the later rule.
 
-`config::resolve(&[Layer]) -> (Profiles, Vec<Warning>)` folds the layers (later over earlier, per
+`config::resolve(&[ConfigLayer]) -> (Profiles, Vec<Warning>)` folds the layers (later over earlier, per
 profile, per modmap field, per trigger), then flattens inheritance, child over parent,
 transitively. A profile with no `inherits` inherits `default`; `default` inherits nothing. An
 unknown parent, or a parent chain that leads back to the profile, is a warning and the profile
@@ -241,14 +247,14 @@ modifier it is named after) and no rules, so `resolve(&[])` still yields a `defa
 ### `Remapper::step`
 
 ```rust
-pub enum Input {
+pub enum RemapInput {
     Key { device: DeviceId, layout: Layout, key: Physical, edge: Edge, at: Mono },
     Focus(ProfileName),
     DeviceGone(DeviceId),
     ReleaseAll,
     Resume,
 }
-pub enum Out { Write(Vec<OutEvent>), ReleaseGrabs, Status(CoreStatus) }
+pub enum RemapOut { Write(Vec<OutEvent>), ReleaseGrabs, Status(CoreStatus) }
 ```
 
 - **Modifiers are written eagerly.** A role press writes its `ModMap` output at once, so
@@ -292,8 +298,17 @@ pub enum Out { Write(Vec<OutEvent>), ReleaseGrabs, Status(CoreStatus) }
 - **`Focus`** takes effect at the next press; held keys keep what they wrote.
 - **Repeat** events are dropped: the compositor repeats.
 - **The escape chord** (both Shift keys + Esc, physical) releases everything and yields
-  `Out::ReleaseGrabs` and `CoreStatus::Paused`, in that order after the one draining `Write`; the
-  Esc press is not written. Keys are ignored (the chord detector still tracks them) until
-  `Resume`, which yields `Status(Running)`.
+  `RemapOut::ReleaseGrabs` and `CoreStatus::Paused`, in that order after the one draining `Write`; the
+  Esc press is not written. Keys are ignored until `Resume`, which yields `Status(Running)`.
+  The detector tracks the three chord keys per `(DeviceId, Physical)`. The grabs are given back
+  at the chord, so the releases that follow never arrive: `Resume` and `ReleaseAll` start it
+  over empty, and `DeviceGone(d)` forgets that keyboard's keys, so a lone Esc after a resume
+  is an ordinary key and a Shift on an unplugged keyboard arms nothing.
+- **Bare Alt and Super.** A compositor reads Alt or Super released with no key between as a tap
+  (menu bar, launcher). `Held` tracks the written Alt and Super keys that have had no other key
+  written since their press. A lift of such a key, and the release of one a lift put back, is
+  led by a tap of `F24` (press and release in the same write, never recorded in `Held`), so the
+  desktop sees a key between. A person's own tap with no lift is left alone, and a Control
+  written for Command needs none: a Ctrl tap does nothing.
 - Every `Write` ends with exactly one `SYN_REPORT` (`OutEvent::Sync`), and a step that writes
   nothing emits no `Write`.

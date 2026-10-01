@@ -3,6 +3,8 @@
 #[cfg(test)]
 pub(crate) mod client;
 mod handle;
+mod inbound;
+mod limits;
 mod seat;
 mod server;
 #[cfg(test)]

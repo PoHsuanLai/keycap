@@ -7,7 +7,7 @@ use support::{
     Rig, focus, gone, pc_press, pc_release, press, release, release_all, repeat, resume,
 };
 
-use keycap::Input;
+use keycap::RemapInput;
 
 struct Xorshift(u64);
 
@@ -57,7 +57,7 @@ const KEYS: &[&str] = &[
 const PROFILES: &[&str] = &["default", "terminal", "unknown"];
 
 /// Device 0 is an Apple keyboard, device 1 a PC one.
-fn key_input(rng: &mut Xorshift) -> Input {
+fn key_input(rng: &mut Xorshift) -> RemapInput {
     let dev = rng.below(2) as u32;
     let key = *rng.pick(KEYS);
     match (dev, rng.below(10)) {
@@ -69,7 +69,7 @@ fn key_input(rng: &mut Xorshift) -> Input {
     }
 }
 
-fn input(rng: &mut Xorshift) -> Input {
+fn input(rng: &mut Xorshift) -> RemapInput {
     match rng.below(40) {
         0 => focus(rng.pick(PROFILES)),
         1 => gone(rng.below(2) as u32),

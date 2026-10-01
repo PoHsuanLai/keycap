@@ -1,8 +1,7 @@
 //! Lifts: keys a record holds that an owner has taken off the wire for a while.
 
-use super::model::{At, Held};
-use super::step::key_event;
-use crate::event::{Edge, Logical, OutEvent};
+use super::model::{At, Bare, Held};
+use crate::event::{Logical, OutEvent};
 
 impl Held {
     /// `owner` takes `keys` off the wire. Each key some record holds is remembered as lifted by
@@ -15,7 +14,8 @@ impl Held {
                 continue;
             }
             if self.is_down(key) {
-                events.push(key_event(key, Edge::Release));
+                self.mark_stray(key);
+                events.extend(self.write_release(key));
             }
             self.lifts.entry(owner).or_default().push(key);
         }
@@ -26,11 +26,12 @@ impl Held {
     /// is pressed back, in the order it was lifted.
     pub fn unlift(mut self, owner: At) -> (Self, Vec<OutEvent>) {
         let keys = self.lifts.remove(&owner).unwrap_or_default();
-        let events = keys
-            .into_iter()
-            .filter(|&key| self.is_down(key))
-            .map(|key| key_event(key, Edge::Press))
-            .collect();
+        let mut events = Vec::new();
+        for key in keys {
+            if self.is_down(key) {
+                events.push(self.write_press(key, Bare::Restored));
+            }
+        }
         (self, events)
     }
 
@@ -54,7 +55,7 @@ impl Held {
     /// Press `key` unless it is down, and end every lift of it: a deliberate press wins over a
     /// lift, so the lifted and the written views cannot disagree.
     pub(super) fn raise(&mut self, key: Logical) -> Option<OutEvent> {
-        let event = (!self.is_down(key)).then(|| key_event(key, Edge::Press));
+        let event = (!self.is_down(key)).then(|| self.write_press(key, Bare::Pressed));
         self.lifts
             .values_mut()
             .for_each(|keys| keys.retain(|&k| k != key));

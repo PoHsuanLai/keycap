@@ -23,6 +23,7 @@ const UI_DEV_SETUP: Opcode = opcode::write::<UinputSetup>(b'U', 3);
 const UI_SET_EVBIT: Opcode = opcode::write::<i32>(b'U', 100);
 const UI_SET_KEYBIT: Opcode = opcode::write::<i32>(b'U', 101);
 const UI_SET_RELBIT: Opcode = opcode::write::<i32>(b'U', 102);
+const UI_SET_LEDBIT: Opcode = opcode::write::<i32>(b'U', 105);
 
 /// `struct input_id`.
 #[repr(C)]
@@ -97,12 +98,13 @@ pub(crate) enum BitSet {
     Ev,
     Key,
     Rel,
+    Led,
 }
 
 /// Enables one capability bit on a uinput fd before `UI_DEV_CREATE`.
 pub(crate) fn set_bit(fd: impl AsFd, set: BitSet, code: u16) -> io::Result<()> {
     let value = usize::from(code);
-    // SAFETY: linux/uinput.h declares UI_SET_{EV,KEY,REL}BIT as _IOW('U', n, int) but the
+    // SAFETY: linux/uinput.h declares UI_SET_{EV,KEY,REL,LED}BIT as _IOW('U', n, int) but the
     // kernel reads the argument as an integer value, not a pointer (uinput_ioctl_handler
     // passes `arg` straight to set_bit). IntegerSetter passes exactly that integer.
     let r = unsafe {
@@ -110,6 +112,7 @@ pub(crate) fn set_bit(fd: impl AsFd, set: BitSet, code: u16) -> io::Result<()> {
             BitSet::Ev => ioctl::ioctl(&fd, IntegerSetter::<UI_SET_EVBIT>::new_usize(value)),
             BitSet::Key => ioctl::ioctl(&fd, IntegerSetter::<UI_SET_KEYBIT>::new_usize(value)),
             BitSet::Rel => ioctl::ioctl(&fd, IntegerSetter::<UI_SET_RELBIT>::new_usize(value)),
+            BitSet::Led => ioctl::ioctl(&fd, IntegerSetter::<UI_SET_LEDBIT>::new_usize(value)),
         }
     };
     r.map_err(io::Error::from)
@@ -152,6 +155,7 @@ mod tests {
             ("UI_SET_EVBIT", UI_SET_EVBIT, 0x4004_5564),
             ("UI_SET_KEYBIT", UI_SET_KEYBIT, 0x4004_5565),
             ("UI_SET_RELBIT", UI_SET_RELBIT, 0x4004_5566),
+            ("UI_SET_LEDBIT", UI_SET_LEDBIT, 0x4004_5569),
         ];
         for &(name, got, want) in CASES {
             assert_eq!(got, want, "{name}: {got:#x}");

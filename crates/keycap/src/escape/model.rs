@@ -1,19 +1,17 @@
 //! The data of the escape-chord detector.
 
-/// Whether a tracked key is down.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub(super) enum Level {
-    #[default]
-    Up,
-    Down,
-}
+use std::collections::BTreeSet;
 
-/// Which of left Shift, right Shift and Esc are down.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+use crate::event::{DeviceId, Physical};
+
+/// Which of left Shift, right Shift and Esc are down, and on which keyboard.
+///
+/// Only the three chord keys are tracked. A key is per `(DeviceId, Physical)` so a keyboard that
+/// vanishes takes its keys with it. When the grabs are given back the releases never reach the
+/// remapper, so the owner starts over with `Escape::new()` on resume and on release-all.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Escape {
-    pub(super) left_shift: Level,
-    pub(super) right_shift: Level,
-    pub(super) esc: Level,
+    pub(super) down: BTreeSet<(DeviceId, Physical)>,
 }
 
 /// What a key event did to the chord.

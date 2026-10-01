@@ -10,7 +10,7 @@ use std::time::Duration;
 use keycap_protocol::Warning;
 use notify::{RecursiveMode, Watcher};
 
-use super::layer::Layer;
+use super::layer::ConfigLayer;
 use super::load::{FILE_NAME, system};
 
 /// Quiet time after the last change before the file is re-read.
@@ -25,7 +25,7 @@ fn concerns_us(p: &Path) -> bool {
 /// `out`. Returns the watcher, which must be kept alive; dropping it ends the thread.
 pub fn spawn(
     dir: PathBuf,
-    out: Sender<(Layer, Vec<Warning>)>,
+    out: Sender<(ConfigLayer, Vec<Warning>)>,
 ) -> notify::Result<notify::RecommendedWatcher> {
     let (tx, rx) = mpsc::channel::<()>();
     let mut watcher = notify::recommended_watcher(move |ev: notify::Result<notify::Event>| {
@@ -43,7 +43,7 @@ pub fn spawn(
     Ok(watcher)
 }
 
-fn debounce_loop(rx: &mpsc::Receiver<()>, dir: &Path, out: &Sender<(Layer, Vec<Warning>)>) {
+fn debounce_loop(rx: &mpsc::Receiver<()>, dir: &Path, out: &Sender<(ConfigLayer, Vec<Warning>)>) {
     while rx.recv().is_ok() {
         loop {
             match rx.recv_timeout(DEBOUNCE) {

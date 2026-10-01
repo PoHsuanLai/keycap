@@ -3,7 +3,7 @@
 
 use super::discover::Hotplug;
 use super::waker::Waker;
-use crate::Layer;
+use crate::ConfigLayer;
 use keycap_protocol::{ProfileName, Warning};
 use rustix::fd::BorrowedFd;
 use std::io;
@@ -32,7 +32,7 @@ pub(crate) enum Request {
 pub(crate) enum Message {
     Request(Request),
     /// The system config file was re-read.
-    System(Layer, Vec<Warning>),
+    System(ConfigLayer, Vec<Warning>),
     Hotplug(Hotplug),
 }
 
@@ -128,7 +128,7 @@ mod tests {
             Message::System(layer, warnings)
         })
         .unwrap();
-        tx.send((Layer::default(), Vec::new())).unwrap();
+        tx.send((ConfigLayer::default(), Vec::new())).unwrap();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
         let got = loop {
             let got = mailbox.drain();
@@ -137,6 +137,6 @@ mod tests {
             }
             std::thread::sleep(std::time::Duration::from_millis(5));
         };
-        assert_eq!(got, [Message::System(Layer::default(), Vec::new())]);
+        assert_eq!(got, [Message::System(ConfigLayer::default(), Vec::new())]);
     }
 }

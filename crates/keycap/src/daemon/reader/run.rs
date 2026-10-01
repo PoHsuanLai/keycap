@@ -6,7 +6,8 @@ use crate::daemon::clock;
 use crate::daemon::devices::{drive, poll_gates, status_of, summary};
 use crate::daemon::discover::scan;
 use crate::daemon::evdev::{End, drain};
-use crate::daemon::route::{Routed, route};
+use crate::daemon::readiness::Readiness;
+use crate::daemon::route::{Routed, Skip, route};
 use crate::daemon::socket::ToSocket;
 use crate::daemon::uinput::Emitter;
 use rustix::event::{PollFd, PollFlags, poll};
@@ -26,7 +27,9 @@ pub(super) fn poll_timeout(wake: Option<Duration>, watchdog: Option<Duration>) -
 
 /// What a poll found readable.
 struct Ready {
-    mail: bool,
+    mail: Readiness,
+    /// The desktop set a LED on the virtual keyboard.
+    leds: Readiness,
     devices: Vec<DeviceId>,
 }
 
@@ -53,10 +56,13 @@ impl<E: Emitter> Reader<E> {
         }
         let timeout = poll_timeout(self.devices.next_wake(clock::now()), self.watchdog);
         let ready = self.wait(timeout)?;
-        if ready.mail {
+        if ready.mail == Readiness::Readable {
             for message in self.mailbox.drain() {
                 self.handle(message);
             }
+        }
+        if ready.leds == Readiness::Readable {
+            self.forward_leds();
         }
         for id in ready.devices {
             self.read(id);
@@ -76,20 +82,26 @@ impl<E: Emitter> Reader<E> {
             tv_nsec: i64::from(timeout.subsec_nanos()),
         };
         let mail = self.mailbox.fd();
+        let led = self.emitter.led_fd();
         let nodes: Vec<_> = self.nodes.fds().collect();
         let mut fds = vec![PollFd::new(&mail, PollFlags::IN)];
+        let led_slot = led.as_ref().map(|fd| {
+            fds.push(PollFd::new(fd, PollFlags::IN));
+            fds.len() - 1
+        });
+        let first_node = fds.len();
         fds.extend(nodes.iter().map(|(_, fd)| PollFd::new(*fd, PollFlags::IN)));
         match poll(&mut fds, Some(&timespec)) {
             Ok(_) | Err(Errno::INTR) => {}
             Err(e) => return Err(format!("poll failed: {e}")),
         }
-        let hit = |f: &PollFd<'_>| !f.revents().is_empty();
         Ok(Ready {
-            mail: hit(&fds[0]),
+            mail: Readiness::of(&fds[0]),
+            leds: led_slot.map_or(Readiness::Quiet, |slot| Readiness::of(&fds[slot])),
             devices: nodes
                 .iter()
-                .zip(&fds[1..])
-                .filter(|(_, f)| hit(f))
+                .zip(&fds[first_node..])
+                .filter(|(_, f)| Readiness::of(f) == Readiness::Readable)
                 .map(|((id, _), _)| *id)
                 .collect(),
         })
@@ -103,7 +115,15 @@ impl<E: Emitter> Reader<E> {
         };
         let drained = drain(fd);
         if let Some(layout) = self.devices.active(id) {
-            for routed in route(id, layout, &drained.events, clock::now()) {
+            let skip = match self.discarding.remove(&id) {
+                true => Skip::UntilSync,
+                false => Skip::Nothing,
+            };
+            let (routed, skip) = route(id, layout, &drained.events, clock::now(), skip);
+            if skip == Skip::UntilSync {
+                self.discarding.insert(id);
+            }
+            for routed in routed {
                 self.apply(routed);
             }
         }
@@ -115,7 +135,17 @@ impl<E: Emitter> Reader<E> {
     pub(super) fn apply(&mut self, routed: Routed) {
         match routed {
             Routed::Remap(input) => self.feed(input),
-            Routed::Pass(events) => self.write(&events),
+            Routed::Pass { device, events } => {
+                self.buttons = std::mem::take(&mut self.buttons).observe(device, &events);
+                self.write(&events);
+            }
+            Routed::Resync(device) => {
+                eprintln!(
+                    "keycap: device {} overflowed its queue; releasing what it held",
+                    device.0
+                );
+                self.reset_device(device);
+            }
         }
     }
 
@@ -133,7 +163,8 @@ impl<E: Emitter> Reader<E> {
 
     /// A keyboard is gone: whatever it held down is released, and its node closed.
     pub(super) fn lose(&mut self, id: DeviceId) {
-        self.feed(crate::Input::DeviceGone(id));
+        self.discarding.remove(&id);
+        self.reset_device(id);
         let (devices, effects) = std::mem::take(&mut self.devices).gone(id);
         self.devices = drive(devices, effects, &mut self.nodes, clock::now());
     }

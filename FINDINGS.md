@@ -31,18 +31,60 @@ test's own uid and a fake `seat0` file; the real `ACTIVE_UID=` line, a user swit
 Bluetooth-era session change are covered by the parser table only.
 
 **The systemd watchdog loop is proven against a datagram socket, not systemd.** The reader pets
-`WATCHDOG=1` on every pass and sleeps at most half the interval; whether `WatchdogSec=1` holds
-under load (a burst of events, a slow uinput write) is a manual check.
+`WATCHDOG=1` on every pass and sleeps at most half the interval (one second under
+`WatchdogSec=2`); whether that holds under load (a burst of events, a slow uinput write) is a
+manual check.
 
-**A uinput write that fails is logged and dropped.** A failed or short write to the virtual
-device leaves the remapper's `Held` records believing keys are down that never reached the
-wire. Whether `/dev/uinput` can fail mid-stream in practice (nonblocking `EAGAIN` under load) is
-unknown; a pause or `ReleaseAll` releases the records either way.
+**Combo devices with a touchpad lose their pointer while grabbed.** A receiver that is a
+keyboard and a touchpad in one node (EV_ABS: absolute axes, multitouch slots, `BTN_TOUCH`,
+`BTN_TOOL_*`) is grabbed whole, and the virtual keyboard forwards only EV_KEY and EV_REL, so its
+pointer stops working for as long as the grab holds. Options, none chosen: (1) leave such a
+device ungrabbed (`Eligibility::NotKeyboard` when EV_ABS is present), which keeps the pointer
+and loses the mapping on that keyboard; (2) register the device's axes on the virtual device
+(`UI_ABS_SETUP` per axis, slots and tool bits copied from the source), which needs one virtual
+pointer per source because the axis ranges differ and a keyboard device with a touchscreen's
+axes confuses libinput's device classification; (3) a second virtual device per such source
+that carries only the pointer half, with the keyboard half staying on "keycap keyboard".
+Option 3 is the faithful one and the largest. Unverified on hardware which Apple or third-party
+receivers expose EV_ABS on the keyboard node.
+
+**LEDs are copied only as the desktop changes them.** The compositor sets Caps Lock on the
+virtual keyboard and keycap writes the same change to every grabbed physical keyboard. A
+keyboard grabbed while a lock is already on is not brought in line until the next change; the
+nodes are opened read-write for this, which needs the unit's `input` group to have write access.
+Unverified on hardware.
 
 **Manual acceptance, waiting for the user and hardware.** The list is in the README, "Manual
 checks".
 
 ## Standing facts
+
+**A key held across a `SYN_DROPPED` is re-pressed only on its next press.** When a device's
+queue overflows, keycap discards events up to the next `SYN_REPORT` and treats the device as
+gone for the remapper: everything written for it is released and its mouse buttons are
+released. A key still down on the device keeps no record, so its release writes nothing and
+holding it produces no repeat until it is pressed again. The alternative, re-reading
+`EVIOCGKEY` and replaying presses, would type keys the user pressed before the overflow.
+
+**A failed uinput write replaces the virtual device.** A failed or short write leaves the
+remapper's `Held` records out of step with the wire, so keycap destroys "keycap keyboard",
+creates a fresh one (every key up) and resets the held state without writing. If the new device
+cannot be made, the keyboards are given back as for the escape chord; `Resume` regrabs. The
+batch that failed is lost.
+
+**Virtual devices are never grabbed.** Every node under `/sys/devices/virtual/input` is left
+alone, so another remapper's output is not fed back through keycap. A keyboard that registers
+there on purpose (a remote-desktop input, a virtual keyboard to be remapped) is not remapped.
+Bluetooth keyboards register under `uhid` and are not affected.
+
+**A grab that succeeds is checked again.** A key that went down between the gate's check and
+the grab reached the desktop but its release would not, so keycap re-reads `EVIOCGKEY` after
+`EVIOCGRAB`, gives the grab back if any key is down and returns the keyboard to the gate.
+
+**The socket bounds every client.** 32 clients in all and 8 per uid, 16 messages per client and
+16 accepts per pass, and a pause of one second after `accept` fails for any reason but
+`EAGAIN` (`EMFILE` leaves the connection pending, which would spin). An observer that sends a
+request is disconnected; log lines about clients are limited to one per uid per minute.
 
 **The grab is released by the kernel when the fd closes.** A crash, a panic (`panic = "abort"`)
 or `kill -9` closes every fd, so the keyboard returns to the kernel at once; systemd restarts

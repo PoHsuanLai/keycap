@@ -1,7 +1,7 @@
-//! The chord's transition.
+//! The chord's transitions.
 
-use super::model::{Escape, EscapeChord, Level};
-use crate::event::{Edge, Physical};
+use super::model::{Escape, EscapeChord};
+use crate::event::{DeviceId, Edge, Physical};
 use crate::key::Key;
 
 impl Escape {
@@ -10,30 +10,37 @@ impl Escape {
         Self::default()
     }
 
-    /// Track `key`'s `edge`. The chord fires only when Esc is the last of the three pressed;
-    /// repeats change nothing.
-    pub fn step(mut self, key: Physical, edge: Edge) -> (Self, EscapeChord) {
-        let level = match edge {
-            Edge::Press => Level::Down,
-            Edge::Release => Level::Up,
+    /// Track `key`'s `edge` on `device`. The chord fires only when Esc is the last of the three
+    /// pressed, with each Shift down on some keyboard; repeats change nothing.
+    pub fn step(mut self, device: DeviceId, key: Physical, edge: Edge) -> (Self, EscapeChord) {
+        if !matches!(key.0, Key::LEFTSHIFT | Key::RIGHTSHIFT | Key::ESC) {
+            return (self, EscapeChord::Quiet);
+        }
+        match edge {
+            Edge::Press => self.down.insert((device, key)),
+            Edge::Release => self.down.remove(&(device, key)),
             Edge::Repeat => return (self, EscapeChord::Quiet),
         };
-        let slot = match key.0 {
-            Key::LEFTSHIFT => &mut self.left_shift,
-            Key::RIGHTSHIFT => &mut self.right_shift,
-            Key::ESC => &mut self.esc,
-            _ => return (self, EscapeChord::Quiet),
+        let fired = edge == Edge::Press
+            && key.0 == Key::ESC
+            && self.is_down(Key::LEFTSHIFT)
+            && self.is_down(Key::RIGHTSHIFT);
+        let chord = if fired {
+            EscapeChord::Fired
+        } else {
+            EscapeChord::Quiet
         };
-        *slot = level;
-        let shifts = (self.left_shift, self.right_shift) == (Level::Down, Level::Down);
-        let fired = shifts && key.0 == Key::ESC && level == Level::Down;
-        (
-            self,
-            if fired {
-                EscapeChord::Fired
-            } else {
-                EscapeChord::Quiet
-            },
-        )
+        (self, chord)
+    }
+
+    /// Forget every key `device` had down.
+    pub fn device_gone(mut self, device: DeviceId) -> Self {
+        self.down.retain(|(d, _)| *d != device);
+        self
+    }
+
+    /// Whether `key` is down on some keyboard.
+    fn is_down(&self, key: Key) -> bool {
+        self.down.iter().any(|(_, physical)| physical.0 == key)
     }
 }

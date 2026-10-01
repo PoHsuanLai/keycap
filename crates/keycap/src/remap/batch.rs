@@ -1,6 +1,6 @@
 //! `Batch`: `Held` threaded through the transitions of one input, with the events they write.
 
-use super::model::Out;
+use super::model::RemapOut;
 use crate::event::OutEvent;
 use crate::held::Held;
 
@@ -26,14 +26,14 @@ impl Batch {
         Self { held, events }
     }
 
-    /// The held keys and the `Out`s: one `Write` ended by `Sync`, or none when nothing was
+    /// The held keys and the `RemapOut`s: one `Write` ended by `Sync`, or none when nothing was
     /// written.
-    pub(super) fn finish(self) -> (Held, Vec<Out>) {
+    pub(super) fn finish(self) -> (Held, Vec<RemapOut>) {
         let mut events = self.events;
         if events.is_empty() {
             return (self.held, Vec::new());
         }
         events.push(OutEvent::Sync);
-        (self.held, vec![Out::Write(events)])
+        (self.held, vec![RemapOut::Write(events)])
     }
 }

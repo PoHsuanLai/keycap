@@ -7,7 +7,7 @@ mod profiles;
 #[cfg(test)]
 mod tests;
 
-pub use action::{Action, Hold};
+pub use action::{Hold, RuleAction};
 pub use chord::{ChordError, Stroke, Trigger};
 pub use model::{ModMap, Profile};
 pub use profiles::Profiles;

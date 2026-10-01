@@ -13,7 +13,7 @@ use crate::time::Mono;
 
 /// What the daemon feeds the remapper.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Input {
+pub enum RemapInput {
     /// A key event from a grabbed keyboard; `layout` is that keyboard's.
     Key {
         device: DeviceId,
@@ -34,7 +34,7 @@ pub enum Input {
 
 /// What the remapper asks the daemon to do.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Out {
+pub enum RemapOut {
     /// Events for the virtual keyboard, always ending with one `OutEvent::Sync`, never empty.
     Write(Vec<OutEvent>),
     /// Give every keyboard back to the kernel.
@@ -48,7 +48,7 @@ pub enum Out {
 pub enum CoreStatus {
     #[default]
     Running,
-    /// The escape chord fired: keys yield nothing until `Input::Resume`.
+    /// The escape chord fired: keys yield nothing until `RemapInput::Resume`.
     Paused,
 }
 

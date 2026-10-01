@@ -180,7 +180,9 @@ impl Wire {
 #[test]
 fn random_sequences_never_stick_or_double_write() {
     const DEVICES: [DeviceId; 2] = [D0, D1];
-    // Logical keys 1..=4 overlap across physical keys; 10.. are private to a physical key.
+    // The shared pool overlaps across physical keys and holds Alt (56) and Super (125), whose
+    // releases may carry a neutral tap; 10.. are private to a physical key.
+    const POOL: [u16; 4] = [1, 2, 56, 125];
     for seed in 1..=300u64 {
         let mut rng = Xorshift(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
         let mut held = Held::new();
@@ -191,7 +193,7 @@ fn random_sequences_never_stick_or_double_write() {
             let phys = rng.below(6) as u16;
             let keys = |rng: &mut Xorshift| -> Vec<Logical> {
                 (0..rng.below(4))
-                    .map(|_| l(1 + rng.below(4) as u16))
+                    .map(|_| l(POOL[rng.below(4) as usize]))
                     .collect()
             };
             let (next, events) = match rng.below(16) {
@@ -202,7 +204,7 @@ fn random_sequences_never_stick_or_double_write() {
                             if rng.below(3) == 0 {
                                 l(10 + phys)
                             } else {
-                                l(1 + rng.below(4) as u16)
+                                l(POOL[rng.below(4) as usize])
                             }
                         })
                         .collect();
@@ -222,6 +224,10 @@ fn random_sequences_never_stick_or_double_write() {
             assert!(
                 held.lifts.values().flatten().all(|&key| held.holds(key)),
                 "{context}: a lift outlived its key"
+            );
+            assert!(
+                held.bare.keys().all(|&key| held.is_down(key)),
+                "{context}: a bare key is not down"
             );
             let held_down: BTreeSet<Logical> = held.down().collect();
             assert_eq!(

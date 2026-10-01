@@ -33,15 +33,27 @@ pub(crate) fn peer_of(uid: u32, active_uid: Option<u32>) -> Peer {
     }
 }
 
+/// Why a client's message was not acted on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Refusal {
+    /// Every message a client can send is a request, and an observer has no business making
+    /// one: it only listens.
+    NotSeatOwner,
+}
+
 /// What `peer` asking for `message` becomes: only the seat owner's messages are acted on.
-pub(crate) fn request_of(peer: Peer, client: ClientId, message: ToDaemon) -> Option<Request> {
+pub(crate) fn request_of(
+    peer: Peer,
+    client: ClientId,
+    message: ToDaemon,
+) -> Result<Request, Refusal> {
     match (peer, message) {
-        (Peer::Observer, _) => None,
-        (Peer::SeatOwner, ToDaemon::Focus { profile }) => Some(Request::Focus(profile)),
+        (Peer::Observer, _) => Err(Refusal::NotSeatOwner),
+        (Peer::SeatOwner, ToDaemon::Focus { profile }) => Ok(Request::Focus(profile)),
         (Peer::SeatOwner, ToDaemon::UserConfig { toml }) => {
-            Some(Request::UserConfig { client, toml })
+            Ok(Request::UserConfig { client, toml })
         }
-        (Peer::SeatOwner, ToDaemon::Resume) => Some(Request::Resume),
+        (Peer::SeatOwner, ToDaemon::Resume) => Ok(Request::Resume),
     }
 }
 
@@ -170,13 +182,13 @@ mod tests {
                 "owner focus",
                 Peer::SeatOwner,
                 focus(),
-                Some(Request::Focus(profile.clone())),
+                Ok(Request::Focus(profile.clone())),
             ),
             (
                 "owner config",
                 Peer::SeatOwner,
                 config(),
-                Some(Request::UserConfig {
+                Ok(Request::UserConfig {
                     client,
                     toml: "x = 1".to_owned(),
                 }),
@@ -185,11 +197,26 @@ mod tests {
                 "owner resume",
                 Peer::SeatOwner,
                 ToDaemon::Resume,
-                Some(Request::Resume),
+                Ok(Request::Resume),
             ),
-            ("observer focus", Peer::Observer, focus(), None),
-            ("observer config", Peer::Observer, config(), None),
-            ("observer resume", Peer::Observer, ToDaemon::Resume, None),
+            (
+                "observer focus",
+                Peer::Observer,
+                focus(),
+                Err(Refusal::NotSeatOwner),
+            ),
+            (
+                "observer config",
+                Peer::Observer,
+                config(),
+                Err(Refusal::NotSeatOwner),
+            ),
+            (
+                "observer resume",
+                Peer::Observer,
+                ToDaemon::Resume,
+                Err(Refusal::NotSeatOwner),
+            ),
         ];
         for (name, peer, message, want) in cases {
             assert_eq!(request_of(peer, client, message), want, "{name}");

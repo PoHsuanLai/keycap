@@ -1,15 +1,15 @@
 //! The config layers in force, and the profiles they resolve to.
 
-use crate::{Layer, Profiles, Source, builtin, resolve};
+use crate::{ConfigLayer, ConfigSource, Profiles, builtin, resolve};
 use keycap_protocol::Warning;
 
 /// The three layers, earliest first: compiled-in defaults, the system file, the seat owner's
 /// settings. Each starts empty except the defaults.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Layers {
-    builtin: Layer,
-    system: Layer,
-    user: Layer,
+    builtin: ConfigLayer,
+    system: ConfigLayer,
+    user: ConfigLayer,
 }
 
 impl Layers {
@@ -17,13 +17,13 @@ impl Layers {
     pub(crate) fn builtin_only() -> Self {
         Self {
             builtin: builtin().0,
-            system: Layer::default(),
-            user: Layer::default(),
+            system: ConfigLayer::default(),
+            user: ConfigLayer::default(),
         }
     }
 
     /// These layers with the system file's new contents.
-    pub(crate) fn with_system(&self, system: Layer) -> Self {
+    pub(crate) fn with_system(&self, system: ConfigLayer) -> Self {
         Self {
             system,
             ..self.clone()
@@ -31,7 +31,7 @@ impl Layers {
     }
 
     /// These layers with the seat owner's new settings.
-    pub(crate) fn with_user(&self, user: Layer) -> Self {
+    pub(crate) fn with_user(&self, user: ConfigLayer) -> Self {
         Self {
             user,
             ..self.clone()
@@ -40,7 +40,7 @@ impl Layers {
 
     /// The seat owner has gone: their settings no longer apply.
     pub(crate) fn without_user(&self) -> Self {
-        self.with_user(Layer::default())
+        self.with_user(ConfigLayer::default())
     }
 
     /// The profiles the layers fold into, and what the folding found wrong.
@@ -50,8 +50,8 @@ impl Layers {
 }
 
 /// The seat owner's settings text as a layer, with the problems found reading it.
-pub(crate) fn parse_user(toml: &str) -> (Layer, Vec<Warning>) {
-    Layer::parse(toml, Source::User)
+pub(crate) fn parse_user(toml: &str) -> (ConfigLayer, Vec<Warning>) {
+    ConfigLayer::parse(toml, ConfigSource::User)
 }
 
 #[cfg(test)]
@@ -59,8 +59,8 @@ mod tests {
     use super::*;
     use keycap_protocol::ProfileName;
 
-    fn layer(text: &str, source: Source) -> Layer {
-        let (layer, warnings) = Layer::parse(text, source);
+    fn layer(text: &str, source: ConfigSource) -> ConfigLayer {
+        let (layer, warnings) = ConfigLayer::parse(text, source);
         assert_eq!(warnings, []);
         layer
     }
@@ -73,10 +73,10 @@ mod tests {
 
     #[test]
     fn later_layers_override_and_clearing_the_user_restores_the_system() {
-        let system = layer(TERMINAL, Source::System);
+        let system = layer(TERMINAL, ConfigSource::System);
         let user = layer(
             "[profile.work]\nmodmap = { command = \"super\" }\n",
-            Source::User,
+            ConfigSource::User,
         );
         let command_of = |layers: &Layers| {
             let (profiles, _) = layers.resolve();

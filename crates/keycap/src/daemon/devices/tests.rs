@@ -131,6 +131,43 @@ fn a_key_held_at_the_start_keeps_the_keyboard_waiting_until_it_is_up() {
 }
 
 #[test]
+fn a_key_that_goes_down_as_the_grab_succeeds_gives_the_grab_back_and_waits_for_its_release() {
+    let mut nodes = FakeGrabber::default();
+    nodes.press_key_on_grab(A);
+    let mut rig = Rig::new(nodes);
+    rig.appear(identity(3, 0x046d), at(0));
+    assert_eq!(rig.nodes.held(), [], "the grab was given back");
+    assert_eq!(rig.grabs(), [Grab::WaitingForRelease]);
+    assert_eq!(rig.devices.active(A), None, "its events are not remapped");
+    assert_eq!(
+        rig.devices.next_wake(at(0)),
+        Some(ms(50)),
+        "back at the gate, looked at again soon and without a backoff"
+    );
+
+    rig.poll(at(50));
+    assert_eq!(rig.nodes.held(), [], "the key is still down");
+
+    rig.nodes.release_keys(A);
+    rig.poll(at(100));
+    assert_eq!(rig.grabs(), [Grab::Active]);
+    assert_eq!(rig.nodes.held(), [A]);
+}
+
+#[test]
+fn grabbed_lists_only_the_keyboards_being_remapped() {
+    let mut nodes = FakeGrabber::with_busy([B]);
+    nodes.press_key(A);
+    let mut rig = Rig::new(nodes);
+    rig.appear(identity(3, 0x05ac), at(0));
+    rig.appear(identity(4, 0x046d), at(0));
+    assert_eq!(rig.devices.grabbed(), [], "one waits on a key, one is busy");
+    rig.nodes.release_keys(A);
+    rig.poll(at(50));
+    assert_eq!(rig.devices.grabbed(), [A]);
+}
+
+#[test]
 fn a_busy_keyboard_is_a_conflict_retried_on_a_doubling_backoff_and_never_hammered() {
     let mut rig = Rig::new(FakeGrabber::with_busy([A]));
     rig.appear(identity(3, 0x046d), at(0));

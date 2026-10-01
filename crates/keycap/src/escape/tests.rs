@@ -1,11 +1,14 @@
 use super::*;
-use crate::event::{Edge, Physical};
+use crate::event::{DeviceId, Edge, Physical};
 use crate::key::Key;
 
 const LS: Physical = Physical(Key::LEFTSHIFT);
 const RS: Physical = Physical(Key::RIGHTSHIFT);
 const ESC: Physical = Physical(Key::ESC);
 const A: Physical = Physical(Key::from_code(30));
+
+const D0: DeviceId = DeviceId(0);
+const D1: DeviceId = DeviceId(1);
 
 use Edge::{Press as P, Release as R, Repeat as T};
 use EscapeChord::{Fired as F, Quiet as Q};
@@ -61,9 +64,33 @@ fn escape_script_table() {
     for (name, script) in cases {
         let mut state = Escape::new();
         for (i, &(key, edge, want)) in script.iter().enumerate() {
-            let (next, got) = state.step(key, edge);
+            let (next, got) = state.step(D0, key, edge);
             assert_eq!(got, want, "{name}: step {i}");
             state = next;
         }
     }
+}
+
+#[test]
+fn shifts_on_two_keyboards_arm_the_chord() {
+    let (state, _) = Escape::new().step(D0, LS, P);
+    let (state, _) = state.step(D1, RS, P);
+    assert_eq!(state.step(D1, ESC, P).1, F);
+}
+
+#[test]
+fn a_vanished_keyboards_keys_no_longer_count() {
+    let (state, _) = Escape::new().step(D0, LS, P);
+    let (state, _) = state.step(D1, RS, P);
+    let state = state.device_gone(D0);
+    assert_eq!(state.step(D1, ESC, P).1, Q);
+}
+
+#[test]
+fn a_release_on_one_keyboard_leaves_the_other_keyboards_shift_down() {
+    let (state, _) = Escape::new().step(D0, LS, P);
+    let (state, _) = state.step(D1, LS, P);
+    let (state, _) = state.step(D1, RS, P);
+    let (state, _) = state.step(D0, LS, R);
+    assert_eq!(state.step(D1, ESC, P).1, F, "D1's left shift is still down");
 }

@@ -9,16 +9,17 @@ use super::sdnotify::Notifier;
 use super::settings::Layers;
 use super::socket::{self, SeatFile, bind, socket_path};
 use super::uinput::Device;
+use crate::CoreStatus;
 use crate::config::{self, system};
-use crate::{Backoff, CoreStatus};
 use std::path::Path;
 use std::sync::mpsc;
+use std::time::Duration;
 
 /// Runs the daemon: returns only when setup or the reader's `poll` fails.
 pub(crate) fn run(env: Env) -> Result<(), String> {
     let notifier =
         Notifier::new(env.notify_socket.as_deref()).map_err(|e| format!("notify socket: {e}"))?;
-    let emitter = create_output();
+    let emitter = create_output()?;
     let (inbox, mailbox) = mailbox().map_err(|e| format!("inbox: {e}"))?;
     let path = socket_path(&env.runtime_dir);
     let listener = bind(&path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -45,20 +46,50 @@ pub(crate) fn run(env: Env) -> Result<(), String> {
     .run()
 }
 
-/// Creates the virtual keyboard, retrying with backoff while `/dev/uinput` is not yet
-/// accessible (early boot, a udev rule not yet applied). Nothing can be remapped without it, so
-/// there is nothing else to do meanwhile.
-fn create_output() -> Device {
-    let mut backoff = Backoff::DEVICE;
+/// How long `/dev/uinput` is waited for before the daemon gives up. The unit is `Type=notify`
+/// and ordered before the display manager, so a wait with no end holds the whole boot.
+const UINPUT_PATIENCE: Duration = Duration::from_secs(5);
+/// How long between attempts.
+const UINPUT_RETRY: Duration = Duration::from_millis(500);
+
+/// What to do after a failed attempt to create the virtual keyboard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Patience {
+    TryAgainAfter(Duration),
+    GiveUp,
+}
+
+/// The decision after `waited` in total: try again until `UINPUT_PATIENCE` is used up.
+fn patience(waited: Duration) -> Patience {
+    if waited >= UINPUT_PATIENCE {
+        Patience::GiveUp
+    } else {
+        Patience::TryAgainAfter(UINPUT_RETRY)
+    }
+}
+
+/// Creates the virtual keyboard, retrying for a few seconds while `/dev/uinput` is not yet
+/// accessible (early boot, a udev rule not yet applied). Nothing can be remapped without it,
+/// so past that the daemon exits non-zero and systemd's restart policy takes over.
+fn create_output() -> Result<Device, String> {
+    let mut waited = Duration::ZERO;
     loop {
         match Device::create() {
-            Ok(device) => return device,
-            Err(e) => {
-                let (delay, next) = backoff.step();
-                eprintln!("keycap: {e}; retrying in {}s", delay.as_secs());
-                std::thread::sleep(delay);
-                backoff = next;
-            }
+            Ok(device) => return Ok(device),
+            Err(e) => match patience(waited) {
+                Patience::GiveUp => {
+                    return Err(format!(
+                        "no virtual keyboard after {}s: {e} (is the uinput module loaded and \
+                         /dev/uinput writable by the keycap unit?)",
+                        waited.as_secs()
+                    ));
+                }
+                Patience::TryAgainAfter(delay) => {
+                    eprintln!("keycap: {e}; retrying in {}ms", delay.as_millis());
+                    std::thread::sleep(delay);
+                    waited += delay;
+                }
+            },
         }
     }
 }
@@ -97,5 +128,35 @@ fn load_config(env: &Env, inbox: &Inbox) -> (Layers, Option<notify::RecommendedW
             eprintln!("keycap: {e}");
             (layers, None)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn patience_runs_out_after_five_seconds_of_waiting() {
+        let ms = Duration::from_millis;
+        let cases: &[(&str, Duration, Patience)] = &[
+            ("first failure", ms(0), Patience::TryAgainAfter(ms(500))),
+            (
+                "most of the way",
+                ms(4_500),
+                Patience::TryAgainAfter(ms(500)),
+            ),
+            ("just under", ms(4_999), Patience::TryAgainAfter(ms(500))),
+            ("used up", ms(5_000), Patience::GiveUp),
+            ("long past", ms(90_000), Patience::GiveUp),
+        ];
+        for &(name, waited, want) in cases {
+            assert_eq!(patience(waited), want, "{name}");
+        }
+    }
+
+    #[test]
+    fn the_whole_wait_fits_inside_the_units_start_timeout() {
+        // dist/keycap.service sets TimeoutStartSec=10.
+        assert!(UINPUT_PATIENCE + UINPUT_RETRY < Duration::from_secs(10));
     }
 }

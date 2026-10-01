@@ -1,8 +1,8 @@
 //! `Remapper::step`: one input in, the next state and what to write out.
 
 use super::batch::Batch;
-use super::model::{CoreStatus, Input, Out, Remapper};
-use crate::escape::EscapeChord;
+use super::model::{CoreStatus, RemapInput, RemapOut, Remapper};
+use crate::escape::{Escape, EscapeChord};
 use crate::event::{Edge, OutEvent};
 use crate::held::Held;
 use crate::profile::Profiles;
@@ -10,16 +10,16 @@ use crate::profile::Profiles;
 impl Remapper {
     /// Feed one input. Keys are tracked by the escape chord first; while `Paused` they yield
     /// nothing. Repeats are dropped, since the compositor repeats a held virtual key.
-    pub fn step(self, input: Input, profiles: &Profiles) -> (Self, Vec<Out>) {
+    pub fn step(self, input: RemapInput, profiles: &Profiles) -> (Self, Vec<RemapOut>) {
         match input {
-            Input::Key {
+            RemapInput::Key {
                 device,
                 layout,
                 key,
                 edge,
                 ..
             } => {
-                let (escape, chord) = self.escape.step(key, edge);
+                let (escape, chord) = self.escape.step(device, key, edge);
                 let this = Remapper { escape, ..self };
                 let at = (device, key);
                 match (this.status, chord, edge) {
@@ -34,30 +34,37 @@ impl Remapper {
                     }
                 }
             }
-            Input::Focus(name) => (
+            RemapInput::Focus(name) => (
                 Remapper {
                     focus: name,
                     ..self
                 },
                 Vec::new(),
             ),
-            Input::DeviceGone(device) => self.settle(|held| held.device_gone(device)),
-            Input::ReleaseAll => self.settle(Held::drain),
-            Input::Resume => (
+            RemapInput::DeviceGone(device) => {
+                let escape = self.escape.device_gone(device);
+                Remapper { escape, ..self }.settle(|held| held.device_gone(device))
+            }
+            RemapInput::ReleaseAll => {
+                let escape = Escape::new();
+                Remapper { escape, ..self }.settle(Held::drain)
+            }
+            RemapInput::Resume => (
                 Remapper {
                     status: CoreStatus::Running,
+                    escape: Escape::new(),
                     ..self
                 },
-                vec![Out::Status(CoreStatus::Running)],
+                vec![RemapOut::Status(CoreStatus::Running)],
             ),
         }
     }
 
-    /// Run one `Held` transition and turn what it wrote into `Out`s.
+    /// Run one `Held` transition and turn what it wrote into `RemapOut`s.
     pub(super) fn settle(
         mut self,
         step: impl FnOnce(Held) -> (Held, Vec<OutEvent>),
-    ) -> (Self, Vec<Out>) {
+    ) -> (Self, Vec<RemapOut>) {
         let (held, outs) = Batch::new(std::mem::take(&mut self.held))
             .then(step)
             .finish();
@@ -66,9 +73,9 @@ impl Remapper {
 
     /// Release everything, hand the keyboards back and stop mapping. The Esc press itself is
     /// never written.
-    fn fire_escape(self) -> (Self, Vec<Out>) {
+    fn fire_escape(self) -> (Self, Vec<RemapOut>) {
         let (this, mut outs) = self.settle(Held::drain);
-        outs.extend([Out::ReleaseGrabs, Out::Status(CoreStatus::Paused)]);
+        outs.extend([RemapOut::ReleaseGrabs, RemapOut::Status(CoreStatus::Paused)]);
         (
             Remapper {
                 status: CoreStatus::Paused,

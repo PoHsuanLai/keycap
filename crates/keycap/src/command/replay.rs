@@ -3,22 +3,22 @@
 
 use super::script::{Step, parse};
 use crate::daemon::settings::{Layers, parse_user};
-use crate::{CoreStatus, Edge, Out, OutEvent, Profiles, Remapper};
+use crate::{CoreStatus, Edge, OutEvent, Profiles, RemapOut, Remapper};
 use std::path::Path;
 
 /// The writes and requests of one step as text: `+key` and `-key` for presses and releases,
 /// `~key` for a repeat, `SYN` for the sync, separated by spaces within one write and `; `
 /// between outputs.
-pub(super) fn render(outs: &[Out]) -> String {
-    let one = |out: &Out| match out {
-        Out::Write(events) => events
+pub(super) fn render(outs: &[RemapOut]) -> String {
+    let one = |out: &RemapOut| match out {
+        RemapOut::Write(events) => events
             .iter()
             .map(render_event)
             .collect::<Vec<_>>()
             .join(" "),
-        Out::ReleaseGrabs => "release-grabs".to_owned(),
-        Out::Status(CoreStatus::Running) => "status running".to_owned(),
-        Out::Status(CoreStatus::Paused) => "status paused".to_owned(),
+        RemapOut::ReleaseGrabs => "release-grabs".to_owned(),
+        RemapOut::Status(CoreStatus::Running) => "status running".to_owned(),
+        RemapOut::Status(CoreStatus::Paused) => "status paused".to_owned(),
     };
     outs.iter().map(one).collect::<Vec<_>>().join("; ")
 }
@@ -171,11 +171,11 @@ mod tests {
             key: Logical(Key::named(name).unwrap()),
             edge,
         };
-        let cases: &[(&str, Vec<Out>, &str)] = &[
+        let cases: &[(&str, Vec<RemapOut>, &str)] = &[
             ("nothing", vec![], ""),
             (
                 "press release repeat",
-                vec![Out::Write(vec![
+                vec![RemapOut::Write(vec![
                     key("a", Edge::Press),
                     key("a", Edge::Repeat),
                     key("a", Edge::Release),
@@ -186,10 +186,10 @@ mod tests {
             (
                 "several outputs",
                 vec![
-                    Out::Write(vec![OutEvent::Sync]),
-                    Out::ReleaseGrabs,
-                    Out::Status(CoreStatus::Paused),
-                    Out::Status(CoreStatus::Running),
+                    RemapOut::Write(vec![OutEvent::Sync]),
+                    RemapOut::ReleaseGrabs,
+                    RemapOut::Status(CoreStatus::Paused),
+                    RemapOut::Status(CoreStatus::Running),
                 ],
                 "SYN; release-grabs; status paused; status running",
             ),

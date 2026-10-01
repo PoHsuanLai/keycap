@@ -1,24 +1,24 @@
-//! What a matched rule writes: the three `Action`s as transitions of one `Batch`.
+//! What a matched rule writes: the three `RuleAction`s as transitions of one `Batch`.
 
 use super::batch::Batch;
 use crate::event::Logical;
 use crate::held::At;
-use crate::profile::{Action, Hold, Stroke};
+use crate::profile::{Hold, RuleAction, Stroke};
 use crate::role::{OutMod, OutMods};
 
 /// Apply `action` for the physical key `at`. `owner` is the held non-Shift role key that keeps a
 /// `WhileHeld` stroke's modifiers; without one the stroke behaves as `Restore`.
-pub(super) fn apply(batch: Batch, action: &Action, at: At, owner: Option<At>) -> Batch {
+pub(super) fn apply(batch: Batch, action: &RuleAction, at: At, owner: Option<At>) -> Batch {
     match (action, owner) {
-        (Action::Map(stroke, Hold::WhileHeld), Some(owner)) => {
+        (RuleAction::Map(stroke, Hold::WhileHeld), Some(owner)) => {
             while_held(batch, *stroke, at, owner)
         }
-        (Action::Map(stroke, _), _) => restore(batch, *stroke, at),
-        (Action::Sequence(strokes), _) => strokes
+        (RuleAction::Map(stroke, _), _) => restore(batch, *stroke, at),
+        (RuleAction::Sequence(strokes), _) => strokes
             .iter()
             .fold(batch, |batch, stroke| tap(batch, *stroke, at))
             .then(|held| held.unlift(at)),
-        (Action::Swallow, _) => batch,
+        (RuleAction::Swallow, _) => batch,
     }
 }
 

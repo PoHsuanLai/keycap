@@ -1,7 +1,7 @@
 use keycap_protocol::ProfileName;
 
 use super::*;
-use crate::config::{Layer, Source, resolve};
+use crate::config::{ConfigLayer, ConfigSource, resolve};
 use crate::event::{DeviceId, Edge, OutEvent, Physical};
 use crate::key::Key;
 use crate::layout::Layout;
@@ -22,7 +22,7 @@ rules = [
 "#;
 
 fn profiles() -> Profiles {
-    let (layer, warnings) = Layer::parse(CONFIG, Source::Builtin);
+    let (layer, warnings) = ConfigLayer::parse(CONFIG, ConfigSource::Builtin);
     assert!(warnings.is_empty(), "{warnings:?}");
     resolve(&[layer]).0
 }
@@ -31,8 +31,8 @@ fn key(name: &str) -> Physical {
     Physical(Key::named(name).expect("a key name"))
 }
 
-fn input(dev: u32, name: &str, edge: Edge) -> Input {
-    Input::Key {
+fn input(dev: u32, name: &str, edge: Edge) -> RemapInput {
+    RemapInput::Key {
         device: DeviceId(dev),
         layout: Layout::Apple,
         key: key(name),
@@ -41,7 +41,7 @@ fn input(dev: u32, name: &str, edge: Edge) -> Input {
     }
 }
 
-fn render(outs: &[Out]) -> String {
+fn render(outs: &[RemapOut]) -> String {
     let event = |e: &OutEvent| match e {
         OutEvent::Key { key, edge } => {
             let sign = if *edge == Edge::Press { '+' } else { '-' };
@@ -49,10 +49,10 @@ fn render(outs: &[Out]) -> String {
         }
         OutEvent::Sync => "SYN".to_owned(),
     };
-    let out = |o: &Out| match o {
-        Out::Write(events) => events.iter().map(event).collect::<Vec<_>>().join(" "),
-        Out::ReleaseGrabs => "GRABS-OFF".to_owned(),
-        Out::Status(status) => format!("{status:?}"),
+    let out = |o: &RemapOut| match o {
+        RemapOut::Write(events) => events.iter().map(event).collect::<Vec<_>>().join(" "),
+        RemapOut::ReleaseGrabs => "GRABS-OFF".to_owned(),
+        RemapOut::Status(status) => format!("{status:?}"),
     };
     outs.iter().map(out).collect::<Vec<_>>().join("; ")
 }
@@ -181,7 +181,7 @@ fn held_roles_follow_what_is_held() {
 #[test]
 fn device_gone_and_release_all_empty_the_held_roles() {
     let profiles = profiles();
-    for gone in [Input::DeviceGone(DeviceId(0)), Input::ReleaseAll] {
+    for gone in [RemapInput::DeviceGone(DeviceId(0)), RemapInput::ReleaseAll] {
         let (state, _) = run(&["+leftmeta", "+leftshift"]);
         let (state, outs) = state.step(gone, &profiles);
         assert_eq!(render(&outs), "-leftshift -leftctrl SYN");
@@ -197,9 +197,9 @@ fn the_remapper_is_paused_by_the_chord_and_running_again_after_resume() {
     let (state, out) = run(&["+leftshift", "+rightshift", "+esc"]);
     assert_eq!(out[2], "-leftshift SYN; GRABS-OFF; Paused");
     assert_eq!(state.status(), CoreStatus::Paused);
-    let (state, outs) = state.step(Input::Focus(ProfileName::default_profile()), &profiles);
+    let (state, outs) = state.step(RemapInput::Focus(ProfileName::default_profile()), &profiles);
     assert!(outs.is_empty());
-    let (state, outs) = state.step(Input::Resume, &profiles);
+    let (state, outs) = state.step(RemapInput::Resume, &profiles);
     assert_eq!(render(&outs), "Running");
     assert_eq!(state.status(), CoreStatus::Running);
 }

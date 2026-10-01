@@ -7,6 +7,7 @@ mod run;
 #[cfg(test)]
 mod tests;
 
+use super::buttons::Buttons;
 use super::devices::Devices;
 use super::discover::{DEV_INPUT, SYS_INPUT};
 use super::grabber::EvdevGrabber;
@@ -15,8 +16,9 @@ use super::sdnotify::Notifier;
 use super::settings::Layers;
 use super::socket::SocketHandle;
 use super::uinput::Emitter;
-use crate::{Profiles, Remapper};
+use crate::{DeviceId, Profiles, Remapper};
 use keycap_protocol::Status;
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -62,6 +64,11 @@ pub(crate) struct Reader<E> {
     profiles: Profiles,
     remapper: Remapper,
     devices: Devices,
+    /// The mouse buttons written for combo devices, released with the device.
+    buttons: Buttons,
+    /// Devices whose queue overflowed and whose events are discarded up to the next
+    /// `SYN_REPORT`.
+    discarding: BTreeSet<DeviceId>,
     /// The last status the socket thread was told.
     published: Status,
 }
@@ -85,6 +92,8 @@ impl<E: Emitter> Reader<E> {
             profiles,
             remapper,
             devices,
+            buttons: Buttons::default(),
+            discarding: BTreeSet::new(),
         }
     }
 }
