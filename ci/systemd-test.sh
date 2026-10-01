@@ -141,8 +141,10 @@ for i in 1 2 3 4 5 6; do
   sudo kill -9 "$last" || true
 done
 wait_for "the unit to fail" 10 unit_failed
-result="$(prop Result)"
-[ "$result" = start-limit-hit ] || fail "Result is '$result', expected start-limit-hit"
+# systemd 255 leaves Result at the last run's result ("signal") when the start limit trips, so
+# the limit is read from its own journal line rather than from the property.
+sudo journalctl -u "$UNIT" --no-pager | grep -q 'Start request repeated too quickly' \
+  || fail "the unit failed but the journal shows no start-limit hit (Result is '$(prop Result)')"
 wait_for "keycap keyboard to be gone while the unit is failed" 5 output_absent
 
 step "reset-failed and start: the unit recovers"
