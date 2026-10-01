@@ -1,0 +1,20 @@
+[package]
+name = "keycap"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Mac keyboard mapping daemon: grabs keyboards, remaps by profile, writes one virtual keyboard; the desktop picks the profile over a socket"
+
+[lints]
+workspace = true
+
+[dependencies]
+keycap-protocol = { path = "../keycap-protocol" }
+serde.workspace = true
+thiserror.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+notify.workspace = true
+rustix.workspace = true
