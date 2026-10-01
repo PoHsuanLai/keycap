@@ -6,6 +6,7 @@
 
 mod backoff;
 mod config;
+mod daemon;
 mod escape;
 mod event;
 mod gate;

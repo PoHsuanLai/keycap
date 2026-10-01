@@ -1,0 +1,14 @@
+//! Finding keyboards: the /sys scan, the pure rule that says which nodes are keyboards, and
+//! the watch on `/dev/input` that says when nodes come and go.
+
+mod caps;
+mod classify;
+mod hotplug;
+mod scan;
+#[cfg(test)]
+mod tests;
+
+pub(crate) use caps::{Bits, Caps};
+pub(crate) use classify::{Eligibility, Identity, classify};
+pub(crate) use hotplug::{Hotplug, concerns_us, hotplug_of, spawn};
+pub(crate) use scan::{Candidate, DEV_INPUT, SYS_INPUT, scan};
