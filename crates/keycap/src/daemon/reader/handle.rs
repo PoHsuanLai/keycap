@@ -84,6 +84,7 @@ impl<E: Emitter> Reader<E> {
         let (profiles, warnings) = self.layers.resolve();
         warnings.iter().for_each(log_warning);
         self.profiles = profiles;
+        self.devices = std::mem::take(&mut self.devices).with_overrides(self.layers.overrides());
         self.unknowns = std::mem::take(&mut self.unknowns).reset();
         warnings
     }

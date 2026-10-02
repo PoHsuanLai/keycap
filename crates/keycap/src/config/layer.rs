@@ -34,6 +34,7 @@ impl fmt::Display for ConfigSource {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ConfigLayer {
     pub(super) profiles: BTreeMap<ProfileName, ProfileLayer>,
+    pub(super) devices: Vec<super::devices::DeviceEntry>,
 }
 
 /// One profile as one file wrote it.

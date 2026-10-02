@@ -20,7 +20,10 @@ mod role;
 mod time;
 
 pub use backoff::Backoff;
-pub use config::{ConfigLayer, ConfigSource, DEBOUNCE, FILE_NAME, builtin, resolve, spawn, system};
+pub use config::{
+    ConfigLayer, ConfigSource, DEBOUNCE, FILE_NAME, LayoutOverrides, builtin, layout_overrides,
+    resolve, spawn, system,
+};
 pub use escape::{Escape, EscapeChord};
 pub use event::{DeviceId, Edge, Logical, OutEvent, Physical};
 pub use gate::{Decision, GrabGate, KeysDown};

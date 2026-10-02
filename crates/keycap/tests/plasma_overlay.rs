@@ -1,5 +1,5 @@
 //! `dist/keycap.plasma.toml` laid over the built-in mapping: the Plasma shortcuts Toshy gave the
-//! Mac keyboard, and the Caps Lock input switch.
+//! Mac keyboard.
 
 mod support;
 
@@ -29,20 +29,6 @@ fn command_space_opens_krunner() {
 }
 
 #[test]
-fn caps_lock_is_the_input_switch_and_shift_caps_is_caps_lock() {
-    let mut rig = plasma_rig();
-    rig.expect(vec![
-        (press(0, "capslock"), "+leftctrl +space SYN"),
-        (release(0, "capslock"), "-space -leftctrl SYN"),
-        (press(0, "leftshift"), "+leftshift SYN"),
-        (press(0, "capslock"), "-leftshift +capslock SYN"),
-        (release(0, "capslock"), "-capslock +leftshift SYN"),
-        (release(0, "leftshift"), "-leftshift SYN"),
-    ]);
-    assert!(rig.down().is_empty());
-}
-
-#[test]
 fn physical_control_space_reaches_fcitx5_as_control_space() {
     plasma_rig().expect(vec![
         (press(0, "leftctrl"), "+leftmeta SYN"),
@@ -56,13 +42,12 @@ fn physical_control_space_reaches_fcitx5_as_control_space() {
 }
 
 #[test]
-fn command_e_opens_the_emoji_selector_and_command_control_f_goes_fullscreen() {
-    plasma_rig().expect(vec![
-        (press(0, "leftmeta"), "+leftctrl SYN"),
-        (press(0, "e"), "-leftctrl +leftmeta +dot SYN"),
-        (release(0, "e"), "-dot -leftmeta +leftctrl SYN"),
-        (release(0, "leftmeta"), "-leftctrl SYN"),
-    ]);
+fn command_control_space_opens_the_emoji_selector_and_command_control_f_goes_fullscreen() {
+    let mut rig = plasma_rig();
+    rig.feed(press(0, "leftctrl"));
+    rig.feed(press(0, "leftmeta"));
+    rig.feed(press(0, "space"));
+    assert_eq!(rig.down(), ["dot", "leftmeta"]);
     let mut rig = plasma_rig();
     rig.feed(press(0, "leftctrl"));
     rig.feed(press(0, "leftmeta"));
@@ -84,5 +69,29 @@ fn control_left_switches_desktops_but_stays_control_left_in_a_terminal() {
         (press(0, "left"), "+left SYN"),
         (release(0, "left"), "-left SYN"),
         (release(0, "leftctrl"), "-leftctrl SYN"),
+    ]);
+}
+
+/// The Caps Lock block of `docs/personal-config.md`, as a user layer over the built-ins.
+#[test]
+fn the_documented_personal_caps_lock_block_works() {
+    let docs = include_str!("../../../docs/personal-config.md");
+    let start = docs.find("[profile.default]").expect("the block");
+    let block = &docs[start
+        ..docs[start..]
+            .find("```")
+            .map(|n| start + n)
+            .expect("its end")];
+    let (builtin_layer, _) = builtin();
+    let (user, warnings) = keycap::ConfigLayer::parse(block, ConfigSource::User);
+    assert_eq!(warnings, vec![]);
+    let mut rig = Rig::with_profiles(resolve(&[builtin_layer, user]).0);
+    rig.expect(vec![
+        (press(0, "capslock"), "+leftctrl +space SYN"),
+        (release(0, "capslock"), "-space -leftctrl SYN"),
+        (press(0, "leftshift"), "+leftshift SYN"),
+        (press(0, "capslock"), "-leftshift +capslock SYN"),
+        (release(0, "capslock"), "-capslock +leftshift SYN"),
+        (release(0, "leftshift"), "-leftshift SYN"),
     ]);
 }

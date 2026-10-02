@@ -389,8 +389,8 @@ fn a_bluetooth_keyboard_that_wakes_with_a_key_down_is_grabbed_after_the_key_is_u
     rig.appear(identity(3, 0x3434), at(0));
     assert_eq!(
         rig.devices.active(A),
-        Some(Layout::Apple),
-        "Keychron is Mac"
+        Some(Layout::Pc),
+        "a switchable keyboard is PC until the config says otherwise"
     );
     rig.gone(A, at(100));
     assert_eq!(rig.nodes.held(), []);
@@ -424,4 +424,20 @@ fn a_keyboard_that_appears_while_paused_is_opened_but_not_grabbed_until_resume()
     rig.resume();
     rig.poll(at(1_050));
     assert_eq!(rig.nodes.held(), [A]);
+}
+
+#[test]
+fn a_config_layout_by_id_over_the_vendor_applies_to_a_keyboard_that_appears_later() {
+    let (layer, warnings) = crate::ConfigLayer::parse(
+        "[[device]]\nmatch = \"3434:0001\"\nlayout = \"apple\"\n",
+        crate::ConfigSource::System,
+    );
+    assert_eq!(warnings, []);
+    let mut rig = Rig::new(FakeGrabber::default());
+    rig.devices =
+        std::mem::take(&mut rig.devices).with_overrides(crate::layout_overrides(&[layer]));
+    rig.appear(identity(3, 0x3434), at(0));
+    assert_eq!(rig.devices.active(A), Some(Layout::Apple));
+    rig.appear(identity(4, 0x046d), at(0));
+    assert_eq!(rig.devices.active(B), Some(Layout::Pc));
 }

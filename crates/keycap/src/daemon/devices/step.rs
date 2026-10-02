@@ -174,7 +174,17 @@ impl Devices {
         self.tracked
             .get(&id)
             .filter(|t| t.grab == Grab::Active)
-            .map(|t| t.layout)
+            .map(|t| {
+                let id = &t.identity;
+                self.overrides
+                    .layout_of(&id.name, id.vendor, id.product)
+                    .unwrap_or(t.layout)
+            })
+    }
+
+    /// The config's layout assignments, replaced when the config changes.
+    pub(crate) fn with_overrides(self, overrides: crate::LayoutOverrides) -> Self {
+        Self { overrides, ..self }
     }
 
     /// Who `id` says it is.

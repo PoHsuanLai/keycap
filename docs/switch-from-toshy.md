@@ -23,9 +23,9 @@ cd ~/keycap          # the checkout with this branch merged
 
 It prints every command it would run and runs none (it does not even build or ask for sudo).
 Read it. `--desktop plasma` installs `dist/keycap.plasma.toml` as `/etc/keycap/keycap.toml` if
-you have none (it never overwrites yours): Cmd+Space opens KRunner, Caps Lock switches fcitx5's
-input method (Shift+Caps is the real Caps Lock), and the other Plasma shortcuts Toshy gave you
-(Cmd+Ctrl+F, Cmd+E, Cmd+H, Cmd+Shift+3/4/5, Ctrl+Left/Right for desktops).
+you have none (it never overwrites yours): Cmd+Space opens KRunner, plus the Plasma equivalents
+of macOS shortcuts (Cmd+Ctrl+F, Cmd+Ctrl+Space for emoji, Cmd+H, Cmd+Shift+3/4/5, Ctrl+Left/Right
+for desktops). Two things Toshy did for you are personal, so they are not shipped; step 2 adds them.
 `--plasma-focus` installs the focus feed: without it, keycap does not know a terminal has
 focus, and **Cmd+C in Konsole would be Ctrl+C (SIGINT)**. Do not run keycap without it.
 
@@ -40,6 +40,28 @@ Needs `python3-gobject` for the focus feed (`python3 -c "import gi"`; Fedora: `s
 It builds, copies the files (with sudo), reloads systemd and udev, and starts `keycap.service`
 and the user unit `keycap-focus.service`. Running it again later changes nothing that is already
 in place. Toshy is not touched.
+
+### Your own settings (K5 Max layout, Caps Lock)
+
+keycap cannot see the K5 Max's Mac/Windows switch, so it treats the keyboard as a PC one
+(Cmd and Option swapped) until you say it is a Mac one. Append this to `/etc/keycap/keycap.toml`
+(`sudoedit`; keycap re-reads the file when it changes, no restart needed), together with the
+Caps Lock block if you want Caps Lock to switch fcitx5 as it did under Toshy:
+
+```toml
+[[device]]
+match = "3434:0a53"      # Keychron K5 Max, USB and Bluetooth; layout "apple" = switch on Mac
+layout = "apple"
+
+[profile.default]
+rules = [
+  { when = "capslock", then = "ctrl+space" },
+  { when = "shift+capslock", then = "capslock" },
+]
+```
+
+(`docs/personal-config.md` explains both.) Do this before step 4: on step 3, `keycap status`
+should already show the keyboard, and Cmd must be the key beside the space bar after the switch.
 
 ## 3. Check it, still before switching
 
@@ -110,8 +132,8 @@ Run these in order; each takes seconds.
 5. Cmd+Tab (hold Cmd, press Tab repeatedly, release Cmd), Cmd+` (windows of one app), Cmd+Q
    (closes the window), Cmd+Space (KRunner), Cmd+W.
 6. Dolphin: Cmd+Backspace moves the selection to the trash; Cmd+Left goes back.
-7. Caps Lock switches the input method (fcitx5); Shift+Caps toggles real Caps Lock; Ctrl+Space
-   also switches (physical Control+Space).
+7. Physical Control+Space switches the input method (fcitx5); with your Caps Lock block, Caps
+   Lock does too and Shift+Caps toggles real Caps Lock.
 8. Press and hold Shift, Shift, Esc together: the keyboard goes raw (Cmd+C does nothing useful).
    `keycap status` says paused. `keycap resume` brings the mapping back.
 9. Put the keyboard to sleep (wait, or turn the K5 Max off and on, or switch it to another
@@ -162,7 +184,7 @@ keycap`, then the second command above.
 | --- | --- | --- |
 | `held by another remapper` after step 4 | Toshy (or keyd) still has the keyboard | `pgrep -a xwaykeyz`; stop it; `sudo systemctl restart keycap` |
 | Cmd+C in Konsole interrupts | the focus feed is not reaching keycap | `systemctl --user status keycap-focus`; click another window; `journalctl --user -u keycap-focus`; the KWin script is enabled in System Settings, Window Management, KWin Scripts |
-| Cmd and Option are swapped | the K5 Max's side switch is on Windows | set it to Mac (keycap treats Keychron as Apple) |
+| Cmd and Option are swapped | keycap has no `[[device]]` layout for the K5 Max, or its side switch is on Windows | add the `[[device]]` block above, with the switch on Mac |
 | `keycap status`: cannot connect | the service is not running | `systemctl status keycap`, `journalctl -u keycap -b` |
 | no keyboard listed | the K5 Max is asleep or off | wake it; it appears when it reconnects |
 | nothing mapped after the chord | paused | `keycap resume` |

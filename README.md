@@ -257,15 +257,17 @@ a name the config does not define resolves to `default`.
 | `terminal` | physical Control | stays Control (modmap, and Ctrl+A, Ctrl+E map to themselves), so Ctrl+C still stops the program and readline keeps its keys |
 
 `dist/keycap.plasma.toml` (installed as `/etc/keycap/keycap.toml` by `install.sh --desktop plasma`)
-lays the user's Plasma setup over this: Cmd+Space is Alt+Space (KRunner), Caps Lock is
-Ctrl+Space (fcitx5 input switch) and Shift+Caps the real Caps Lock, Cmd+Ctrl+F is
-Super+Shift+F (fullscreen to its own desktop), Cmd+E is Super+. (emoji), Cmd+H minimises,
+lays Plasma's equivalents of macOS shortcuts over this: Cmd+Space is Alt+Space (KRunner),
+Cmd+Ctrl+Space is Super+. (emoji), Cmd+Ctrl+F is Super+Shift+F (full screen), Cmd+H minimises,
 Cmd+F3 shows the desktop, Cmd+Shift+3/4/5 are Spectacle's, Ctrl+Left/Right switch desktops
-(and stay Ctrl+Left/Right in a terminal).
+(and stay Ctrl+Left/Right in a terminal). Personal choices (Caps Lock as the input switch, a
+keyboard's layout) go in your own config: `docs/personal-config.md`.
 
 A keyboard's layout (which key beside the space bar is Command) comes from its vendor id: Apple
-(`05ac`, `004c`) and Keychron (`3434`, whose keyboards send the Apple arrangement when their side
-switch is on Mac) are Apple, everything else is PC.
+(`05ac`, `004c`) is Apple, everything else PC. A keyboard with a Mac/Windows switch (Keychron, ...)
+reports the same ids in both positions, so the host cannot see the switch; name it with a
+`[[device]]` entry (`match = "vendor:product"` or an exact name, `layout = "apple"|"pc"`) in the
+config, see `docs/personal-config.md`.
 
 Modifiers are mapped at press time, so Cmd+click works although the mouse does not pass through
 keycap. When a chord matches a rule, keycap changes only the modifiers that need to change.

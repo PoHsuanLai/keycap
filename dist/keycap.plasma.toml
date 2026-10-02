@@ -1,21 +1,20 @@
-# keycap: the machine settings for a Plasma 6 session, carrying over what Toshy did there.
-# Install to /etc/keycap/keycap.toml (install.sh does it when the file is absent). It lays over
-# the built-in mapping, so only the differences are listed. `then = []` would swallow a chord.
+# keycap: machine settings for a Plasma 6 session. Install to /etc/keycap/keycap.toml
+# (install.sh does it on Plasma when the file is absent). It lays over the built-in mapping, so
+# only the differences are listed. Personal preferences do not belong here: put them in your own
+# config (see docs/personal-config.md).
 #
-# Why each line exists:
-# - KRunner is Plasma's launcher, on Alt+Space; the built-in Cmd+Space writes Super+Space, which
-#   is sill's launcher on COSMIC and does nothing on Plasma.
-# - Caps Lock switches the input method (fcitx5 listens for Ctrl+Space), Shift+Caps is the real
-#   Caps Lock. Physical Control+Space already reaches fcitx5 as Ctrl+Space (built-in rule).
-# - The other lines are the shortcuts Toshy's KDE sections gave the Mac keyboard.
+# Each line is the macOS shortcut written as the Plasma shortcut that does the same job:
+# - Cmd+Space is Spotlight; Plasma's launcher is KRunner on Alt+Space. (The built-in Super+Space
+#   is sill's launcher on COSMIC.)
+# - Cmd+Ctrl+Space is the emoji picker (Plasma: Meta+.), Cmd+Ctrl+F is full screen, Cmd+H hides
+#   (Plasma: minimise), Cmd+F3 shows the desktop, Cmd+Shift+3/4/5 are the screenshot shortcuts
+#   (Spectacle: Shift+Print, Alt+Print, Print), Ctrl+Left/Right change desktop (Spaces).
 
 [profile.default]
 rules = [
   { when = "command+space", then = "alt+space" },
-  { when = "capslock", then = "ctrl+space" },
-  { when = "shift+capslock", then = "capslock" },
+  { when = "command+control+space", then = "super+dot" },
   { when = "command+control+f", then = "super+shift+f" },
-  { when = "command+e", then = "super+dot" },
   { when = "command+h", then = "super+pagedown" },
   { when = "command+f3", then = "super+d" },
   { when = "command+shift+3", then = "shift+print" },

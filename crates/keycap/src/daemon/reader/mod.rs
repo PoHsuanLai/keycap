@@ -97,7 +97,7 @@ impl<E: Emitter> Reader<E> {
     pub(crate) fn new(wiring: Wiring<E>) -> Self {
         let (profiles, warnings) = wiring.layers.resolve();
         warnings.iter().for_each(handle::log_warning);
-        let devices = Devices::new();
+        let devices = Devices::new().with_overrides(wiring.layers.overrides());
         let remapper = Remapper::new();
         Self {
             published: super::devices::status_of(&devices, remapper.status()),

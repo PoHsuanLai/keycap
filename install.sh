@@ -77,7 +77,7 @@ if [[ "$DESKTOP" == plasma ]]; then
       say "  kept your /etc/keycap/keycap.toml (it differs from dist/keycap.plasma.toml; diff them if you want the new lines)"
     fi
   else
-    root_step "install /etc/keycap/keycap.toml (Plasma shortcuts, Caps Lock input switch)" \
+    root_step "install /etc/keycap/keycap.toml (Plasma shortcuts)" \
       install -Dm644 "$HERE/dist/keycap.plasma.toml" "$(dest /etc/keycap/keycap.toml)"
   fi
 else

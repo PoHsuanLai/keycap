@@ -1,6 +1,8 @@
 //! The config layers in force, and the profiles they resolve to.
 
-use crate::{ConfigLayer, ConfigSource, Profiles, builtin, resolve};
+use crate::{
+    ConfigLayer, ConfigSource, LayoutOverrides, Profiles, builtin, layout_overrides, resolve,
+};
 use keycap_protocol::Warning;
 
 /// The three layers, earliest first: compiled-in defaults, the system file, the seat owner's
@@ -41,6 +43,11 @@ impl Layers {
     /// The seat owner has gone: their settings no longer apply.
     pub(crate) fn without_user(&self) -> Self {
         self.with_user(ConfigLayer::default())
+    }
+
+    /// The keyboard layouts the layers assign.
+    pub(crate) fn overrides(&self) -> LayoutOverrides {
+        layout_overrides(&[self.builtin.clone(), self.system.clone(), self.user.clone()])
     }
 
     /// The profiles the layers fold into, and what the folding found wrong.

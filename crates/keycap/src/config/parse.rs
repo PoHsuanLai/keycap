@@ -39,7 +39,8 @@ fn read_layer(root: &Table) -> (ConfigLayer, Vec<Warning>) {
         .iter()
         .filter_map(|(name, v)| read_profile(name, v, &mut warn))
         .collect();
-    (ConfigLayer { profiles }, warn)
+    let devices = super::devices::read_devices(root, &mut warn);
+    (ConfigLayer { profiles, devices }, warn)
 }
 
 fn read_profile(

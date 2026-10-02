@@ -48,6 +48,8 @@ pub(crate) struct Devices {
     pub(super) tracked: BTreeMap<DeviceId, Tracked>,
     pub(super) next: u32,
     pub(super) standing: Standing,
+    /// Layouts the config assigns by name or id, over what the vendor says.
+    pub(super) overrides: crate::LayoutOverrides,
 }
 
 /// What the state machine asks the reader to do with a device.

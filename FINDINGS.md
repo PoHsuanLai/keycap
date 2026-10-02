@@ -63,9 +63,11 @@ real machine's sysfs masks, and what stays open.
   `REL_X` or an absolute position axis (`ABS_X`, `ABS_MT_POSITION_X`). Its `Mouse` node and the
   Magic Mouse (`004c:0269`) have no letter keys and are never grabbed (table tests with the real
   masks, `discover/uhid_devices.rs`).
-- Keychron (`3434`) is read as an Apple layout, as Toshy was told; a Keychron with the side switch
-  on Windows would be mis-read. Layout detection by name or a config override is the fix if a
-  second keyboard needs it.
+- A Keychron's Mac/Windows switch is not visible to the host: the firmware (QMK) swaps the
+  keycodes it sends, with the same vendor and product id, the same capability masks and the same
+  HID descriptor in both positions (checked on the K5 Max node's masks; reading the switch would
+  need VIA's raw HID writes, which keycap will not do). So such keyboards are `Pc` by default and
+  a `[[device]]` entry in the config sets the layout by id or name.
 - **The `devices` suite cannot be run in a live desktop session.** Its "keycap keyboard" output
   reaches the compositor (a mapped Cmd+Q is Alt+F4), and before this review its daemon scanned
   the real `/sys/class/input`, so it would also have tried to grab the real keyboard when nobody
