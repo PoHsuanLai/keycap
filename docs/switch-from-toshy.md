@@ -139,7 +139,7 @@ Run these in order; each takes seconds.
 9. Put the keyboard to sleep (wait, or turn the K5 Max off and on, or switch it to another
    Bluetooth host and back): `keycap status` shows it grabbed again a few seconds after it
    reconnects, with no key stuck. Also `journalctl -u keycap -b` has no repeated errors.
-10. Reboot. At the SDDM login screen the keyboard should already be mapped (`journalctl -u
+10. Reboot. At the login screen (the greeter) the keyboard should already be mapped (`journalctl -u
     keycap -b`); after login repeat step 3. If the K5 Max is invisible before login, that is
     the Bluetooth-keyboard limitation in your notes, not keycap.
 11. NumLock: Toshy's "forced numpad" made the numpad always a numpad. Set it in System
