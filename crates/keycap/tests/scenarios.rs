@@ -420,3 +420,49 @@ fn command_left_gets_no_neutral_tap_because_a_control_tap_is_harmless() {
         (release(0, "leftmeta"), "-leftctrl SYN"),
     ]);
 }
+
+#[test]
+fn command_grave_cycles_the_windows_of_one_app_and_holds_alt_until_command_is_released() {
+    Rig::new().expect(vec![
+        (press(0, "leftmeta"), "+leftctrl SYN"),
+        (press(0, "grave"), "-leftctrl +leftalt +grave SYN"),
+        (release(0, "grave"), "-grave SYN"),
+        (release(0, "leftmeta"), "-leftalt SYN"),
+    ]);
+}
+
+#[test]
+fn control_space_is_control_space_for_the_input_method_not_super_space() {
+    Rig::new().expect(vec![
+        (press(0, "leftctrl"), "+leftmeta SYN"),
+        (
+            press(0, "space"),
+            "+f24 -f24 -leftmeta +leftctrl +space SYN",
+        ),
+        (release(0, "space"), "-space -leftctrl +leftmeta SYN"),
+        (release(0, "leftctrl"), "+f24 -f24 -leftmeta SYN"),
+    ]);
+}
+
+#[test]
+fn command_space_stays_super_space_for_the_desktop_launcher() {
+    Rig::new().expect(vec![
+        (press(0, "leftmeta"), "+leftctrl SYN"),
+        (press(0, "space"), "-leftctrl +leftmeta +space SYN"),
+        (release(0, "space"), "-space -leftmeta +leftctrl SYN"),
+        (release(0, "leftmeta"), "-leftctrl SYN"),
+    ]);
+}
+
+#[test]
+fn command_backspace_in_a_file_manager_trashes_instead_of_selecting_to_the_first_item() {
+    let mut rig = Rig::new();
+    rig.expect(vec![
+        (focus("filemanager"), ""),
+        (press(0, "leftmeta"), "+leftctrl SYN"),
+        (press(0, "backspace"), "-leftctrl +delete SYN"),
+        (release(0, "backspace"), "-delete +leftctrl SYN"),
+        (release(0, "leftmeta"), "-leftctrl SYN"),
+    ]);
+    assert!(rig.down().is_empty());
+}

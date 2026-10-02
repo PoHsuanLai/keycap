@@ -1,13 +1,16 @@
-//! The one virtual device discovery may grab when the unit's environment says so.
+//! The one device discovery may grab, in place of all others, when the environment says so.
 
 /// Which virtual device, if any, discovery may grab. A virtual device is normally never
-/// grabbed; a test whose keyboard is itself a uinput device names it here.
+/// grabbed; a test whose keyboard is itself a uinput device names it here. Naming a device
+/// also makes it the only one grabbed, so a test run on a machine with a real keyboard cannot
+/// take that keyboard.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) enum VirtualAllowance {
     /// No virtual device is grabbed.
     #[default]
     Nobody,
-    /// The virtual device whose name is exactly this one is eligible like a hardware device.
+    /// The device whose name is exactly this one is eligible like a hardware device, and no
+    /// other device is.
     Named(String),
 }
 
@@ -23,6 +26,11 @@ impl VirtualAllowance {
     /// Whether a virtual device called `name` may be grabbed.
     pub(super) fn admits(&self, name: &str) -> bool {
         matches!(self, Self::Named(allowed) if allowed == name)
+    }
+
+    /// Whether the allowance names a device other than `name`, which then stays alone.
+    pub(super) fn names_another(&self, name: &str) -> bool {
+        matches!(self, Self::Named(allowed) if allowed != name)
     }
 }
 
@@ -54,6 +62,7 @@ mod tests {
             ev: Bits::parse(&format!("{:x}", (1u32 << EV_SYN) | (1 << EV_KEY))),
             key: Bits::parse(&key),
             rel: Bits::default(),
+            abs: Bits::default(),
         }
     }
 
@@ -122,10 +131,17 @@ mod tests {
                 Eligibility::NotKeyboard,
             ),
             (
-                "hardware is unaffected by the allowance",
+                "a named allowance leaves hardware alone",
                 identity("Some Keyboard", 0x1234, 0x5678),
                 Origin::Hardware,
                 named.clone(),
+                Eligibility::NotKeyboard,
+            ),
+            (
+                "no allowance leaves hardware eligible",
+                identity("Some Keyboard", 0x1234, 0x5678),
+                Origin::Hardware,
+                VirtualAllowance::Nobody,
                 Eligibility::Keyboard,
             ),
             (

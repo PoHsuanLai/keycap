@@ -43,10 +43,11 @@ impl Bits {
     }
 }
 
-/// The event types, keys and relative axes a node can send.
+/// The event types, keys, relative and absolute axes a node can send.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct Caps {
     pub ev: Bits,
     pub key: Bits,
     pub rel: Bits,
+    pub abs: Bits,
 }

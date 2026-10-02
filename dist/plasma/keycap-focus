@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""keycap-focus: tells keycap which profile the focused Plasma window wants.
+
+A KWin script (kwin-script/) calls org.keycap.Focus.Focus on the session bus with the focused
+window's resource class; this service turns it into keycap's one desktop-facing message,
+`Focus { profile }`, on /run/keycap/keycap.sock. Terminals get the `terminal` profile, file managers
+`filemanager`, every other window `default`. keycap forgets the profile when a client leaves, so every two seconds the
+connection is checked and, if it dropped (keycap restarted), reopened with the current profile.
+
+Needs python3-gobject (Gio). Run with --dry-run to print what would be sent, without a socket.
+"""
+
+import json
+import os
+import socket
+import sys
+import warnings
+
+# Resource classes (lower case) of terminal emulators, from Toshy's list; a name that starts
+# with a part in TERMINAL_CONTAINS also counts (ghostty and Ptyxis put version or app ids in it).
+TERMINALS = frozenset(
+    """alacritty com.raggesilver.blackbox com.system76.cosmicterm contour cutefish-terminal
+    deepin-terminal dev.warp.warp eterm gnome-terminal gnome-terminal-server guake hyper
+    io.elementary.terminal kgx kitty konsole lxterminal mate-terminal org.codeberg.dnkl.foot
+    foot org.gnome.console org.gnome.terminal org.kde.konsole org.kde.yakuake
+    org.wezfurlong.wezterm roxterm qterminal st sakura station tabby terminator terminology
+    termite termius tilda tilix urxvt wave wezterm wezterm-gui xfce4-terminal xterm
+    yakuake""".split()
+)
+TERMINAL_CONTAINS = ("ghostty", "ptyxis")
+
+# File managers, from Toshy's list: they get the `filemanager` profile.
+FILE_MANAGERS = frozenset(
+    """caja com.system76.cosmicfiles dde-file-manager dolphin io.elementary.files krusader
+    nautilus nemo org.gnome.nautilus org.kde.dolphin org.kde.krusader pcmanfm pcmanfm-qt
+    peony-qt spacefm thunar""".split()
+)
+
+SOCKET = os.path.join(os.environ.get("KEYCAP_RUNTIME_DIR", "/run/keycap"), "keycap.sock")
+BUS_NAME = "org.keycap.Focus"
+OBJECT_PATH = "/org/keycap/Focus"
+INTERFACE_XML = """
+<node><interface name="org.keycap.Focus">
+  <method name="Focus"><arg type="s" name="resource_class" direction="in"/></method>
+</interface></node>
+"""
+
+
+def profile_for(resource_class):
+    """The keycap profile for a window's resource class."""
+    name = resource_class.strip().lower()
+    if name in TERMINALS or any(part in name for part in TERMINAL_CONTAINS):
+        return "terminal"
+    if name in FILE_MANAGERS:
+        return "filemanager"
+    return "default"
+
+
+def focus_message(profile):
+    """The packet keycap reads: adjacently tagged JSON."""
+    return json.dumps({"kind": "focus", "v": {"profile": profile}}, separators=(",", ":")).encode()
+
+
+class Keycap:
+    """One SOCK_SEQPACKET connection to keycap, reopened when it breaks."""
+
+    def __init__(self, path=SOCKET):
+        self.path = path
+        self.sock = None
+        self.profile = None  # none heard yet: nothing to restore after a reconnect
+
+    def _connect(self):
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+        try:
+            sock.connect(self.path)
+            sock.settimeout(2)
+            sock.recv(65536)  # Hello; the daemon sends it first on every connection
+            sock.setblocking(False)
+        except OSError:
+            sock.close()
+            raise
+        self.sock = sock
+
+    def _drop(self):
+        if self.sock is not None:
+            self.sock.close()
+        self.sock = None
+
+    def _drain(self):
+        """Reads and discards Status packets so the daemon's queue never fills; notices a close."""
+        while self.sock is not None:
+            try:
+                if not self.sock.recv(65536):
+                    self._drop()
+            except BlockingIOError:
+                return
+            except OSError:
+                self._drop()
+
+    def restore(self):
+        """Reopens a dropped connection and sends the profile again; for a timer."""
+        self._drain()
+        if self.sock is None and self.profile is not None:
+            self.send(self.profile)
+
+    def send(self, profile):
+        """Sends `Focus { profile }`, reconnecting once; returns whether it was delivered."""
+        self.profile = profile
+        for _ in range(2):
+            try:
+                self._drain()
+                if self.sock is None:
+                    self._connect()
+                self.sock.send(focus_message(profile))
+                return True
+            except OSError:
+                self._drop()
+        return False
+
+
+def main(argv):
+    dry_run = "--dry-run" in argv
+    keycap = Keycap()
+
+    def on_focus(resource_class):
+        profile = profile_for(resource_class)
+        if dry_run:
+            print(f"{resource_class!r} -> {focus_message(profile).decode()}", flush=True)
+        elif not keycap.send(profile):
+            print(f"keycap-focus: keycap is not reachable at {keycap.path}", file=sys.stderr, flush=True)
+
+    # Gio's register_object is deprecated in favour of a closure-based call that is much harder to
+    # read; the old one keeps working.
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
+    import gi
+
+    gi.require_version("Gio", "2.0")
+    from gi.repository import Gio, GLib
+
+    def on_call(_conn, _sender, _path, _iface, method, params, invocation):
+        if method == "Focus":
+            on_focus(params.unpack()[0])
+        invocation.return_value(None)
+
+    def on_bus(conn, _name):
+        node = Gio.DBusNodeInfo.new_for_xml(INTERFACE_XML)
+        conn.register_object(OBJECT_PATH, node.interfaces[0], on_call, None, None)
+
+    if not dry_run:
+        GLib.timeout_add_seconds(2, lambda: keycap.restore() or True)
+
+    Gio.bus_own_name(
+        Gio.BusType.SESSION, BUS_NAME, Gio.BusNameOwnerFlags.NONE, on_bus, None, lambda *_: sys.exit(1)
+    )
+    GLib.MainLoop().run()
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

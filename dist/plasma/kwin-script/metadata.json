@@ -1,0 +1,13 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Name": "keycap focus",
+        "Description": "Tell keycap which window has focus, so terminals get the terminal profile",
+        "Icon": "preferences-desktop-keyboard",
+        "Id": "keycap-focus",
+        "Version": "1.0",
+        "License": "MIT"
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js"
+}

@@ -2,7 +2,7 @@
 
 use super::allowance::VirtualAllowance;
 use super::caps::Caps;
-use crate::daemon::events::{EV_ABS, EV_KEY, EV_REL, REL_X};
+use crate::daemon::events::{ABS_MT_POSITION_X, ABS_X, EV_ABS, EV_KEY, EV_REL, REL_X};
 use crate::daemon::{pointer, uinput};
 use crate::key::Key;
 use std::path::{Path, PathBuf};
@@ -75,9 +75,22 @@ fn has_typing_keys(caps: &Caps) -> bool {
     ('a'..='z').all(|c| has(c.encode_utf8(&mut [0; 4]))) && has("space")
 }
 
+/// Whether the node moves a pointer: a relative X axis, or a position on the absolute axes (a
+/// touchpad's or a touchscreen's). A keyboard's consumer-control interface can also report
+/// absolute axes (the Keychron K5 Max has `ABS_VOLUME`); those are not a pointer.
+fn has_pointer_axes(caps: &Caps) -> bool {
+    let relative = caps.ev.has(u32::from(EV_REL)) && caps.rel.has(u32::from(REL_X));
+    let absolute = caps.ev.has(u32::from(EV_ABS))
+        && [ABS_X, ABS_MT_POSITION_X]
+            .iter()
+            .any(|&axis| caps.abs.has(u32::from(axis)));
+    relative || absolute
+}
+
 /// The rule, on capabilities, identity, origin and the allowance. A virtual device is never
 /// grabbed, whoever made it, unless `allow` names it exactly: two remappers grabbing each
-/// other's output is a feedback loop. keycap's own device and palmrest's stay excluded even
+/// other's output is a feedback loop. A named allowance excludes every other device too.
+/// keycap's own device and palmrest's stay excluded even
 /// when named.
 pub(crate) fn classify(
     caps: &Caps,
@@ -86,10 +99,9 @@ pub(crate) fn classify(
     allow: &VirtualAllowance,
 ) -> Eligibility {
     let keyboard = caps.ev.has(u32::from(EV_KEY)) && has_typing_keys(caps);
-    let pointer = caps.ev.has(u32::from(EV_ABS))
-        || (caps.ev.has(u32::from(EV_REL)) && caps.rel.has(u32::from(REL_X)));
+    let pointer = has_pointer_axes(caps);
     let refused_virtual = origin == Origin::Virtual && !allow.admits(&id.name);
-    let excluded = refused_virtual || is_ours_or_palmrests(id);
+    let excluded = refused_virtual || allow.names_another(&id.name) || is_ours_or_palmrests(id);
     match (excluded, keyboard, pointer) {
         (true, _, _) | (false, false, _) => Eligibility::NotKeyboard,
         (false, true, false) => Eligibility::Keyboard,

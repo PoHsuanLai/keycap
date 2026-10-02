@@ -24,6 +24,10 @@ rules = [
   { when = "command+tab", then = "alt+tab", hold = "while_held" },
   { when = "command+shift+tab", then = "alt+shift+tab", hold = "while_held" },
   { when = "command+space", then = "super+space" },
+  { when = "command+grave", then = "alt+grave", hold = "while_held" },
+  { when = "command+shift+grave", then = "alt+shift+grave", hold = "while_held" },
+  { when = "control+space", then = "ctrl+space" },
+  { when = "control+shift+space", then = "ctrl+shift+space" },
   { when = "command+q", then = "alt+f4" },
   { when = "control+a", then = "home" },
   { when = "control+e", then = "end" },
@@ -43,4 +47,18 @@ rules = [
   { when = "command+f", then = "ctrl+shift+f" },
   { when = "control+a", then = "ctrl+a" },
   { when = "control+e", then = "ctrl+e" },
+]
+
+# A file manager: Cmd+Backspace moves the selection to the trash (not "select to the first item,
+# then delete"), and the arrows navigate as in Finder.
+[profile.filemanager]
+inherits = "default"
+rules = [
+  { when = "command+left", then = "alt+left" },
+  { when = "command+right", then = "alt+right" },
+  { when = "command+up", then = "alt+up" },
+  { when = "command+down", then = "enter" },
+  { when = "command+backspace", then = "delete" },
+  { when = "command+i", then = "alt+enter" },
+  { when = "command+shift+dot", then = "ctrl+h" },
 ]

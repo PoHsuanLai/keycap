@@ -36,6 +36,13 @@ jobs:
         with:
           tool: cargo-deny
       - run: cargo deny check licenses
+      - name: The scripts parse and the dry runs change nothing
+        run: |
+          bash -n install.sh uninstall.sh scripts/lib.sh
+          ./install.sh --dry-run --desktop plasma --plasma-focus
+          ./uninstall.sh --dry-run --purge --plasma-focus --restore-toshy
+      - name: The Plasma focus helper
+        run: python3 -m unittest discover -s dist/plasma
 
   # The real kernel path: the built daemon against a fake keyboard on /dev/uinput. Built as
   # the runner user, run as root because /dev/input nodes are root:input.

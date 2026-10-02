@@ -8,6 +8,8 @@ mod hotplug;
 mod scan;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod uhid_devices;
 
 pub(crate) use allowance::VirtualAllowance;
 pub(crate) use caps::Bits;

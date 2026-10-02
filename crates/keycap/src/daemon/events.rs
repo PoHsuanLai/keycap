@@ -12,6 +12,8 @@ pub(crate) const EV_LED: u16 = 0x11;
 pub(crate) const SYN_REPORT: u16 = 0;
 /// The kernel's marker that a client's event queue overflowed and events were lost.
 pub(crate) const SYN_DROPPED: u16 = 3;
+pub(crate) const ABS_X: u16 = 0x00;
+pub(crate) const ABS_MT_POSITION_X: u16 = 0x35;
 pub(crate) const REL_X: u16 = 0x00;
 pub(crate) const REL_Y: u16 = 0x01;
 pub(crate) const REL_HWHEEL: u16 = 0x06;

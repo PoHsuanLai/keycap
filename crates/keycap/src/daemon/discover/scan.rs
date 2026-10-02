@@ -42,6 +42,7 @@ fn candidate(dir: &Path, dev_root: &Path, allow: &VirtualAllowance) -> Option<Ca
         ev: Bits::parse(&read("device/capabilities/ev")),
         key: Bits::parse(&read("device/capabilities/key")),
         rel: Bits::parse(&read("device/capabilities/rel")),
+        abs: Bits::parse(&read("device/capabilities/abs")),
     };
     let identity = Identity {
         name: read("device/name").trim().to_owned(),

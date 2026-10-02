@@ -37,13 +37,14 @@ never name `daemon` modules.
 | L3 state | `held`, `gate`, `escape`, `backoff` | pure state machines | `pub` |
 | L4 remapper | `remap` (`Remapper::step`, `RemapInput`, `RemapOut`) | pure composition: `Remapper::step(self, RemapInput, &Profiles) -> (Self, Vec<RemapOut>)` | `pub` |
 | L5 effects | `daemon` (`reader`, `socket`, `discover`, `uinput`, `sdnotify`, `env`, `sys`) | threads, sockets, devices, clocks, ioctls | `pub(crate)` |
-| L6 entry | `command` | argument parsing, one `run(args)`; reads `std::env` once into `daemon::Env`; `--print-config`, `--check-uinput`, `replay FILE` (a pure script parser, `script.rs`) | `pub` (one fn) |
+| L6 entry | `command` | argument parsing, one `run(args)`; reads `std::env` once into `daemon::Env`; `--print-config`, `--check-uinput`, `status`, `resume`, `replay FILE` (a pure script parser, `script.rs`) | `pub` (one fn) |
 
 Daemon modules:
 
 | Module | Role |
 |---|---|
 | `daemon/sys.rs` | the only `unsafe`: typed ioctls (`EVIOCGRAB`, `EVIOCGKEY`, `EVIOCGBIT`, `EVIOCGPROP`, `EVIOCGABS`, uinput incl. `UI_ABS_SETUP`), each with a `SAFETY` comment, and a test pinning every opcode's number |
+| `command/status.rs` | `keycap status` and `keycap resume`: a plain socket client (`Hello` read, `Resume` sent), `render` and `is_remapping` pure and table-tested |
 | `daemon/uinput.rs` | the one "keycap keyboard" virtual device, opened read-write, destroyed on `Drop`; passes the pointer events of plain combo devices through and carries the lock LEDs back; the `Emitter` and `PointerSink` traits and their recording fakes |
 | `daemon/twin.rs` | the "<name> (keycap pointer)" virtual device of a combo device whose pointer the keyboard cannot carry (absolute axes): registered from a `PointerCaps`, destroyed on `Drop` |
 | `daemon/pointer.rs` | pure: `PointerCaps`, the pointer half of a device as a value (axes with their `absinfo`, relative axes, buttons, input properties, the twin's name), built from the kernel's masks; `needs_twin` |
@@ -65,6 +66,11 @@ Daemon modules:
 | `daemon/clock.rs` | the one `CLOCK_MONOTONIC` read |
 
 `lib.rs` holds declarations and root re-exports only.
+
+Outside `crates/`: `install.sh`, `uninstall.sh` and `scripts/lib.sh` (every change goes through
+`step`, so `--dry-run` prints and `DESTDIR` stages; idempotent by `cmp`), `dist/` (the unit, the
+udev and polkit rules, `keycap.plasma.toml`, and `dist/plasma/`: the KWin script and the
+`keycap-focus` D-Bus-to-socket helper with its unit and tests), `docs/switch-from-toshy.md`.
 
 ## 3. One home
 
@@ -192,6 +198,8 @@ The `keycap-devtest` modules:
   cargo clippy --workspace --all-targets --all-features -- -D warnings
   cargo test --workspace --all-features
   cargo deny check licenses
+  bash -n install.sh uninstall.sh scripts/lib.sh
+  python3 -m unittest discover -s dist/plasma
   ```
 
 ## 8. The core vocabulary and its semantics

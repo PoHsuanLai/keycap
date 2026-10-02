@@ -55,6 +55,31 @@ keyboard needs only the `input` group's write access to the node. A device that 
 Apple or Bluetooth keyboard, a real compositor session (COSMIC, sill's `Focus`), and a logind
 user switch. The list is in the README, "Manual checks".
 
+**Pre-switch review of 2026-10-03 (the user's K5 Max over Bluetooth).** What was checked on the
+real machine's sysfs masks, and what stays open.
+- The K5 Max keyboard node (`3434:0a53`, under `uhid`) reports `EV_ABS` (`ABS_VOLUME`, a
+  consumer-control axis) and wheel axes, no `REL_X`. It used to classify as a keyboard *and
+  pointer* and would have got a pointless "(keycap pointer)" twin; a pointer now needs
+  `REL_X` or an absolute position axis (`ABS_X`, `ABS_MT_POSITION_X`). Its `Mouse` node and the
+  Magic Mouse (`004c:0269`) have no letter keys and are never grabbed (table tests with the real
+  masks, `discover/uhid_devices.rs`).
+- Keychron (`3434`) is read as an Apple layout, as Toshy was told; a Keychron with the side switch
+  on Windows would be mis-read. Layout detection by name or a config override is the fix if a
+  second keyboard needs it.
+- **The `devices` suite cannot be run in a live desktop session.** Its "keycap keyboard" output
+  reaches the compositor (a mapped Cmd+Q is Alt+F4), and before this review its daemon scanned
+  the real `/sys/class/input`, so it would also have tried to grab the real keyboard when nobody
+  else held it. A named `KEYCAP_GRAB_VIRTUAL` now excludes every other device, but the output
+  problem remains: run the suite in CI or on a spare machine. It has still not run anywhere.
+- Hotplug, a keyboard that wakes with a key down, and a keyboard that appears while paused are
+  covered by `devices` tests with the fake grabber; the real wake and reconnect of a Bluetooth
+  keyboard is a manual check (`docs/switch-from-toshy.md`, step 5.9).
+- The Plasma focus feed (`dist/plasma/`) is unverified inside KWin: the D-Bus service, the wire
+  message and the reconnect were run against a private session bus and a real daemon with no
+  keyboard; the KWin script (`workspace.windowActivated`, `resourceClass`) is copied from Toshy's
+  working script and untested here. KWin reports changes only, so after restarting the service
+  one window change is needed before the profile is right.
+
 ## Standing facts
 
 **A pointer twin's life follows the grab.** It is created right after a device is grabbed (the

@@ -51,6 +51,8 @@ fn caps(ev: &[u16], key: &[u16], rel: &[u16]) -> Caps {
         ev: Bits::parse(&mask(ev)),
         key: Bits::parse(&mask(key)),
         rel: Bits::parse(&mask(rel)),
+        // A node that says EV_ABS has positions on it, unless a test says otherwise.
+        abs: Bits::parse(&mask(if ev.contains(&EV_ABS) { &[0, 1] } else { &[] })),
     }
 }
 

@@ -3,6 +3,7 @@
 
 mod replay;
 mod script;
+mod status;
 
 use crate::config::DEFAULTS_TOML;
 use crate::daemon::uinput::{self, UINPUT};
@@ -16,6 +17,9 @@ const USAGE: &str = "usage:
   keycap --print-config        print the built-in defaults.toml
   keycap --check-uinput        can this user create virtual devices? (needs
                                KEYCAP_ALLOW_UINPUT_PROBE=1; opens and closes only)
+  keycap status                what the running daemon is doing (exit 0 only when a keyboard
+                               is grabbed)
+  keycap resume                grab the keyboards again after the escape chord
   keycap replay FILE [--config FILE]
                                replay a script of inputs through the remapper and print
                                what it writes; --config adds a user config layer
@@ -34,6 +38,8 @@ enum Command {
     Daemon,
     PrintConfig,
     CheckUinput,
+    Status,
+    Resume,
     Replay {
         file: PathBuf,
         config: Option<PathBuf>,
@@ -48,6 +54,8 @@ fn parse(args: &[&str]) -> Option<Command> {
         [] | ["run"] => Some(Command::Daemon),
         ["--print-config"] => Some(Command::PrintConfig),
         ["--check-uinput"] => Some(Command::CheckUinput),
+        ["status"] => Some(Command::Status),
+        ["resume"] => Some(Command::Resume),
         ["replay", file] => Some(Command::Replay {
             file: PathBuf::from(file),
             config: None,
@@ -95,6 +103,13 @@ fn execute(command: Command, env: Env) -> Result<(), String> {
                     "keycap: {UINPUT} can be opened; this user can create devices\n"
                 ))
             }),
+        Command::Status => status::read_status(&env.runtime_dir).and_then(|s| {
+            print_out(&format!("{}\n", status::render(&s)))?;
+            status::is_remapping(&s)
+                .then_some(())
+                .ok_or_else(|| "no keyboard is being remapped".to_owned())
+        }),
+        Command::Resume => status::send_resume(&env.runtime_dir),
         Command::Replay { file, config } => replay::replay_file(&file, config.as_deref())
             .and_then(|lines| print_out(&lines.join("\n")))
             .and_then(|()| print_out("\n")),
@@ -137,6 +152,9 @@ mod tests {
                 &["--check-uinput"],
                 Some(Command::CheckUinput),
             ),
+            ("status", &["status"], Some(Command::Status)),
+            ("resume", &["resume"], Some(Command::Resume)),
+            ("status takes nothing", &["status", "x"], None),
             ("replay", &["replay", "a.txt"], replay("a.txt", None)),
             (
                 "replay with a config after",
@@ -171,6 +189,8 @@ mod tests {
         for word in [
             "--print-config",
             "--check-uinput",
+            "status",
+            "resume",
             "replay",
             "--help",
             "release-all",

@@ -9,8 +9,11 @@ pub enum Layout {
     Pc,
 }
 
-/// USB vendor ids of Apple keyboards: Apple Inc. and the Bluetooth-era Apple id.
-const APPLE_VENDORS: [u16; 2] = [0x05ac, 0x004c];
+/// Vendor ids whose keyboards send the Apple arrangement: Apple Inc., the Bluetooth-era Apple
+/// id, and Keychron (0x3434), whose keyboards swap Alt and Meta in firmware when the side switch
+/// is on Mac. A Keychron with the switch on Windows sends the PC arrangement and would be read
+/// as Apple: keep the switch on Mac.
+const APPLE_VENDORS: [u16; 3] = [0x05ac, 0x004c, 0x3434];
 
 impl Layout {
     /// The layout of a keyboard from its USB or Bluetooth vendor id.

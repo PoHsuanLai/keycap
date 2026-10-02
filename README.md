@@ -118,30 +118,50 @@ keycap grabs the user's only keyboard, so:
 - **Virtual devices are never grabbed**, so another remapper's output cannot loop back through
   keycap. The one exception is `KEYCAP_GRAB_VIRTUAL=<exact device name>`, which makes the virtual
   device with that name eligible like a hardware keyboard, for tests whose keyboard is itself a
-  uinput device. Only root, or the unit's `Environment=`, can set it; it widens grabbing by
-  exactly one named device, and keycap's own keyboard and palmrest's stay excluded even when
-  named. Leave it unset on a real machine.
+  uinput device. Only root, or the unit's `Environment=`, can set it; it admits
+  exactly one named device and makes it the only device grabbed (no hardware keyboard is touched),
+  and keycap's own keyboard and palmrest's stay excluded even when named. Leave it unset on a
+  real machine.
 - **No `record` command.** A tool that writes every keystroke to a file is a keylogger. Test
   scripts are synthesised by hand; `keycap replay FILE` feeds one through the core.
 - `keycap --check-uinput` opens and closes `/dev/uinput` without `UI_DEV_CREATE`, and only when
   `KEYCAP_ALLOW_UINPUT_PROBE=1` is set.
 - The emergency chord (both Shifts + Esc) releases every grab at once; `Resume` grabs again.
-- keycap never changes kernel module parameters or `/etc` files; the install script prints the
-  root steps instead of running them.
+- keycap never changes kernel module parameters or `/etc` files; `install.sh` does, with sudo,
+  and only when asked (`--dry-run` prints the same commands and runs none).
+- The device tests make "keycap keyboard" write real key events to the desktop session. Run them
+  on a machine you are not using (CI), not in your own session: a mapped Cmd+Q is Alt+F4.
 
 ## Install
 
 ```bash
-./install.sh
+./install.sh --dry-run          # print every command, change nothing
+./install.sh                    # build, install, enable and start
+./install.sh --desktop plasma --plasma-focus
+./uninstall.sh [--purge] [--plasma-focus] [--restore-toshy]
 ```
 
-`install.sh` builds a release binary and installs it to `/usr/local/bin`. It prints, and does
-not run, the commands that need root:
+`install.sh` builds a release binary and installs, with sudo, only what differs from what is
+already there (run it twice and the second run changes nothing): the binary to
+`/usr/local/bin`, `dist/keycap.service`, `dist/70-keycap.rules` (the `input` group may write
+`/dev/uinput`), `dist/keycap.polkit.rules` (the active session user may restart and reset the
+unit), then reloads systemd and udev, restores SELinux labels and enables the service. With
+`--desktop plasma` it also installs `dist/keycap.plasma.toml` as `/etc/keycap/keycap.toml` when
+that file is absent (never over an existing one). `--plasma-focus` adds the focus feed below.
+It starts keycap next to any running remapper, which then shows as `Grab::Conflict` until the
+other lets go. `DESTDIR=dir` stages the files under `dir` and skips systemd, udev and sudo.
+`docs/switch-from-toshy.md` has the full switch and rollback.
 
-- `dist/keycap.service` to `/etc/systemd/system/`, then `systemctl enable --now keycap`.
-- `dist/70-keycap.rules` to `/etc/udev/rules.d/`: the `input` group may write `/dev/uinput`.
-- `dist/keycap.polkit.rules` to `/etc/polkit-1/rules.d/`: the active session user may restart
-  and reset `keycap.service`.
+### The Plasma focus feed
+
+Plasma has no way to ask "which window has focus" over a socket, so `dist/plasma/` has two
+small parts: a KWin script (`kwin-script/`) reports the focused window's resource class over the
+session bus, and `keycap-focus` (Python, needs `python3-gobject`) owns `org.keycap.Focus` and
+turns it into `Focus { profile }`: `terminal` for terminal emulators, `filemanager` for file
+managers, `default` for everything else. It reopens the socket when keycap restarts. The
+lists are at the top of the script. Limits: a terminal embedded in another window gets that
+window's profile; after restarting `keycap-focus`, focus another window once, since KWin only
+reports changes.
 
 ## Tools
 
@@ -149,6 +169,8 @@ not run, the commands that need root:
 keycap                          run the daemon
 keycap --print-config           print the built-in defaults.toml
 keycap --check-uinput           can this user create virtual devices?
+keycap status                   what the running daemon is doing; exit 0 only if a keyboard is grabbed
+keycap resume                   grab the keyboards again after the escape chord
 keycap replay FILE [--config FILE]
 keycap --help | --version
 ```
@@ -223,11 +245,27 @@ a name the config does not define resolves to `default`.
 | `default` | Option+Left, Option+Right | Ctrl+Left, Ctrl+Right |
 | `default` | Option+Backspace | Ctrl+Backspace |
 | `default` | Cmd+Backspace | Shift+Home, Delete |
-| `default` | Cmd+Tab, Cmd+Space | the desktop's own shortcuts (sill's) |
+| `default` | Cmd+Tab, Cmd+Shift+Tab | Alt+Tab, Alt+Shift+Tab, Alt held until Cmd is released |
+| `default` | Cmd+`, Cmd+Shift+` | Alt+`, Alt+Shift+` (windows of one app), Alt held likewise |
+| `default` | Cmd+Space | Super+Space (sill's launcher on COSMIC; Plasma's file, below, makes it Alt+Space) |
+| `default` | Ctrl+Space, Ctrl+Shift+Space | Ctrl+Space, Ctrl+Shift+Space (input method switch, not Super+Space) |
 | `default` | Cmd+Q | Alt+F4 |
 | `default` | Ctrl+A, Ctrl+E | Home, End |
 | `terminal` | inherits `default`; Cmd+C, V, T, W, N, F | Ctrl+Shift+C, V, T, W, N, F |
+| `filemanager` | inherits `default`; Cmd+Backspace | Delete (trash the selection; not "select to the start, delete") |
+| `filemanager` | Cmd+Left, Right, Up, Down; Cmd+I; Cmd+Shift+. | Alt+Left, Right, Up, Enter; Alt+Enter; Ctrl+H |
 | `terminal` | physical Control | stays Control (modmap, and Ctrl+A, Ctrl+E map to themselves), so Ctrl+C still stops the program and readline keeps its keys |
+
+`dist/keycap.plasma.toml` (installed as `/etc/keycap/keycap.toml` by `install.sh --desktop plasma`)
+lays the user's Plasma setup over this: Cmd+Space is Alt+Space (KRunner), Caps Lock is
+Ctrl+Space (fcitx5 input switch) and Shift+Caps the real Caps Lock, Cmd+Ctrl+F is
+Super+Shift+F (fullscreen to its own desktop), Cmd+E is Super+. (emoji), Cmd+H minimises,
+Cmd+F3 shows the desktop, Cmd+Shift+3/4/5 are Spectacle's, Ctrl+Left/Right switch desktops
+(and stay Ctrl+Left/Right in a terminal).
+
+A keyboard's layout (which key beside the space bar is Command) comes from its vendor id: Apple
+(`05ac`, `004c`) and Keychron (`3434`, whose keyboards send the Apple arrangement when their side
+switch is on Mac) are Apple, everything else is PC.
 
 Modifiers are mapped at press time, so Cmd+click works although the mouse does not pass through
 keycap. When a chord matches a rule, keycap changes only the modifiers that need to change.

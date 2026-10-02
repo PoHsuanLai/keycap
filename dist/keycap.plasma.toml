@@ -1,0 +1,33 @@
+# keycap: the machine settings for a Plasma 6 session, carrying over what Toshy did there.
+# Install to /etc/keycap/keycap.toml (install.sh does it when the file is absent). It lays over
+# the built-in mapping, so only the differences are listed. `then = []` would swallow a chord.
+#
+# Why each line exists:
+# - KRunner is Plasma's launcher, on Alt+Space; the built-in Cmd+Space writes Super+Space, which
+#   is sill's launcher on COSMIC and does nothing on Plasma.
+# - Caps Lock switches the input method (fcitx5 listens for Ctrl+Space), Shift+Caps is the real
+#   Caps Lock. Physical Control+Space already reaches fcitx5 as Ctrl+Space (built-in rule).
+# - The other lines are the shortcuts Toshy's KDE sections gave the Mac keyboard.
+
+[profile.default]
+rules = [
+  { when = "command+space", then = "alt+space" },
+  { when = "capslock", then = "ctrl+space" },
+  { when = "shift+capslock", then = "capslock" },
+  { when = "command+control+f", then = "super+shift+f" },
+  { when = "command+e", then = "super+dot" },
+  { when = "command+h", then = "super+pagedown" },
+  { when = "command+f3", then = "super+d" },
+  { when = "command+shift+3", then = "shift+print" },
+  { when = "command+shift+4", then = "alt+print" },
+  { when = "command+shift+5", then = "print" },
+  { when = "control+left", then = "ctrl+super+left" },
+  { when = "control+right", then = "ctrl+super+right" },
+]
+
+# A terminal keeps Ctrl+Left and Ctrl+Right for the shell.
+[profile.terminal]
+rules = [
+  { when = "control+left", then = "ctrl+left" },
+  { when = "control+right", then = "ctrl+right" },
+]

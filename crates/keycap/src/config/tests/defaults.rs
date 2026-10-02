@@ -63,13 +63,27 @@ fn defaults_resolve_spot_checks() {
 #[test]
 fn defaults_hold_every_documented_default_rule() {
     let default_rules = builtin_profiles().resolve(&name("default")).rules.len();
-    assert_eq!(default_rules, 21);
+    assert_eq!(default_rules, 25);
     let terminal_rules = builtin_profiles().resolve(&name("terminal")).rules.len();
     assert_eq!(
         terminal_rules,
-        21 + 6,
+        25 + 6,
         "6 new triggers; control+a and +e are overrides"
     );
+}
+
+#[test]
+fn the_filemanager_profile_overrides_five_rules_and_adds_two() {
+    let profiles = builtin_profiles();
+    let files = profiles.resolve(&name("filemanager"));
+    assert_eq!(files.rules.len(), 25 + 2);
+    assert_eq!(
+        rule(files, "command+backspace"),
+        Some(&map("delete")),
+        "Cmd+Backspace trashes, it does not select to the line start"
+    );
+    assert_eq!(rule(files, "command+left"), Some(&map("alt+left")));
+    assert_eq!(files.modmap, profiles.resolve(&name("default")).modmap);
 }
 
 #[test]

@@ -45,6 +45,7 @@ fn layout_of_vendor_table() {
     const CASES: &[(u16, Layout)] = &[
         (0x05ac, Layout::Apple),
         (0x004c, Layout::Apple),
+        (0x3434, Layout::Apple),
         (0x046d, Layout::Pc),
         (0x0000, Layout::Pc),
     ];

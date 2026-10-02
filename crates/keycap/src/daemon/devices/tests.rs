@@ -380,3 +380,48 @@ fn summary_table() {
         assert_eq!(summary(&input), want, "{name}");
     }
 }
+
+#[test]
+fn a_bluetooth_keyboard_that_wakes_with_a_key_down_is_grabbed_after_the_key_is_up() {
+    // A sleeping keyboard drops its uhid node; the key that wakes it can be down when the new
+    // node appears, possibly at the old path.
+    let mut rig = Rig::new(FakeGrabber::default());
+    rig.appear(identity(3, 0x3434), at(0));
+    assert_eq!(
+        rig.devices.active(A),
+        Some(Layout::Apple),
+        "Keychron is Mac"
+    );
+    rig.gone(A, at(100));
+    assert_eq!(rig.nodes.held(), []);
+
+    rig.nodes.press_key(B);
+    rig.appear(identity(3, 0x3434), at(5_000));
+    assert_eq!(rig.grabs(), [Grab::WaitingForRelease]);
+    assert_eq!(
+        rig.nodes.held(),
+        [],
+        "not grabbed while the waking key is down"
+    );
+    rig.nodes.release_keys(B);
+    rig.poll(at(5_050));
+    assert_eq!(rig.grabs(), [Grab::Active]);
+    assert_eq!(rig.nodes.held(), [B]);
+}
+
+#[test]
+fn a_keyboard_that_appears_while_paused_is_opened_but_not_grabbed_until_resume() {
+    let mut rig = Rig::new(FakeGrabber::default());
+    rig.release(at(0));
+    rig.appear(identity(3, 0x3434), at(10));
+    assert_eq!(rig.nodes.open_ids(), [A]);
+    rig.poll(at(1_000));
+    assert_eq!(
+        rig.nodes.held(),
+        [],
+        "the escape chord stays in force for new devices"
+    );
+    rig.resume();
+    rig.poll(at(1_050));
+    assert_eq!(rig.nodes.held(), [A]);
+}

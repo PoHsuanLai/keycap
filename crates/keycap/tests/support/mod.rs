@@ -126,6 +126,14 @@ impl Rig {
         }
     }
 
+    /// A remapper over `profiles` instead of the shipped ones.
+    pub fn with_profiles(profiles: Profiles) -> Self {
+        Rig {
+            profiles,
+            ..Self::new()
+        }
+    }
+
     /// Feed `input`, check the writes against the wire, return them rendered.
     pub fn feed(&mut self, input: RemapInput) -> String {
         self.feed_outs(input).1

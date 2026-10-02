@@ -1,0 +1,14 @@
+# keycap-focus: the Plasma add-on that tells keycap which window has focus.
+# Install to ~/.config/systemd/user/ (install.sh --plasma-focus does it).
+[Unit]
+Description=keycap focus feed for Plasma (terminal vs default profile)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/keycap-focus
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
