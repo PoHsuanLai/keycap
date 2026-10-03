@@ -1,6 +1,20 @@
 use std::path::PathBuf;
 
+use keycap_core::{ConfigLayer, Hold, Profile, RuleAction, Stroke, Trigger, resolve};
+
 use super::*;
+
+fn map(s: &str) -> RuleAction {
+    RuleAction::Map(
+        Stroke::parse(s).expect("test strokes are valid"),
+        Hold::Restore,
+    )
+}
+
+fn rule<'a>(p: &'a Profile, when: &str) -> Option<&'a RuleAction> {
+    p.rules
+        .get(&Trigger::parse(when).expect("test triggers are valid"))
+}
 
 /// A scratch directory under the system temp dir, removed on drop.
 struct Scratch(PathBuf);

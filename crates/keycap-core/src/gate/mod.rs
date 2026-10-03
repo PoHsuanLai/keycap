@@ -5,6 +5,4 @@ mod step;
 #[cfg(test)]
 mod tests;
 
-#[cfg(test)]
-pub(crate) use model::KEYS_DOWN_BYTES;
-pub use model::{Decision, GrabGate, KeysDown};
+pub use model::{Decision, GrabGate, KEYS_DOWN_BYTES, KeysDown};

@@ -3,10 +3,8 @@
 use std::io::ErrorKind;
 use std::path::Path;
 
+use keycap_core::{ConfigLayer, ConfigSource};
 use keycap_protocol::Warning;
-
-use super::layer::{ConfigLayer, ConfigSource};
-use super::lenient::warning;
 
 /// The file name the system layer is read from, in the system config directory.
 pub const FILE_NAME: &str = "keycap.toml";
@@ -21,10 +19,10 @@ pub fn system(dir: &Path) -> (ConfigLayer, Vec<Warning>) {
         Err(e) if e.kind() == ErrorKind::NotFound => (ConfigLayer::default(), Vec::new()),
         Err(e) => (
             ConfigLayer::default(),
-            vec![warning(
-                &path.display().to_string(),
-                format!("{}: cannot be read: {e}", ConfigSource::System),
-            )],
+            vec![Warning {
+                key: path.display().to_string(),
+                problem: format!("{}: cannot be read: {e}", ConfigSource::System),
+            }],
         ),
     }
 }

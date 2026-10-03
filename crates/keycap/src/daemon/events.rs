@@ -1,7 +1,7 @@
 //! `struct input_event` and the two directions of translation: what a grabbed device sent
 //! (`decode`) and what keycap writes (`encode`). Pure.
 
-use crate::key::Key;
+use crate::Key;
 use crate::{Edge, Logical, OutEvent, Physical};
 
 pub(crate) const EV_SYN: u16 = 0x00;

@@ -3,10 +3,10 @@
 
 use super::tests::Rig;
 use crate::Edge;
+use crate::Key;
 use crate::daemon::caps::{CapsFix, CapsKey};
 use crate::daemon::events::{EV_KEY, InputEvent};
 use crate::daemon::leds::Lamp;
-use crate::key::Key;
 
 /// The `(code, value)` pairs of the key events written so far, in order.
 fn written(rig: &Rig) -> Vec<(u16, i32)> {

@@ -4,7 +4,6 @@ mod defaults;
 mod inheritance;
 mod layering;
 mod lenient;
-mod load;
 
 use keycap_protocol::{ProfileName, Warning};
 

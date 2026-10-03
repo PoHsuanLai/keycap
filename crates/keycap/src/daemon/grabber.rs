@@ -241,7 +241,7 @@ mod fake {
         }
 
         fn keys_down(&self, id: DeviceId) -> io::Result<KeysDown> {
-            let mut bytes = [0u8; crate::gate::KEYS_DOWN_BYTES];
+            let mut bytes = [0u8; crate::KEYS_DOWN_BYTES];
             bytes[0] = u8::from(self.keys.contains(&id));
             Ok(KeysDown::from_bytes(bytes))
         }

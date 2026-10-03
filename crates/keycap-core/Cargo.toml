@@ -1,0 +1,16 @@
+[package]
+name = "keycap-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "keycap's pure remap core: key vocabulary, layout tables, profiles, the layered config over strings, and Remapper::step. No device, socket, clock or file I/O, so a compositor can link it"
+
+[lints]
+workspace = true
+
+[dependencies]
+keycap-protocol = { path = "../keycap-protocol" }
+thiserror.workspace = true
+toml.workspace = true

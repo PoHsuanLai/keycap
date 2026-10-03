@@ -2,9 +2,9 @@
 
 use super::allowance::VirtualAllowance;
 use super::caps::Caps;
+use crate::Key;
 use crate::daemon::events::{ABS_MT_POSITION_X, ABS_X, EV_ABS, EV_KEY, EV_REL, REL_X};
 use crate::daemon::{pointer, uinput};
-use crate::key::Key;
 use std::path::{Path, PathBuf};
 
 /// Name prefix of palmrest's virtual devices, which keycap must never grab.

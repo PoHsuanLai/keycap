@@ -1,36 +1,18 @@
-//! keycap: the Mac keyboard mapping daemon, and its pure core.
+//! keycap: the Mac keyboard mapping daemon.
 //!
-//! The core is vocabulary (`Key`, `Physical`, `Logical`, `Role`, `OutMod`, `Edge`, `Mono`) and
-//! the layout tables that say which physical key plays which role. Input and output speak
-//! different vocabularies and the types keep them apart; see ARCHITECTURE.md section 8.
+//! The pure remap core lives in `keycap-core` and is re-exported here, so the daemon, its tests
+//! and its examples name one set of types. This crate adds what touches the system: the system
+//! config file and its watcher, the daemon, and the `keycap` command.
 
-mod backoff;
 pub mod command;
 mod config;
 mod daemon;
-mod escape;
-mod event;
-mod gate;
-mod held;
-mod key;
-mod layout;
-mod profile;
-mod remap;
-mod role;
-mod time;
 
-pub use backoff::Backoff;
-pub use config::{
-    ConfigLayer, ConfigSource, DEBOUNCE, FILE_NAME, LayoutOverrides, builtin, layout_overrides,
-    resolve, spawn, system,
+pub use config::{DEBOUNCE, FILE_NAME, spawn, system};
+pub use keycap_core::{
+    Backoff, ChordError, ConfigLayer, ConfigSource, CoreStatus, DEFAULTS_TOML, Decision, DeviceId,
+    Edge, Escape, EscapeChord, GrabGate, Held, Hold, KEYS_DOWN_BYTES, Key, KeysDown, Layout,
+    LayoutOverrides, Logical, ModMap, Mono, OutEvent, OutMod, OutMods, Physical, Profile, Profiles,
+    Record, RemapInput, RemapOut, Remapper, Role, Roles, RuleAction, Stroke, Trigger, builtin,
+    layout_overrides, resolve, role,
 };
-pub use escape::{Escape, EscapeChord};
-pub use event::{DeviceId, Edge, Logical, OutEvent, Physical};
-pub use gate::{Decision, GrabGate, KeysDown};
-pub use held::{Held, Record};
-pub use key::Key;
-pub use layout::{Layout, role};
-pub use profile::{ChordError, Hold, ModMap, Profile, Profiles, RuleAction, Stroke, Trigger};
-pub use remap::{CoreStatus, RemapInput, RemapOut, Remapper};
-pub use role::{OutMod, OutMods, Role, Roles};
-pub use time::Mono;

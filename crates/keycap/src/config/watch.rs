@@ -10,8 +10,8 @@ use std::time::Duration;
 use keycap_protocol::Warning;
 use notify::{RecursiveMode, Watcher};
 
-use super::layer::ConfigLayer;
 use super::load::{FILE_NAME, system};
+use keycap_core::ConfigLayer;
 
 /// Quiet time after the last change before the file is re-read.
 pub const DEBOUNCE: Duration = Duration::from_millis(30);

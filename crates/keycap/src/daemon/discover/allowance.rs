@@ -39,9 +39,9 @@ mod tests {
     use super::super::caps::{Bits, Caps};
     use super::super::classify::{Eligibility, Identity, Origin, classify};
     use super::*;
+    use crate::Key;
     use crate::daemon::events::{EV_KEY, EV_SYN};
     use crate::daemon::uinput;
-    use crate::key::Key;
     use std::path::PathBuf;
 
     /// A keyboard's capability masks: the letters and the space bar.

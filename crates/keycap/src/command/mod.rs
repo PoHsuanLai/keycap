@@ -6,7 +6,7 @@ mod replay;
 mod script;
 mod status;
 
-use crate::config::DEFAULTS_TOML;
+use crate::DEFAULTS_TOML;
 use crate::daemon::uinput::{self, UINPUT};
 use crate::daemon::{self, Env};
 use keycap_protocol::Keyboard;

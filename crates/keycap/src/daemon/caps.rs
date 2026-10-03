@@ -9,9 +9,9 @@
 
 use super::events::{EV_KEY, InputEvent};
 use super::leds::Lamp;
-use crate::key::Key;
-use crate::profile::{Profile, Trigger};
+use crate::Key;
 use crate::{Layout, Physical, role};
+use crate::{Profile, Trigger};
 
 /// What the active profile does with the Caps Lock key pressed alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,7 +86,7 @@ fn caps_lock_code() -> u16 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{builtin, resolve};
+    use crate::{builtin, resolve};
 
     fn physical(name: &str) -> Physical {
         Physical(Key::named(name).unwrap())
