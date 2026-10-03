@@ -33,20 +33,50 @@ rules = [
   { when = "control+e", then = "end" },
 ]
 
-# A terminal keeps physical Control as Control (shell readline and Ctrl+C), and copies and
-# pastes with Ctrl+Shift.
+# A terminal keeps physical Control as Control (shell readline, Ctrl+C, Ctrl+D) and never lets
+# Command become a bare Ctrl+letter: in a terminal Ctrl+letter is a control character (Ctrl+D
+# ends the shell, Ctrl+Z suspends, Ctrl+K kills the line), so every Command+letter is written as
+# Ctrl+Shift+letter, which terminals use for their own shortcuts (copy, paste, new tab, find)
+# and otherwise ignore. Command+Q is the exception: it quits, as everywhere (the default rule).
+# Command+Shift+letter and Command+Option+letter already carry another modifier, so they are
+# never a control character and need no rule.
 [profile.terminal]
 inherits = "default"
 modmap = { control = "ctrl" }
 rules = [
-  { when = "command+c", then = "ctrl+shift+c" },
-  { when = "command+v", then = "ctrl+shift+v" },
-  { when = "command+t", then = "ctrl+shift+t" },
-  { when = "command+w", then = "ctrl+shift+w" },
-  { when = "command+n", then = "ctrl+shift+n" },
-  { when = "command+f", then = "ctrl+shift+f" },
+  { when = "command+a", then = "ctrl+shift+a" }, { when = "command+b", then = "ctrl+shift+b" }, { when = "command+c", then = "ctrl+shift+c" }, { when = "command+d", then = "ctrl+shift+d" },
+  { when = "command+e", then = "ctrl+shift+e" }, { when = "command+f", then = "ctrl+shift+f" }, { when = "command+g", then = "ctrl+shift+g" }, { when = "command+h", then = "ctrl+shift+h" },
+  { when = "command+i", then = "ctrl+shift+i" }, { when = "command+j", then = "ctrl+shift+j" }, { when = "command+k", then = "ctrl+shift+k" }, { when = "command+l", then = "ctrl+shift+l" },
+  { when = "command+m", then = "ctrl+shift+m" }, { when = "command+n", then = "ctrl+shift+n" }, { when = "command+o", then = "ctrl+shift+o" }, { when = "command+p", then = "ctrl+shift+p" },
+  { when = "command+r", then = "ctrl+shift+r" }, { when = "command+s", then = "ctrl+shift+s" }, { when = "command+t", then = "ctrl+shift+t" }, { when = "command+u", then = "ctrl+shift+u" },
+  { when = "command+v", then = "ctrl+shift+v" }, { when = "command+w", then = "ctrl+shift+w" }, { when = "command+x", then = "ctrl+shift+x" }, { when = "command+y", then = "ctrl+shift+y" },
+  { when = "command+z", then = "ctrl+shift+z" },
+  { when = "command+backslash", then = "ctrl+shift+backslash" },
+  { when = "command+leftbrace", then = "ctrl+shift+leftbrace" },
+  { when = "command+rightbrace", then = "ctrl+shift+rightbrace" },
+  { when = "command+minus", then = "ctrl+minus" },
+  { when = "command+equal", then = "ctrl+shift+equal" },
+  { when = "command+dot", then = "ctrl+c" },
+  { when = "command+backspace", then = "ctrl+u" },
+  { when = "command+delete", then = "ctrl+k" },
+  { when = "command+shift+left", then = "ctrl+pageup" },
+  { when = "command+shift+right", then = "ctrl+pagedown" },
+  { when = "option+backspace", then = "ctrl+w" },
+  { when = "option+delete", then = ["esc", "d"] },
   { when = "control+a", then = "ctrl+a" },
   { when = "control+e", then = "ctrl+e" },
+]
+
+# Ghostty: its split, inspector and clear-screen shortcuts, and its own zoom-in key. The rest is
+# the terminal profile.
+[profile.ghostty]
+inherits = "terminal"
+rules = [
+  { when = "command+d", then = "ctrl+shift+o" },
+  { when = "command+shift+d", then = "ctrl+shift+e" },
+  { when = "command+k", then = "ctrl+l" },
+  { when = "command+option+i", then = "ctrl+shift+i" },
+  { when = "command+equal", then = "ctrl+equal" },
 ]
 
 # A file manager: Cmd+Backspace moves the selection to the trash (not "select to the first item,

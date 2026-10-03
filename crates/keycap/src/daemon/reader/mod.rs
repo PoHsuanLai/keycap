@@ -2,6 +2,9 @@
 //! the pure remapper and carrying its outputs to the virtual keyboard. It waits on nothing but
 //! `poll`.
 
+mod caps;
+#[cfg(test)]
+mod caps_tests;
 mod grabs;
 mod handle;
 #[cfg(test)]
@@ -13,6 +16,7 @@ mod twins;
 mod unknown;
 
 use super::buttons::Buttons;
+use super::caps::CapsFix;
 use super::devices::Devices;
 use super::discover::VirtualAllowance;
 use super::env::Env;
@@ -84,6 +88,8 @@ pub(crate) struct Reader<E: Emitter> {
     held: BTreeSet<DeviceId>,
     /// The lamps the desktop last set on the virtual keyboard.
     lamps: LedState,
+    /// Whether Caps Lock was left on across the switch and is still to be cleared.
+    caps: CapsFix,
     /// Focused names the config does not define, already logged.
     unknowns: Unknowns,
     /// Devices whose queue overflowed and whose events are discarded up to the next
@@ -116,6 +122,7 @@ impl<E: Emitter> Reader<E> {
             twins: Twins::default(),
             held: BTreeSet::new(),
             lamps: LedState::default(),
+            caps: CapsFix::default(),
             unknowns: Unknowns::default(),
             discarding: BTreeSet::new(),
         }

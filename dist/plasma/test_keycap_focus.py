@@ -19,9 +19,13 @@ loader.exec_module(keycap_focus)
 
 class ProfileChoice(unittest.TestCase):
     def test_terminals_get_the_terminal_profile(self):
-        for name in ["konsole", "org.kde.konsole", "Konsole", "kitty", "Alacritty", "com.mitchellh.ghostty",
+        for name in ["konsole", "org.kde.konsole", "Konsole", "kitty", "Alacritty",
                      "org.gnome.Ptyxis", "foot", "org.wezfurlong.wezterm"]:
             self.assertEqual(keycap_focus.profile_for(name), "terminal", name)
+
+    def test_ghostty_gets_its_own_profile_which_inherits_terminal(self):
+        for name in ["ghostty", "com.mitchellh.ghostty", "Ghostty", "com.mitchellh.ghostty-debug"]:
+            self.assertEqual(keycap_focus.profile_for(name), "ghostty", name)
 
     def test_file_managers_get_the_filemanager_profile(self):
         for name in ["org.kde.dolphin", "dolphin", "Thunar", "org.gnome.Nautilus", "nemo"]:

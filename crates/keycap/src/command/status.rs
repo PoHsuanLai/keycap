@@ -1,7 +1,10 @@
 //! `keycap status` and `keycap resume`: the daemon's socket from the command line. Status reads
 //! the `Hello` every client gets; resume sends the one request that ends the escape-chord pause.
 
-use keycap_protocol::{self as protocol, Grab, Mode, PROTOCOL_VERSION, Status, ToClient, ToDaemon};
+use crate::daemon::leds::Lamp;
+use keycap_protocol::{
+    self as protocol, Grab, Keyboard, Mode, PROTOCOL_VERSION, Status, ToClient, ToDaemon,
+};
 use rustix::io::Errno;
 use rustix::net::sockopt::{Timeout, set_socket_timeout};
 use rustix::net::{AddressFamily, RecvFlags, SendFlags, SocketAddrUnix, SocketType};
@@ -57,8 +60,9 @@ fn connect(runtime_dir: &Path) -> Result<rustix::fd::OwnedFd, String> {
     Ok(fd)
 }
 
-/// A status as the lines `keycap status` prints.
-pub(super) fn render(status: &Status) -> String {
+/// A status as the lines `keycap status` prints; `caps` is the Caps Lock lamp of a keyboard,
+/// when it has one, and goes on a line of its own under it.
+pub(super) fn render(status: &Status, caps: impl Fn(&Keyboard) -> Option<Lamp>) -> String {
     let mode = match status.mode {
         Mode::Running => "running",
         Mode::Paused => "paused by the escape chord; run `keycap resume` to grab again",
@@ -67,18 +71,28 @@ pub(super) fn render(status: &Status) -> String {
     if status.keyboards.is_empty() {
         lines.push("  no keyboards".to_owned());
     }
-    lines.extend(status.keyboards.iter().map(|k| {
+    for k in &status.keyboards {
         let hold = match k.grab {
             Grab::Active => "grabbed, remapping",
             Grab::WaitingForRelease => "waiting for its keys to be released",
             Grab::Conflict => "held by another remapper (Toshy, keyd, ...)",
         };
-        format!(
+        lines.push(format!(
             "  {} ({}, {:04x}:{:04x}): {hold}",
             k.info.name, k.info.path, k.info.vendor, k.info.product
-        )
-    }));
+        ));
+        lines.extend(caps(k).map(caps_line));
+    }
     lines.join("\n")
+}
+
+fn caps_line(lamp: Lamp) -> String {
+    match lamp {
+        Lamp::Off => "    Caps Lock: off".to_owned(),
+        Lamp::On => "    Caps Lock: ON (letters come out in capitals; press Shift+Caps Lock, or \
+                     Caps Lock if your config does not remap it, to turn it off)"
+            .to_owned(),
+    }
 }
 
 /// Whether the daemon is remapping at least one keyboard: what the exit status of
@@ -90,7 +104,7 @@ pub(super) fn is_remapping(status: &Status) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use keycap_protocol::{Keyboard, KeyboardInfo};
+    use keycap_protocol::KeyboardInfo;
 
     fn keyboard(name: &str, grab: Grab) -> Keyboard {
         Keyboard {
@@ -133,8 +147,31 @@ mod tests {
             ),
         ];
         for (name, status, want) in cases {
-            assert_eq!(render(&status), want, "{name}");
+            assert_eq!(render(&status, |_| None), want, "{name}");
         }
+    }
+
+    #[test]
+    fn the_caps_lock_lamp_goes_under_its_keyboard() {
+        let status = Status {
+            mode: Mode::Running,
+            keyboards: vec![
+                keyboard("K5", Grab::Active),
+                keyboard("Other", Grab::Active),
+            ],
+        };
+        let lamp = |k: &Keyboard| (k.info.name == "K5").then_some(Lamp::On);
+        let text = render(&status, lamp);
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines.len(), 4, "{text}");
+        assert!(lines[2].starts_with("    Caps Lock: ON (letters come out in capitals"));
+        assert!(lines[2].contains("Shift+Caps Lock"), "{}", lines[2]);
+        assert!(
+            lines[3].starts_with("  Other"),
+            "a keyboard without a lamp gets no line"
+        );
+        let off = render(&status, |_| Some(Lamp::Off));
+        assert_eq!(off.matches("    Caps Lock: off").count(), 2);
     }
 
     #[test]

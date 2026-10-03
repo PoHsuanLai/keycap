@@ -1,6 +1,7 @@
 //! Threads, sockets, devices, clocks and the environment: everything with an effect.
 
 pub(crate) mod buttons;
+pub(crate) mod caps;
 pub(crate) mod clock;
 pub(crate) mod devices;
 pub(crate) mod discover;

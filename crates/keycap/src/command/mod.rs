@@ -1,6 +1,7 @@
 //! The `keycap` command line: the daemon and its small tools. `run` is the one way in, and the
 //! only place that reads the process environment.
 
+mod caps_lamp;
 mod replay;
 mod script;
 mod status;
@@ -8,6 +9,7 @@ mod status;
 use crate::config::DEFAULTS_TOML;
 use crate::daemon::uinput::{self, UINPUT};
 use crate::daemon::{self, Env};
+use keycap_protocol::Keyboard;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -104,7 +106,9 @@ fn execute(command: Command, env: Env) -> Result<(), String> {
                 ))
             }),
         Command::Status => status::read_status(&env.runtime_dir).and_then(|s| {
-            print_out(&format!("{}\n", status::render(&s)))?;
+            let lamp =
+                |keyboard: &Keyboard| caps_lamp::lamp_of(&env.sys_input, &keyboard.info.path);
+            print_out(&format!("{}\n", status::render(&s, lamp)))?;
             status::is_remapping(&s)
                 .then_some(())
                 .ok_or_else(|| "no keyboard is being remapped".to_owned())

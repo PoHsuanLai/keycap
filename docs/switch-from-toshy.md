@@ -25,7 +25,7 @@ It prints every command it would run and runs none (it does not even build or as
 Read it. `--desktop plasma` installs `dist/keycap.plasma.toml` as `/etc/keycap/keycap.toml` if
 you have none (it never overwrites yours): Cmd+Space opens KRunner, plus the Plasma equivalents
 of macOS shortcuts (Cmd+Ctrl+F, Cmd+Ctrl+Space for emoji, Cmd+H, Cmd+Shift+3/4/5, Ctrl+Left/Right
-for desktops). Two things Toshy did for you are personal, so they are not shipped; step 2 adds them.
+for desktops, in terminals too). Two things Toshy did for you are personal, so they are not shipped; step 2 adds them.
 `--plasma-focus` installs the focus feed: without it, keycap does not know a terminal has
 focus, and **Cmd+C in Konsole would be Ctrl+C (SIGINT)**. Do not run keycap without it.
 
@@ -44,20 +44,22 @@ in place. Toshy is not touched.
 ### Your own settings (K5 Max layout, Caps Lock)
 
 keycap cannot see the K5 Max's Mac/Windows switch, so it treats the keyboard as a PC one
-(Cmd and Option swapped) until you say it is a Mac one. Append this to `/etc/keycap/keycap.toml`
-(`sudoedit`; keycap re-reads the file when it changes, no restart needed), together with the
-Caps Lock block if you want Caps Lock to switch fcitx5 as it did under Toshy:
+(Cmd and Option swapped) until you say it is a Mac one. `sudoedit /etc/keycap/keycap.toml`
+(keycap re-reads the file when it changes, no restart needed) and append the device block:
 
 ```toml
 [[device]]
 match = "3434:0a53"      # Keychron K5 Max, USB and Bluetooth; layout "apple" = switch on Mac
 layout = "apple"
+```
 
-[profile.default]
-rules = [
+For Caps Lock to switch fcitx5 as it did under Toshy, add these two lines to the end of the
+`rules = [ ... ]` list of the `[profile.default]` table that file already has (a second
+`[profile.default]` table would be a TOML error):
+
+```toml
   { when = "capslock", then = "ctrl+space" },
   { when = "shift+capslock", then = "capslock" },
-]
 ```
 
 (`docs/personal-config.md` explains both.) Do this before step 4: on step 3, `keycap status`
@@ -74,6 +76,7 @@ Expected, because Toshy still holds the keyboard:
 ```
 keycap: running
   Keychron K5 Max Keyboard (/dev/input/eventNN, 3434:0a53): held by another remapper (Toshy, keyd, ...)
+    Caps Lock: off
 ```
 
 (`keycap status` exits 1 until a keyboard is grabbed; that is not an error here.) The Magic
@@ -101,6 +104,13 @@ sudo systemctl restart keycap      # take the keyboard now, not after keycap's r
 keycap status                      # must say: grabbed, remapping
 ```
 
+`keycap status` also shows the Caps Lock lamp under each keyboard. The keyboard was raw for a few
+seconds, so Caps Lock may have been toggled on in that window; with Caps Lock remapped to Ctrl+Space
+pressing it cannot turn it off, and letters would come out in capitals. keycap notices a lit Caps Lock
+when it first grabs the keyboard and, if a rule takes the Caps Lock key, taps Caps Lock once before the
+first key you type (the journal says so: `journalctl -u keycap -b`). If letters still come out in
+capitals after switching (`Caps Lock: ON` in `keycap status`), **press Shift+Caps Lock once**.
+
 Then keep Toshy from coming back at the next login. Its autostart entries run the tray and a
 "kickstart" that restarts Toshy's services (it only fires when the units are enabled, so it is
 inert now, but move all three aside so nothing starts Toshy by surprise):
@@ -126,14 +136,17 @@ Run these in order; each takes seconds.
 2. Click one window, then another (this is the first focus message the feed sends; if you
    restarted `keycap-focus` or keycap, do this again).
 3. Konsole: `sleep 100` then Ctrl+C stops it (physical Control stays Control); select text,
-   Cmd+C copies, Cmd+V pastes.
+   Cmd+C copies, Cmd+V pastes. Cmd+D, Cmd+Z and Cmd+K do not end the shell, suspend it or kill
+   the line: in a terminal every Cmd+letter is Ctrl+Shift+letter, never a bare control character.
+   Ctrl+Left and Ctrl+Right switch desktops here too, as in macOS Terminal.
 4. Kate or Firefox: Cmd+C / Cmd+V / Cmd+A / Cmd+Z; Cmd+Left / Cmd+Right (line start / end);
    Opt+Left / Opt+Right (word); Opt+Backspace; Cmd+Backspace (delete to line start).
 5. Cmd+Tab (hold Cmd, press Tab repeatedly, release Cmd), Cmd+` (windows of one app), Cmd+Q
    (closes the window), Cmd+Space (KRunner), Cmd+W.
 6. Dolphin: Cmd+Backspace moves the selection to the trash; Cmd+Left goes back.
 7. Physical Control+Space switches the input method (fcitx5); with your Caps Lock block, Caps
-   Lock does too and Shift+Caps toggles real Caps Lock.
+   Lock does too and Shift+Caps toggles real Caps Lock. Type a lowercase letter: if it comes out
+   in capitals, press Shift+Caps Lock once (see step 4).
 8. Press and hold Shift, Shift, Esc together: the keyboard goes raw (Cmd+C does nothing useful).
    `keycap status` says paused. `keycap resume` brings the mapping back.
 9. Put the keyboard to sleep (wait, or turn the K5 Max off and on, or switch it to another
@@ -144,6 +157,14 @@ Run these in order; each takes seconds.
     the Bluetooth-keyboard limitation in your notes, not keycap.
 11. NumLock: Toshy's "forced numpad" made the numpad always a numpad. Set it in System
     Settings, Keyboard, Hardware, "NumLock on Plasma Startup: Turn on" if you want that.
+
+Terminals: every Cmd+letter is Ctrl+Shift+letter (copy, paste, new tab and the like where the
+terminal has them, nothing otherwise), Cmd+Q still quits, Cmd+Backspace is Ctrl+U, Cmd+Delete is
+Ctrl+K, Cmd+Shift+Left/Right are Ctrl+PageUp/PageDown, Cmd+Minus and Cmd+= are the font size
+keys, Cmd+. is Ctrl+C. Ghostty has a profile of its own on top of that: Cmd+D splits right
+(Ctrl+Shift+O), Cmd+Shift+D splits down (Ctrl+Shift+E), Cmd+K clears the screen (Ctrl+L),
+Cmd+Option+I opens the inspector. Rules you want in every terminal go in `[profile.terminal]`:
+a rule in `[profile.default]` is overridden there by the Cmd+letter table.
 
 Known differences from Toshy: app-specific keymaps beyond terminals and file managers (browsers'
 Cmd+Shift+[ and Cmd+R, VS Code, Sublime, ...) do not exist; a terminal embedded in another
@@ -188,3 +209,5 @@ keycap`, then the second command above.
 | `keycap status`: cannot connect | the service is not running | `systemctl status keycap`, `journalctl -u keycap -b` |
 | no keyboard listed | the K5 Max is asleep or off | wake it; it appears when it reconnects |
 | nothing mapped after the chord | paused | `keycap resume` |
+| letters come out in capitals, Caps Lock cannot be turned off | Caps Lock was on from the raw-keyboard window and a rule takes the Caps Lock key | press Shift+Caps Lock once (`keycap status` shows `Caps Lock: ON`) |
+| Cmd+D (or another Cmd+letter) acts as a bare Ctrl+letter in a terminal | the focus feed names a profile that does not inherit `terminal`, or an old keycap without the profile | `keycap --print-config` has `[profile.ghostty]`; update keycap and click another window |

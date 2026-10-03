@@ -24,9 +24,10 @@ rules = [
   { when = "control+right", then = "ctrl+super+right" },
 ]
 
-# A terminal keeps Ctrl+Left and Ctrl+Right for the shell.
+# Ctrl+Left and Ctrl+Right change desktop in a terminal too, as in macOS Terminal (the terminal
+# profile inherits them from the default one above). The built-in terminal profile writes every
+# Command+letter as Ctrl+Shift+letter, so Cmd+H, which hides on Plasma, is restated here.
 [profile.terminal]
 rules = [
-  { when = "control+left", then = "ctrl+left" },
-  { when = "control+right", then = "ctrl+right" },
+  { when = "command+h", then = "super+pagedown" },
 ]

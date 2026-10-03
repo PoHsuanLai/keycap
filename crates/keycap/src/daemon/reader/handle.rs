@@ -103,6 +103,7 @@ impl<E: Emitter> Reader<E> {
 
     /// One input through the remapper, and what it asks for carried out.
     pub(super) fn feed(&mut self, input: RemapInput) {
+        self.settle_caps(&input);
         let (remapper, outs) = std::mem::take(&mut self.remapper).step(input, &self.profiles);
         self.remapper = remapper;
         let mut wire = Wire::Intact;

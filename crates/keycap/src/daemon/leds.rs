@@ -58,6 +58,26 @@ impl LedState {
     }
 }
 
+/// The LEDs a keyboard reports lit (`EVIOCGLED`), as the kernel's bitmap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LedsLit(u16);
+
+impl LedsLit {
+    /// The bitmap as the kernel wrote it: little-endian, bit `n` is LED `n`.
+    pub(crate) const fn from_bytes(bytes: [u8; 2]) -> Self {
+        Self(u16::from_le_bytes(bytes))
+    }
+
+    /// Whether `led` is lit.
+    pub(crate) const fn lamp(self, led: Led) -> Lamp {
+        if self.0 >> led.code() & 1 == 1 {
+            Lamp::On
+        } else {
+            Lamp::Off
+        }
+    }
+}
+
 impl Led {
     const fn code(self) -> u16 {
         match self {
@@ -165,6 +185,31 @@ mod tests {
             }),
             ev(EV_LED, 1, 1)
         );
+    }
+
+    #[test]
+    fn leds_lit_reads_the_kernels_bitmap() {
+        // (bytes, num, caps, scroll)
+        const CASES: &[([u8; 2], Lamp, Lamp, Lamp)] = &[
+            ([0, 0], Lamp::Off, Lamp::Off, Lamp::Off),
+            ([1, 0], Lamp::On, Lamp::Off, Lamp::Off),
+            ([2, 0], Lamp::Off, Lamp::On, Lamp::Off),
+            ([4, 0], Lamp::Off, Lamp::Off, Lamp::On),
+            ([7, 0xff], Lamp::On, Lamp::On, Lamp::On),
+            ([0, 2], Lamp::Off, Lamp::Off, Lamp::Off),
+        ];
+        for &(bytes, num, caps, scroll) in CASES {
+            let lit = LedsLit::from_bytes(bytes);
+            assert_eq!(
+                (
+                    lit.lamp(Led::Num),
+                    lit.lamp(Led::Caps),
+                    lit.lamp(Led::Scroll)
+                ),
+                (num, caps, scroll),
+                "{bytes:?}"
+            );
+        }
     }
 
     #[test]

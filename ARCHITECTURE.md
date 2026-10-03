@@ -49,6 +49,8 @@ Daemon modules:
 | `daemon/twin.rs` | the "<name> (keycap pointer)" virtual device of a combo device whose pointer the keyboard cannot carry (absolute axes): registered from a `PointerCaps`, destroyed on `Drop` |
 | `daemon/pointer.rs` | pure: `PointerCaps`, the pointer half of a device as a value (axes with their `absinfo`, relative axes, buttons, input properties, the twin's name), built from the kernel's masks; `needs_twin` |
 | `daemon/buttons.rs` | pure: the mouse buttons each combo device holds, released on unplug, overflow and pause; the keyboard's record and each twin's are separate values |
+| `daemon/caps.rs`, `daemon/reader/caps.rs` | a Caps Lock left on across a switch of remapper: the pure `CapsFix` (unchecked, armed, done) and `CapsKey` (does a rule take the bare Caps Lock key); the reader reads the lamp (`EVIOCGLED`) at the first grab and writes one Caps Lock tap before the first non-modifier key typed |
+| `command/caps_lamp.rs` | the Caps Lock lamp of a keyboard for `keycap status`, from the LED class in sysfs |
 | `daemon/leds.rs` | pure: the lock-LED events the compositor writes to the virtual device, forwarded to every grabbed keyboard, and `LedState`, the last lamps it set, written to a keyboard the moment it is grabbed |
 | `daemon/readiness.rs` | which polled fds are ready, as an enum rather than flags |
 | `daemon/events.rs` | `struct input_event` as bytes, `decode` (what a device sent) and `encode` (what keycap writes), pure |
@@ -86,6 +88,7 @@ udev and polkit rules, `keycap.plasma.toml`, and `dist/plasma/`: the KWin script
 | What each press emitted, and which written keys are lifted | `held::Held` |
 | The pointer half of a combo device | `daemon::pointer::PointerCaps` |
 | Which lamps the desktop last set | `daemon::leds::LedState` |
+| Whether a lit Caps Lock is still to be cleared | `daemon::caps::CapsFix` |
 | Which undefined profile names were already logged | `daemon::reader::unknown::Unknowns` |
 | When a keyboard may be grabbed | `gate::GrabGate` |
 | The emergency chord | `escape` |
@@ -126,7 +129,10 @@ that stay enums:** `RemapInput`, `RemapOut`, `RuleAction`, `Edge`, `Layout`, `To
    and its rules. A name is `[a-z0-9_-]+`.
 2. A scenario test that focuses the profile and drives its rules, and one that switches into
    and out of it with a modifier held.
-3. The desktop must send `Focus { profile: NAME }`; keycap needs no change for that.
+3. The desktop must send `Focus { profile: NAME }`; keycap needs no change for that. This is
+   how a profile for one app is made (`ghostty` inherits `terminal`): the desktop maps its app id
+   to the name (on Plasma, `OWN_PROFILES` in `dist/plasma/keycap-focus`, with a case in
+   `test_keycap_focus.py`).
 4. The README mapping table gains a row.
 
 ### Add a socket message

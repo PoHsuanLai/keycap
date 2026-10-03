@@ -3,6 +3,7 @@
 
 use super::discover::{Bits, Identity};
 use super::events::InputEvent;
+use super::leds::LedsLit;
 use super::pointer::{AbsAxis, Masks, PointerCaps};
 use super::sys::{self, Capability, Grab, GrabError};
 use crate::{DeviceId, KeysDown};
@@ -54,6 +55,12 @@ impl EvdevGrabber {
         } else {
             Err(io::Error::from(io::ErrorKind::WriteZero))
         }
+    }
+
+    /// The LEDs lit on the node of `id`, as the kernel keeps them.
+    pub(crate) fn leds_lit(&self, id: DeviceId) -> io::Result<LedsLit> {
+        let fd = self.fds.get(&id).ok_or_else(not_open)?;
+        sys::leds_lit(fd).map(LedsLit::from_bytes)
     }
 
     /// The pointer half of the node of `id`, read from the kernel: the key, relative and

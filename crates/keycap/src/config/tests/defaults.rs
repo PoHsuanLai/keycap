@@ -32,7 +32,8 @@ fn defaults_resolve_spot_checks() {
     );
 
     // (profile, trigger, expected action); None = no rule, the key passes through.
-    let cases: [(&Profile, &str, Option<RuleAction>); 10] = [
+    let ghostty = profiles.resolve(&name("ghostty"));
+    let cases: [(&Profile, &str, Option<RuleAction>); 20] = [
         (default, "command+left", Some(map("home"))),
         (default, "command+c", None),
         (
@@ -54,6 +55,16 @@ fn defaults_resolve_spot_checks() {
         (terminal, "command+left", Some(map("home"))),
         (terminal, "control+a", Some(map("ctrl+a"))),
         (terminal, "control+e", Some(map("ctrl+e"))),
+        (terminal, "command+d", Some(map("ctrl+shift+d"))),
+        (terminal, "command+z", Some(map("ctrl+shift+z"))),
+        (terminal, "command+backspace", Some(map("ctrl+u"))),
+        (terminal, "command+delete", Some(map("ctrl+k"))),
+        (terminal, "command+shift+left", Some(map("ctrl+pageup"))),
+        (terminal, "command+q", Some(map("alt+f4"))),
+        (ghostty, "command+d", Some(map("ctrl+shift+o"))),
+        (ghostty, "command+shift+d", Some(map("ctrl+shift+e"))),
+        (ghostty, "command+c", Some(map("ctrl+shift+c"))),
+        (ghostty, "command+left", Some(map("home"))),
     ];
     for (i, (profile, when, want)) in cases.iter().enumerate() {
         assert_eq!(rule(profile, when), want.as_ref(), "case {i}: {when}");
@@ -62,13 +73,43 @@ fn defaults_resolve_spot_checks() {
 
 #[test]
 fn defaults_hold_every_documented_default_rule() {
-    let default_rules = builtin_profiles().resolve(&name("default")).rules.len();
-    assert_eq!(default_rules, 25);
-    let terminal_rules = builtin_profiles().resolve(&name("terminal")).rules.len();
+    let profiles = builtin_profiles();
+    assert_eq!(profiles.resolve(&name("default")).rules.len(), 25);
     assert_eq!(
-        terminal_rules,
-        25 + 6,
-        "6 new triggers; control+a and +e are overrides"
+        profiles.resolve(&name("terminal")).rules.len(),
+        25 + 32,
+        "25 letters (all but q), \\ [ ] - = . and Cmd+Delete are new triggers; the rest override"
+    );
+    assert_eq!(
+        profiles.resolve(&name("ghostty")).rules.len(),
+        25 + 32 + 2,
+        "Cmd+Shift+D and Cmd+Option+I are new; Cmd+D, K and = override the terminal's"
+    );
+}
+
+#[test]
+fn every_command_letter_but_q_has_a_terminal_rule_that_is_not_a_bare_control_letter() {
+    let profiles = builtin_profiles();
+    for profile in ["terminal", "ghostty"] {
+        let resolved = profiles.resolve(&name(profile));
+        for letter in ('a'..='z').filter(|&c| c != 'q') {
+            let trigger = format!("command+{letter}");
+            let Some(RuleAction::Map(stroke, _)) = rule(resolved, &trigger) else {
+                panic!("{profile}: {trigger} has no Map rule, so it would be a bare Ctrl+{letter}");
+            };
+            let bare_control = stroke.mods == [OutMod::Ctrl].into_iter().collect()
+                && stroke.key == Key::named(&letter.to_string()).unwrap();
+            assert!(!bare_control, "{profile}: {trigger} writes {stroke:?}");
+        }
+    }
+}
+
+#[test]
+fn ghostty_inherits_terminal_and_the_modmap() {
+    let profiles = builtin_profiles();
+    assert_eq!(
+        profiles.resolve(&name("ghostty")).modmap,
+        profiles.resolve(&name("terminal")).modmap
     );
 }
 

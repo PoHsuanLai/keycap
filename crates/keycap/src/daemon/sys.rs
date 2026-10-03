@@ -21,6 +21,10 @@ const KEY_STATE_BYTES: usize = 96;
 const EVIOCGKEY: Opcode = opcode::read::<[u8; KEY_STATE_BYTES]>(b'E', 0x18);
 const EVIOCGRAB: Opcode = opcode::write::<i32>(b'E', 0x90);
 
+/// Bytes in the `EVIOCGLED` bitmap: `LED_MAX` is 0x0f, so 16 bits.
+const LED_STATE_BYTES: usize = 2;
+const EVIOCGLED: Opcode = opcode::read::<[u8; LED_STATE_BYTES]>(b'E', 0x19);
+
 /// Bytes of the `EVIOCGPROP` bitmap: `INPUT_PROP_MAX / 8 + 1` is 4, read as one 64-bit word.
 const PROP_BYTES: usize = 8;
 /// Bytes of the `EVIOCGBIT(EV_REL)` and `EVIOCGBIT(EV_ABS)` bitmaps: `REL_MAX` and `ABS_MAX`
@@ -134,6 +138,14 @@ pub(crate) fn keys_down(fd: impl AsFd) -> io::Result<KeysDown> {
     // opcode is built for `[u8; 96]` and the kernel writes at most that many bytes into it.
     unsafe { ioctl::ioctl(fd, Getter::<EVIOCGKEY, [u8; KEY_STATE_BYTES]>::new()) }
         .map(KeysDown::from_bytes)
+        .map_err(io::Error::from)
+}
+
+/// The LEDs the kernel believes are lit on the device, as its little-endian bitmap.
+pub(crate) fn leds_lit(fd: impl AsFd) -> io::Result<[u8; LED_STATE_BYTES]> {
+    // SAFETY: linux/input.h declares EVIOCGLED(len) as _IOC(_IOC_READ, 'E', 0x19, len); the
+    // opcode is built for `[u8; 2]` and the kernel writes at most that many bytes into it.
+    unsafe { ioctl::ioctl(fd, Getter::<EVIOCGLED, [u8; LED_STATE_BYTES]>::new()) }
         .map_err(io::Error::from)
 }
 
@@ -292,6 +304,7 @@ mod tests {
         const CASES: &[(&str, Opcode, Opcode)] = &[
             ("EVIOCGKEY(96)", EVIOCGKEY, 0x8060_4518),
             ("EVIOCGRAB", EVIOCGRAB, 0x4004_4590),
+            ("EVIOCGLED(2)", EVIOCGLED, 0x8002_4519),
             ("EVIOCGPROP(8)", EVIOCGPROP, 0x8008_4509),
             ("EVIOCGBIT(EV_KEY, 96)", EVIOCGBIT_KEY, 0x8060_4521),
             ("EVIOCGBIT(EV_REL, 8)", EVIOCGBIT_REL, 0x8008_4522),

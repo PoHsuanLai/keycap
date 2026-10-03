@@ -4,7 +4,8 @@
 A KWin script (kwin-script/) calls org.keycap.Focus.Focus on the session bus with the focused
 window's resource class; this service turns it into keycap's one desktop-facing message,
 `Focus { profile }`, on /run/keycap/keycap.sock. Terminals get the `terminal` profile, file managers
-`filemanager`, every other window `default`. keycap forgets the profile when a client leaves, so every two seconds the
+`filemanager`, Ghostty `ghostty` (the terminal profile plus Ghostty's own split keys), every
+other window `default`. keycap forgets the profile when a client leaves, so every two seconds the
 connection is checked and, if it dropped (keycap restarted), reopened with the current profile.
 
 Needs python3-gobject (Gio). Run with --dry-run to print what would be sent, without a socket.
@@ -29,6 +30,10 @@ TERMINALS = frozenset(
 )
 TERMINAL_CONTAINS = ("ghostty", "ptyxis")
 
+# Terminals with a profile of their own, which inherits `terminal` (defaults.toml). The part is
+# searched for in the resource class like TERMINAL_CONTAINS.
+OWN_PROFILES = (("ghostty", "ghostty"),)
+
 # File managers, from Toshy's list: they get the `filemanager` profile.
 FILE_MANAGERS = frozenset(
     """caja com.system76.cosmicfiles dde-file-manager dolphin io.elementary.files krusader
@@ -49,6 +54,9 @@ INTERFACE_XML = """
 def profile_for(resource_class):
     """The keycap profile for a window's resource class."""
     name = resource_class.strip().lower()
+    for part, profile in OWN_PROFILES:
+        if part in name:
+            return profile
     if name in TERMINALS or any(part in name for part in TERMINAL_CONTAINS):
         return "terminal"
     if name in FILE_MANAGERS:

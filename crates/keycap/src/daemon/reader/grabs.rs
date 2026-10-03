@@ -23,6 +23,7 @@ impl<E: Emitter> Reader<E> {
         }
         for id in change.taken {
             self.light(id);
+            self.arm_caps(id);
             self.make_twin(id);
         }
         self.held = now;

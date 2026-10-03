@@ -157,11 +157,20 @@ other lets go. `DESTDIR=dir` stages the files under `dir` and skips systemd, ude
 Plasma has no way to ask "which window has focus" over a socket, so `dist/plasma/` has two
 small parts: a KWin script (`kwin-script/`) reports the focused window's resource class over the
 session bus, and `keycap-focus` (Python, needs `python3-gobject`) owns `org.keycap.Focus` and
-turns it into `Focus { profile }`: `terminal` for terminal emulators, `filemanager` for file
-managers, `default` for everything else. It reopens the socket when keycap restarts. The
+turns it into `Focus { profile }`: `ghostty` for Ghostty, `terminal` for other terminal
+emulators, `filemanager` for file managers, `default` for everything else. It reopens the socket when keycap restarts. The
 lists are at the top of the script. Limits: a terminal embedded in another window gets that
 window's profile; after restarting `keycap-focus`, focus another window once, since KWin only
 reports changes.
+
+### Per-app profiles
+
+The daemon never sees an app id: the desktop maps the focused window to a profile name and sends
+`Focus { profile }`, so any app can have a profile of its own with no keycap change. Define
+`[profile.NAME]` with `inherits = "terminal"` (or another profile) and have the desktop send NAME;
+a name nobody defined is `default`. On Plasma the feed's `OWN_PROFILES` list (top of
+`dist/plasma/keycap-focus`) maps a part of the resource class to a profile; Ghostty is the first
+entry.
 
 ## Tools
 
@@ -251,7 +260,13 @@ a name the config does not define resolves to `default`.
 | `default` | Ctrl+Space, Ctrl+Shift+Space | Ctrl+Space, Ctrl+Shift+Space (input method switch, not Super+Space) |
 | `default` | Cmd+Q | Alt+F4 |
 | `default` | Ctrl+A, Ctrl+E | Home, End |
-| `terminal` | inherits `default`; Cmd+C, V, T, W, N, F | Ctrl+Shift+C, V, T, W, N, F |
+| `terminal` | inherits `default`; every Cmd+letter except Q (Cmd+C, V, T, W, N, F, D, Z, K, ...) | Ctrl+Shift+letter: never a bare Ctrl+letter, which in a terminal is a control character (Ctrl+D is end-of-file, Ctrl+Z suspends); an unlisted Cmd+letter does nothing harmful |
+| `terminal` | Cmd+Backspace, Cmd+Delete | Ctrl+U, Ctrl+K (kill to line start, to line end) |
+| `terminal` | Cmd+Shift+Left, Cmd+Shift+Right | Ctrl+PageUp, Ctrl+PageDown (previous, next tab) |
+| `terminal` | Cmd+Minus, Cmd+=, Cmd+., Cmd+[, Cmd+], Cmd+Backslash | Ctrl+Minus, Ctrl+Shift+=, Ctrl+C, Ctrl+Shift+[, Ctrl+Shift+], Ctrl+Shift+Backslash |
+| `terminal` | Option+Backspace, Option+Delete | Ctrl+W, Esc then D (delete word left, right) |
+| `ghostty` | inherits `terminal`; Cmd+D, Cmd+Shift+D | Ctrl+Shift+O, Ctrl+Shift+E (split right, down) |
+| `ghostty` | Cmd+K, Cmd+Option+I, Cmd+= | Ctrl+L (clear), Ctrl+Shift+I (inspector), Ctrl+= (zoom in) |
 | `filemanager` | inherits `default`; Cmd+Backspace | Delete (trash the selection; not "select to the start, delete") |
 | `filemanager` | Cmd+Left, Right, Up, Down; Cmd+I; Cmd+Shift+. | Alt+Left, Right, Up, Enter; Alt+Enter; Ctrl+H |
 | `terminal` | physical Control | stays Control (modmap, and Ctrl+A, Ctrl+E map to themselves), so Ctrl+C still stops the program and readline keeps its keys |
@@ -260,7 +275,7 @@ a name the config does not define resolves to `default`.
 lays Plasma's equivalents of macOS shortcuts over this: Cmd+Space is Alt+Space (KRunner),
 Cmd+Ctrl+Space is Super+. (emoji), Cmd+Ctrl+F is Super+Shift+F (full screen), Cmd+H minimises,
 Cmd+F3 shows the desktop, Cmd+Shift+3/4/5 are Spectacle's, Ctrl+Left/Right switch desktops
-(and stay Ctrl+Left/Right in a terminal). Personal choices (Caps Lock as the input switch, a
+(in terminals too, as in macOS Terminal). Personal choices (Caps Lock as the input switch, a
 keyboard's layout) go in your own config: `docs/personal-config.md`.
 
 A keyboard's layout (which key beside the space bar is Command) comes from its vendor id: Apple
@@ -284,7 +299,10 @@ What CI cannot reach, waiting for the user and real hardware:
 - Run keyd at the same time: the `Conflict` notification appears.
 - The escape chord, then `Resume`.
 - Bluetooth keyboard reconnect.
-- Grab a keyboard while Caps Lock is on: its light matches the desktop's.
+- Grab a keyboard while Caps Lock is on: its light matches the desktop's. With the Caps Lock key
+  remapped, the lock is tapped off before the first key typed (the journal says so), and
+  `keycap status` shows `Caps Lock: ON` until then. The tap waits for a key because the desktop
+  may not have opened the new virtual keyboard yet.
 - A receiver with a touchpad: the pointer keeps working while it is grabbed, and stops with
   the escape chord only because the device is given back.
 
