@@ -101,8 +101,10 @@ fi
 say "5. service"
 if [[ "$START" == no ]]; then
   system_step "enable keycap (not started)" systemctl enable keycap.service
-elif [[ -z "$DESTDIR" && "$BIN_CHANGED" == yes ]] && systemctl is-active --quiet keycap.service; then
-  system_step "a new binary: restart so it runs (the grab gate waits for keys to be up)" systemctl restart keycap.service
+elif [[ -z "$DESTDIR" && "$BIN_CHANGED$UNIT_CHANGED" == *yes* ]] && systemctl is-active --quiet keycap.service; then
+  # `enable --now` leaves a running service alone, so a new binary or unit needs a restart. A
+  # changed /etc/keycap/keycap.toml does not: the daemon watches that directory and reloads it.
+  system_step "a new binary or unit: restart so it runs (the grab gate waits for keys to be up)" systemctl restart keycap.service
 else
   say "  keycap starts alongside any running remapper: it reports 'held by another remapper'"
   say "  and takes the keyboards when that one lets go (docs/switch-from-toshy.md)."
@@ -114,7 +116,10 @@ if [[ "$PLASMA_FOCUS" == yes ]]; then
   step "the helper" install -Dm755 "$HERE/dist/plasma/keycap-focus" "$HOME/.local/bin/keycap-focus"
   step "its user unit" install -Dm644 "$HERE/dist/plasma/keycap-focus.service" "$HOME/.config/systemd/user/keycap-focus.service"
   step "reload the user manager" systemctl --user daemon-reload
-  step "start the helper now and at every login" systemctl --user enable --now keycap-focus.service
+  # Enable, then restart: `enable --now` leaves a helper that is already running on the old
+  # script, and restart starts it when it is not running.
+  step "start the helper at every login" systemctl --user enable keycap-focus.service
+  step "(re)start the helper now, on the script just installed" systemctl --user restart keycap-focus.service
   if kpackagetool6 --type=KWin/Script --show keycap-focus >/dev/null 2>&1; then
     step "update the KWin script" kpackagetool6 --type=KWin/Script -u "$HERE/dist/plasma/kwin-script"
   else

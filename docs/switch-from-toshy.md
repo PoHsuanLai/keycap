@@ -38,8 +38,9 @@ Needs `python3-gobject` for the focus feed (`python3 -c "import gi"`; Fedora: `s
 ```
 
 It builds, copies the files (with sudo), reloads systemd and udev, and starts `keycap.service`
-and the user unit `keycap-focus.service`. Running it again later changes nothing that is already
-in place. Toshy is not touched.
+and the user unit `keycap-focus.service`. Running it again later copies only what changed,
+restarts keycap when its binary or unit changed, and restarts `keycap-focus` so it runs the script
+just installed (then focus another window once). Toshy is not touched.
 
 ### Your own settings (K5 Max layout, Caps Lock)
 

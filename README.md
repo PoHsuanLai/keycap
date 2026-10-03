@@ -145,9 +145,12 @@ keycap grabs the user's only keyboard, so:
 already there (run it twice and the second run changes nothing): the binary to
 `/usr/local/bin`, `dist/keycap.service`, `dist/70-keycap.rules` (the `input` group may write
 `/dev/uinput`), `dist/keycap.polkit.rules` (the active session user may restart and reset the
-unit), then reloads systemd and udev, restores SELinux labels and enables the service. With
+unit), then reloads systemd and udev, restores SELinux labels and enables the service. A running
+keycap is restarted when its binary or unit changed; a changed `/etc/keycap/keycap.toml` needs no
+restart, keycap reloads it. With
 `--desktop plasma` it also installs `dist/keycap.plasma.toml` as `/etc/keycap/keycap.toml` when
-that file is absent (never over an existing one). `--plasma-focus` adds the focus feed below.
+that file is absent (never over an existing one). `--plasma-focus` adds the focus feed below,
+and restarts the helper on every run (enable, then restart), so it runs the script just installed.
 It starts keycap next to any running remapper, which then shows as `Grab::Conflict` until the
 other lets go. `DESTDIR=dir` stages the files under `dir` and skips systemd, udev and sudo.
 `docs/switch-from-toshy.md` has the full switch and rollback.
