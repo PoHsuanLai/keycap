@@ -37,7 +37,7 @@ never name `daemon` modules.
 | L3 state | `held`, `gate`, `escape`, `backoff` | pure state machines | `pub` |
 | L4 remapper | `remap` (`Remapper::step`, `RemapInput`, `RemapOut`) | pure composition: `Remapper::step(self, RemapInput, &Profiles) -> (Self, Vec<RemapOut>)` | `pub` |
 | L5 effects | `daemon` (`reader`, `socket`, `discover`, `uinput`, `sdnotify`, `env`, `sys`) | threads, sockets, devices, clocks, ioctls | `pub(crate)` |
-| L6 entry | `command` | argument parsing, one `run(args)`; reads `std::env` once into `daemon::Env`; `--print-config`, `--check-uinput`, `status`, `resume`, `replay FILE` (a pure script parser, `script.rs`) | `pub` (one fn) |
+| L6 entry | `command` | argument parsing, one `run(args)`; reads `std::env` once into `daemon::Env`; `--print-config`, `--check-uinput`, `status`, `resume`, `replay FILE` (a pure script parser, `script.rs`; `led` lines drive the Caps Lock rule of `daemon::caps` as the reader does) | `pub` (one fn) |
 
 Daemon modules:
 
@@ -49,7 +49,7 @@ Daemon modules:
 | `daemon/twin.rs` | the "<name> (keycap pointer)" virtual device of a combo device whose pointer the keyboard cannot carry (absolute axes): registered from a `PointerCaps`, destroyed on `Drop` |
 | `daemon/pointer.rs` | pure: `PointerCaps`, the pointer half of a device as a value (axes with their `absinfo`, relative axes, buttons, input properties, the twin's name), built from the kernel's masks; `needs_twin` |
 | `daemon/buttons.rs` | pure: the mouse buttons each combo device holds, released on unplug, overflow and pause; the keyboard's record and each twin's are separate values |
-| `daemon/caps.rs`, `daemon/reader/caps.rs` | a Caps Lock left on across a switch of remapper: the pure `CapsFix` (unchecked, armed, done) and `CapsKey` (does a rule take the bare Caps Lock key); the reader reads the lamp (`EVIOCGLED`) at the first grab and writes one Caps Lock tap before the first non-modifier key typed |
+| `daemon/caps.rs`, `daemon/reader/caps.rs` | a Caps Lock nobody asked for: the pure `CapsFix` (whose word on the lock, the lock, the lock the user asked for through keycap's own Caps Lock presses) and `CapsKey` (does a rule take the bare Caps Lock key); the reader feeds it the desktop's Caps Lock LED reports, the lamp read (`EVIOCGLED`) at a grab until the desktop has reported, and the batches it writes, and writes one Caps Lock tap before the next non-modifier, non-Caps-Lock key while the lock is stray |
 | `command/caps_lamp.rs` | the Caps Lock lamp of a keyboard for `keycap status`, from the LED class in sysfs |
 | `daemon/leds.rs` | pure: the lock-LED events the compositor writes to the virtual device, forwarded to every grabbed keyboard, and `LedState`, the last lamps it set, written to a keyboard the moment it is grabbed |
 | `daemon/readiness.rs` | which polled fds are ready, as an enum rather than flags |
@@ -88,7 +88,7 @@ udev and polkit rules, `keycap.plasma.toml`, and `dist/plasma/`: the KWin script
 | What each press emitted, and which written keys are lifted | `held::Held` |
 | The pointer half of a combo device | `daemon::pointer::PointerCaps` |
 | Which lamps the desktop last set | `daemon::leds::LedState` |
-| Whether a lit Caps Lock is still to be cleared | `daemon::caps::CapsFix` |
+| Whether a lit Caps Lock is one the user asked for, or still to be cleared | `daemon::caps::CapsFix` |
 | Which undefined profile names were already logged | `daemon::reader::unknown::Unknowns` |
 | When a keyboard may be grabbed | `gate::GrabGate` |
 | The emergency chord | `escape` |

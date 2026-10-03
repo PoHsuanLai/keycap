@@ -88,7 +88,7 @@ pub(crate) struct Reader<E: Emitter> {
     held: BTreeSet<DeviceId>,
     /// The lamps the desktop last set on the virtual keyboard.
     lamps: LedState,
-    /// Whether Caps Lock was left on across the switch and is still to be cleared.
+    /// The Caps Lock lock as keycap follows it, and whether the user asked for it.
     caps: CapsFix,
     /// Focused names the config does not define, already logged.
     unknowns: Unknowns,

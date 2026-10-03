@@ -1,7 +1,9 @@
 //! `keycap replay FILE`: a script through the remapper with the built-in profiles, printing each
-//! input and what it writes.
+//! input and what it writes, the Caps Lock tap of `daemon::caps` included.
 
-use super::script::{Step, parse};
+use super::script::{Input, Step, parse};
+use crate::daemon::caps::{CapsFix, CapsKey};
+use crate::daemon::leds::{Led, LedEvent};
 use crate::daemon::settings::{Layers, parse_user};
 use crate::{CoreStatus, Edge, OutEvent, Profiles, RemapOut, Remapper};
 use std::path::Path;
@@ -41,18 +43,57 @@ fn render_event(event: &OutEvent) -> String {
     }
 }
 
+/// The remapper and the Caps Lock rule, as the reader runs them.
+#[derive(Debug, Clone, Default)]
+struct Machine {
+    remapper: Remapper,
+    caps: CapsFix,
+}
+
+impl Machine {
+    /// The machine after `input`, and what it wrote: the Caps Lock tap first when one is due.
+    fn step(self, input: Input, profiles: &Profiles, key: CapsKey) -> (Machine, Vec<RemapOut>) {
+        match input {
+            Input::Led(LedEvent {
+                led: Led::Caps,
+                lamp,
+            }) => (
+                Machine {
+                    caps: self.caps.reported(lamp),
+                    ..self
+                },
+                Vec::new(),
+            ),
+            Input::Led(_) => (self, Vec::new()),
+            Input::Remap(input) => {
+                let (caps, tap) = self.caps.before(&input, key);
+                let (remapper, outs) = self.remapper.step(input, profiles);
+                let caps = outs.iter().fold(caps, |caps, out| match out {
+                    RemapOut::Write(batch) => caps.wrote(batch),
+                    _ => caps,
+                });
+                let tap = Some(tap).filter(|tap| !tap.is_empty()).map(RemapOut::Write);
+                (
+                    Machine { remapper, caps },
+                    tap.into_iter().chain(outs).collect(),
+                )
+            }
+        }
+    }
+}
+
 /// One line per step: the input as written, then `->` and what it wrote when it wrote anything.
 pub(super) fn run(steps: Vec<Step>, profiles: &Profiles) -> Vec<String> {
-    let mut remapper = Remapper::new();
+    let key = CapsKey::in_profile(profiles.default_profile());
     steps
         .into_iter()
-        .map(|step| {
-            let (next, outs) = remapper.clone().step(step.input, profiles);
-            remapper = next;
-            match outs.as_slice() {
+        .scan(Machine::default(), |machine, step| {
+            let (next, outs) = std::mem::take(machine).step(step.input, profiles, key);
+            *machine = next;
+            Some(match outs.as_slice() {
                 [] => step.text,
                 outs => format!("{} -> {}", step.text, render(outs)),
-            }
+            })
         })
         .collect()
 }
@@ -136,6 +177,65 @@ mod tests {
         let with_config = replay_file(&file, Some(&config)).unwrap();
         assert_eq!(plain[1], "10 press 1 apple c -> +c SYN");
         assert_eq!(with_config[1], "10 press 1 apple c -> -leftctrl +x SYN");
+    }
+
+    /// The race at a restart: the lamp read Off at the grab, then the desktop set the new
+    /// virtual keyboard's Caps Lock LED.
+    const RACE: &str = "\
+# keycap just grabbed the keyboard; its lamp read off
+0 led caps on
+10 press 1 apple leftshift
+20 press 1 apple a
+30 release 1 apple a
+40 release 1 apple leftshift
+50 led caps off
+60 press 1 apple b
+70 release 1 apple b
+# the user's own Caps Lock, on and off with Shift+Caps Lock
+80 press 1 apple leftshift
+90 press 1 apple capslock
+100 release 1 apple capslock
+110 release 1 apple leftshift
+120 led caps on
+130 press 1 apple c
+140 release 1 apple c
+150 press 1 apple leftshift
+160 press 1 apple capslock
+170 release 1 apple capslock
+180 release 1 apple leftshift
+190 led caps off
+200 press 1 apple d
+";
+
+    const SWITCH: &str = "[profile.default]\nrules = [\n  { when = \"capslock\", then = \"ctrl+space\" },\n  { when = \"shift+capslock\", then = \"capslock\" },\n]\n";
+
+    #[test]
+    fn a_caps_lock_the_desktop_lights_after_the_grab_is_tapped_off_and_a_chosen_one_stays() {
+        let dir = Scratch::new("replay-caps");
+        let file = dir.path().join("race.txt");
+        let config = dir.path().join("user.toml");
+        std::fs::write(&file, RACE).unwrap();
+        std::fs::write(&config, SWITCH).unwrap();
+        let lines = replay_file(&file, Some(&config)).unwrap();
+        let tapped: Vec<&str> = lines
+            .iter()
+            .filter(|line| line.contains("+capslock SYN -capslock SYN;"))
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            tapped,
+            ["20 press 1 apple a -> +capslock SYN -capslock SYN; +a SYN"],
+            "{lines:#?}"
+        );
+        assert_eq!(lines[0], "0 led caps on", "a LED writes nothing");
+        assert_eq!(lines[1], "10 press 1 apple leftshift -> +leftshift SYN");
+        assert_eq!(lines[13], "130 press 1 apple c -> +c SYN", "{lines:#?}");
+        assert_eq!(lines[20], "200 press 1 apple d -> +d SYN", "{lines:#?}");
+        let plain = replay_file(&file, None).unwrap();
+        assert!(
+            plain.iter().all(|line| !line.contains("-capslock SYN;")),
+            "Caps Lock not remapped: no tap {plain:#?}"
+        );
     }
 
     #[test]

@@ -6,10 +6,15 @@
 //! <ms> gone <dev>
 //! <ms> release-all
 //! <ms> resume
+//! <ms> led caps|num|scroll on|off
 //! ```
+//!
+//! `led` is the desktop setting a LED of the virtual keyboard, as it does when a lock changes or
+//! when it opens a new virtual keyboard.
 //!
 //! `#` starts a comment; blank lines are skipped.
 
+use crate::daemon::leds::{Lamp, Led, LedEvent};
 use crate::{DeviceId, Edge, Key, Layout, Mono, Physical, RemapInput};
 use keycap_protocol::{NameError, ProfileName};
 
@@ -18,7 +23,16 @@ use keycap_protocol::{NameError, ProfileName};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Step {
     pub text: String,
-    pub input: RemapInput,
+    pub input: Input,
+}
+
+/// What one line feeds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum Input {
+    /// An input of the remapper.
+    Remap(RemapInput),
+    /// The desktop set a LED of the virtual keyboard.
+    Led(LedEvent),
 }
 
 /// What is wrong with one line.
@@ -36,6 +50,10 @@ pub(super) enum Problem {
     Layout(String),
     #[error("{0:?} is not a key name")]
     Key(String),
+    #[error("{0:?} is not a LED, use caps, num or scroll")]
+    Led(String),
+    #[error("{0:?} is not a lamp, use on or off")]
+    Lamp(String),
     #[error("{0}")]
     Profile(#[from] NameError),
 }
@@ -82,11 +100,27 @@ fn parse_line(line: &str) -> Result<Option<Step>, Problem> {
     })
 }
 
-fn input_of(at: Mono, words: &[&str]) -> Result<RemapInput, Problem> {
-    let shape = |verb: &str, shape: &'static str| Problem::Shape {
+fn input_of(at: Mono, words: &[&str]) -> Result<Input, Problem> {
+    match words {
+        ["led", rest @ ..] => match rest {
+            [led, lamp] => Ok(Input::Led(LedEvent {
+                led: led_of(led)?,
+                lamp: lamp_of(lamp)?,
+            })),
+            _ => Err(shape("led", "<caps|num|scroll> <on|off>")),
+        },
+        words => remap_of(at, words).map(Input::Remap),
+    }
+}
+
+fn shape(verb: &str, shape: &'static str) -> Problem {
+    Problem::Shape {
         verb: verb.to_owned(),
         shape,
-    };
+    }
+}
+
+fn remap_of(at: Mono, words: &[&str]) -> Result<RemapInput, Problem> {
     match words {
         [verb @ ("press" | "release" | "repeat"), rest @ ..] => {
             let edge = match *verb {
@@ -127,6 +161,23 @@ fn device_of(word: &str) -> Result<DeviceId, Problem> {
         .map_err(|_| Problem::Device(word.to_owned()))
 }
 
+fn led_of(word: &str) -> Result<Led, Problem> {
+    match word {
+        "caps" => Ok(Led::Caps),
+        "num" => Ok(Led::Num),
+        "scroll" => Ok(Led::Scroll),
+        other => Err(Problem::Led(other.to_owned())),
+    }
+}
+
+fn lamp_of(word: &str) -> Result<Lamp, Problem> {
+    match word {
+        "on" => Ok(Lamp::On),
+        "off" => Ok(Lamp::Off),
+        other => Err(Problem::Lamp(other.to_owned())),
+    }
+}
+
 fn layout_of(word: &str) -> Result<Layout, Problem> {
     match word {
         "apple" => Ok(Layout::Apple),
@@ -139,24 +190,21 @@ fn layout_of(word: &str) -> Result<Layout, Problem> {
 mod tests {
     use super::*;
 
-    fn key(device: u32, layout: Layout, name: &str, edge: Edge, ms: u64) -> RemapInput {
-        RemapInput::Key {
+    fn key(device: u32, layout: Layout, name: &str, edge: Edge, ms: u64) -> Input {
+        Input::Remap(RemapInput::Key {
             device: DeviceId(device),
             layout,
             key: Physical(Key::named(name).unwrap()),
             edge,
             at: Mono::from_millis(ms),
-        }
+        })
     }
 
     #[test]
     fn line_table() {
-        let focus = |s: &str| RemapInput::Focus(ProfileName::parse(s).unwrap());
-        type Case = (
-            &'static str,
-            &'static str,
-            Result<Option<RemapInput>, Problem>,
-        );
+        let focus = |s: &str| Input::Remap(RemapInput::Focus(ProfileName::parse(s).unwrap()));
+        let led = |led, lamp| Input::Led(LedEvent { led, lamp });
+        type Case = (&'static str, &'static str, Result<Option<Input>, Problem>);
         let cases: &[Case] = &[
             ("blank", "", Ok(None)),
             ("spaces", "   \t ", Ok(None)),
@@ -181,14 +229,46 @@ mod tests {
             (
                 "gone",
                 "60 gone 3",
-                Ok(Some(RemapInput::DeviceGone(DeviceId(3)))),
+                Ok(Some(Input::Remap(RemapInput::DeviceGone(DeviceId(3))))),
             ),
             (
                 "release all",
                 "70 release-all",
-                Ok(Some(RemapInput::ReleaseAll)),
+                Ok(Some(Input::Remap(RemapInput::ReleaseAll))),
             ),
-            ("resume", "80 resume", Ok(Some(RemapInput::Resume))),
+            (
+                "resume",
+                "80 resume",
+                Ok(Some(Input::Remap(RemapInput::Resume))),
+            ),
+            (
+                "caps lock lit by the desktop",
+                "90 led caps on",
+                Ok(Some(led(Led::Caps, Lamp::On))),
+            ),
+            (
+                "num lock off",
+                "95 led num off",
+                Ok(Some(led(Led::Num, Lamp::Off))),
+            ),
+            (
+                "an unknown LED",
+                "0 led kana on",
+                Err(Problem::Led("kana".into())),
+            ),
+            (
+                "a lamp that is neither on nor off",
+                "0 led caps 1",
+                Err(Problem::Lamp("1".into())),
+            ),
+            (
+                "led needs a LED and a lamp",
+                "0 led caps",
+                Err(Problem::Shape {
+                    verb: "led".into(),
+                    shape: "<caps|num|scroll> <on|off>",
+                }),
+            ),
             (
                 "time is not a number",
                 "soon press 1 apple c",

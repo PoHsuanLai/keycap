@@ -2,6 +2,8 @@
 
 pub(crate) mod buttons;
 pub(crate) mod caps;
+#[cfg(test)]
+mod caps_tests;
 pub(crate) mod clock;
 pub(crate) mod devices;
 pub(crate) mod discover;

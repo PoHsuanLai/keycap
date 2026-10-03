@@ -117,7 +117,10 @@ impl<E: Emitter> Reader<E> {
             // Computed against held keys the recreated device never had: writing it would
             // press a key nothing records.
             (RemapOut::Write(_), Wire::Recreated) => Wire::Recreated,
-            (RemapOut::Write(batch), Wire::Intact) => self.write(&encode(&batch)),
+            (RemapOut::Write(batch), Wire::Intact) => {
+                self.caps_wrote(&batch);
+                self.write(&encode(&batch))
+            }
             (RemapOut::ReleaseGrabs, wire) => {
                 self.release_grabs();
                 let (buttons, events) = std::mem::take(&mut self.buttons).release_all();
@@ -202,6 +205,7 @@ impl<E: Emitter> Reader<E> {
     pub(super) fn forward_leds(&mut self) {
         let changes = self.emitter.leds();
         self.lamps = std::mem::take(&mut self.lamps).observe(&changes);
+        self.caps_reported(&changes);
         let events: Vec<InputEvent> = changes.into_iter().map(leds::encode).collect();
         if events.is_empty() {
             return;

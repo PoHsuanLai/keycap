@@ -32,7 +32,11 @@ a replay script has one input per line, `#` starts a comment:
   <ms> focus <profile>
   <ms> gone <dev>
   <ms> release-all
-  <ms> resume";
+  <ms> resume
+  <ms> led caps|num|scroll on|off
+                               the desktop sets a LED of the virtual keyboard; a Caps Lock
+                               that comes on while the Caps Lock key is remapped and nothing
+                               keycap wrote asked for it is tapped off before the next key";
 
 /// One invocation of the command.
 #[derive(Debug, Clone, PartialEq, Eq)]

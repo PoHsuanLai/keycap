@@ -214,10 +214,13 @@ It never touches a device. A script has one input per line; `#` starts a comment
 <ms> gone <dev>
 <ms> release-all
 <ms> resume
+<ms> led caps|num|scroll on|off
 ```
 
 `<dev>` is a number naming a keyboard, `apple` or `pc` its layout, `<keyname>` a name from the
-key table (`leftmeta`, `c`, `left`). Output is `+key` for a press, `-key` for a release, `SYN`
+key table (`leftmeta`, `c`, `left`). `led` is the desktop setting a LED of the virtual keyboard;
+with the Caps Lock key remapped, a `led caps on` nothing in the script asked for is answered by
+a `+capslock SYN -capslock SYN` tap before the next typed key, as the daemon does. Output is `+key` for a press, `-key` for a release, `SYN`
 for the sync, then `release-grabs` and `status paused` for the escape chord:
 
 ```
@@ -302,10 +305,14 @@ What CI cannot reach, waiting for the user and real hardware:
 - Run keyd at the same time: the `Conflict` notification appears.
 - The escape chord, then `Resume`.
 - Bluetooth keyboard reconnect.
-- Grab a keyboard while Caps Lock is on: its light matches the desktop's. With the Caps Lock key
-  remapped, the lock is tapped off before the first key typed (the journal says so), and
-  `keycap status` shows `Caps Lock: ON` until then. The tap waits for a key because the desktop
-  may not have opened the new virtual keyboard yet.
+- Grab a keyboard (or restart keycap) while Caps Lock is on: its light matches the desktop's.
+  With the Caps Lock key remapped, a lock nothing typed through keycap asked for is tapped off
+  before the next key typed (the journal says `turned Caps Lock off`), and `keycap status` shows
+  `Caps Lock: ON` until then. keycap follows the lock from the LEDs the desktop sets on its
+  virtual keyboard, so a lock the desktop reports a moment after the grab is caught too; one set
+  with Shift+Caps Lock stays, also across a VT switch. The tap waits for a key because the
+  desktop may not have opened the new virtual keyboard yet. `keycap replay` plays it with
+  `<ms> led caps on|off` lines.
 - A receiver with a touchpad: the pointer keeps working while it is grabbed, and stops with
   the escape chord only because the device is given back.
 

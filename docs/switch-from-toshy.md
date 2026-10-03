@@ -107,10 +107,12 @@ keycap status                      # must say: grabbed, remapping
 
 `keycap status` also shows the Caps Lock lamp under each keyboard. The keyboard was raw for a few
 seconds, so Caps Lock may have been toggled on in that window; with Caps Lock remapped to Ctrl+Space
-pressing it cannot turn it off, and letters would come out in capitals. keycap notices a lit Caps Lock
-when it first grabs the keyboard and, if a rule takes the Caps Lock key, taps Caps Lock once before the
-first key you type (the journal says so: `journalctl -u keycap -b`). If letters still come out in
-capitals after switching (`Caps Lock: ON` in `keycap status`), **press Shift+Caps Lock once**.
+pressing it cannot turn it off, and letters would come out in capitals. keycap follows the lock from
+the Caps Lock LED the desktop sets on its virtual keyboard (and the lamp it reads at the grab) and, if
+a rule takes the Caps Lock key and you did not set the lock with Shift+Caps Lock, taps Caps Lock once
+before the next key you type (the journal says `turned Caps Lock off`: `journalctl -u keycap -b`). If
+letters still come out in capitals after switching (`Caps Lock: ON` in `keycap status`), **press
+Shift+Caps Lock once**.
 
 Then keep Toshy from coming back at the next login. Its autostart entries run the tray and a
 "kickstart" that restarts Toshy's services (it only fires when the units are enabled, so it is

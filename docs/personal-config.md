@@ -45,10 +45,12 @@ rules = [
 ]
 ```
 
-If the lock was on when keycap took the keyboard (it can be toggled while the keyboard is raw),
-pressing the remapped key cannot turn it off. keycap sees the lit lamp at its first grab and taps
-Caps Lock once before the first key you type, and `keycap status` shows the lamp. Shift+Caps Lock
-turns it off by hand.
+With Caps Lock remapped, pressing it cannot turn the lock off, so keycap keeps the lock off
+unless you asked for it: when the desktop reports the Caps Lock LED on and the last thing keycap
+wrote to it was not a Caps Lock press (your Shift+Caps Lock), keycap taps Caps Lock once before
+the next key you type and says so in the journal. That covers a lock toggled while the keyboard
+was raw, a keycap restart, and the desktop setting a stale lock on a new virtual keyboard. A lock
+you set with Shift+Caps Lock stays until Shift+Caps Lock again; `keycap status` shows the lamp.
 
 ## Terminals
 
