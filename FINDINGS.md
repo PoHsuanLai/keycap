@@ -53,7 +53,7 @@ keyboard needs only the `input` group's write access to the node. A device that 
 
 **Manual acceptance, waiting for the user and hardware.** What remains manual after CI is a real
 Apple or Bluetooth keyboard, a real compositor session (COSMIC, sill's `Focus`), and a logind
-user switch. The list is in the README, "Manual checks".
+user switch. The list is in docs/development.md, "Manual checks".
 
 **Pre-switch review of 2026-10-03 (the user's K5 Max over Bluetooth).** What was checked on the
 real machine's sysfs masks, and what stays open.

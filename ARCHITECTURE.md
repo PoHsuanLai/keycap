@@ -1,7 +1,7 @@
 # Architecture
 
 keycap is the Mac keyboard mapping daemon: it grabs keyboards, remaps by profile and writes one
-virtual keyboard. `README.md` has the data flow, the socket protocol, the lifecycle and the
+virtual keyboard. `docs/development.md` has the data flow, the socket protocol, the lifecycle and the
 safety rules; `CONVENTIONS.md` holds the rules every repo shares; `FINDINGS.md` the open items
 and standing facts. This file is the map: where each thing lives, what may depend on what, and
 how to add the next thing. keycap depends on no desktop crate and runs on any Linux.
@@ -193,10 +193,10 @@ The `keycap-devtest` modules:
   `crates/keycap/tests/devices` and the `keycap-devtest` crate they use create fake keyboards on
   `/dev/uinput` and grab them. Each such test is `#[ignore = "creates input devices; run in CI
   with KEYCAP_DEVICE_TESTS=1"]` and asserts that variable, so a plain `cargo test` never touches
-  a device. They run as root, one at a time, in the `devices` CI job (README, "Tests"). The
+  a device. They run as root, one at a time, in the `devices` CI job (docs/development.md, "Tests"). The
   daemon they run is the real binary, made to grab a virtual device by
   `KEYCAP_GRAB_VIRTUAL=<exact name>`; that switch is read in `command::run` like every other
-  variable and widens discovery by one named device (README, "Safety rules").
+  variable and widens discovery by one named device (docs/development.md, "Safety rules").
 - **Gate** (no boundary script):
 
   ```bash

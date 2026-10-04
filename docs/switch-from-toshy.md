@@ -1,216 +1,121 @@
-# Switching from Toshy to keycap (Plasma 6, Keychron K5 Max over Bluetooth)
+# Switching from Toshy to keycap
 
-The aim: at no point do two remappers fight over the keyboard, and the time with none is a few
-seconds. Two cannot both hold it anyway: a keyboard is grabbed by one program at a time, and
-keycap reports `held by another remapper` and waits instead of grabbing. The order below makes
-use of that: keycap goes in first and waits, Toshy comes off, keycap takes over.
+Written for KDE Plasma 6. The order below keeps two remappers from fighting over the keyboard: a
+keyboard is held by one program at a time, so keycap goes in first and waits, Toshy comes off,
+and keycap takes over.
 
 **Emergency chord: hold both Shift keys and press Esc.** keycap gives the keyboards back to the
-kernel at once (raw keys, no remapping). `keycap resume` takes them again. If keys misbehave in
-any other way, `sudo systemctl stop keycap` does the same for good; a crash or `kill -9` does it
-too, since the kernel drops the grab with the process. Keep a terminal open for this whole
-procedure, and know that Cmd is Ctrl and Ctrl is Super while keycap runs.
+kernel at once; `keycap resume` takes them again. `sudo systemctl stop keycap` does the same
+until the next start. Keep a terminal open throughout, and remember that Cmd is Ctrl and Ctrl is
+Super while keycap runs.
 
-Before you start: the Magic Mouse is not touched (keycap grabs only nodes that have letter keys;
-the K5 Max's own `Mouse` node and the consumer-control bits are left alone too).
-
-## 1. Look at what will happen (changes nothing)
+## 1. Preview
 
 ```bash
-cd ~/keycap          # the checkout with this branch merged
 ./install.sh --dry-run --desktop plasma --plasma-focus
 ```
 
-It prints every command it would run and runs none (it does not even build or ask for sudo).
-Read it. `--desktop plasma` installs `dist/keycap.plasma.toml` as `/etc/keycap/keycap.toml` if
-you have none (it never overwrites yours): Cmd+Space opens KRunner, plus the Plasma equivalents
-of macOS shortcuts (Cmd+Ctrl+F, Cmd+Ctrl+Space for emoji, Cmd+H, Cmd+Shift+3/4/5, Ctrl+Left/Right
-for desktops, in terminals too). Two things Toshy did for you are personal, so they are not shipped; step 2 adds them.
-`--plasma-focus` installs the focus feed: without it, keycap does not know a terminal has
-focus, and **Cmd+C in Konsole would be Ctrl+C (SIGINT)**. Do not run keycap without it.
+This prints every command and runs none. `--desktop plasma` installs Plasma's shortcut set as
+`/etc/keycap/keycap.toml` if you have none (it never overwrites yours). `--plasma-focus` installs
+the focus feed, which tells keycap when a terminal has focus. **Do not run keycap without it:
+Cmd+C in Konsole would be Ctrl+C.** It needs `python3-gobject` (Fedora: `sudo dnf install
+python3-gobject`).
 
-Needs `python3-gobject` for the focus feed (`python3 -c "import gi"`; Fedora: `sudo dnf install python3-gobject`).
-
-## 2. Install keycap while Toshy is still running
+## 2. Install while Toshy is still running
 
 ```bash
 ./install.sh --desktop plasma --plasma-focus
 ```
 
-It builds, copies the files (with sudo), reloads systemd and udev, and starts `keycap.service`
-and the user unit `keycap-focus.service`. Running it again later copies only what changed,
-restarts keycap when its binary or unit changed, and restarts `keycap-focus` so it runs the script
-just installed (then focus another window once). Toshy is not touched.
+Toshy is not touched. Then add your own settings to `/etc/keycap/keycap.toml` (`sudoedit`;
+changes apply on save): the keyboard layout and, if Toshy made Caps Lock switch your input
+method, the Caps Lock rules. Both are explained in [personal-config.md](personal-config.md).
 
-### Your own settings (K5 Max layout, Caps Lock)
-
-keycap cannot see the K5 Max's Mac/Windows switch, so it treats the keyboard as a PC one
-(Cmd and Option swapped) until you say it is a Mac one. `sudoedit /etc/keycap/keycap.toml`
-(keycap re-reads the file when it changes, no restart needed) and append the device block:
-
-```toml
-[[device]]
-match = "3434:0a53"      # Keychron K5 Max, USB and Bluetooth; layout "apple" = switch on Mac
-layout = "apple"
-```
-
-For Caps Lock to switch fcitx5 as it did under Toshy, add these two lines to the end of the
-`rules = [ ... ]` list of the `[profile.default]` table that file already has (a second
-`[profile.default]` table would be a TOML error):
-
-```toml
-  { when = "capslock", then = "ctrl+space" },
-  { when = "shift+capslock", then = "capslock" },
-```
-
-(`docs/personal-config.md` explains both.) Do this before step 4: on step 3, `keycap status`
-should already show the keyboard, and Cmd must be the key beside the space bar after the switch.
-
-## 3. Check it, still before switching
+## 3. Check
 
 ```bash
 keycap status
 ```
 
-Expected, because Toshy still holds the keyboard:
+Because Toshy still holds the keyboard, expect:
 
 ```
 keycap: running
-  Keychron K5 Max Keyboard (/dev/input/eventNN, 3434:0a53): held by another remapper (Toshy, keyd, ...)
-    Caps Lock: off
+  Keychron K5 Max Keyboard (/dev/input/eventNN, 3434:0a53): held by another remapper
 ```
 
-(`keycap status` exits 1 until a keyboard is grabbed; that is not an error here.) The Magic
-Mouse and `Keychron K5 Max Mouse` must not appear. Also `systemctl status keycap` is `active
-(running)`, `systemctl --user status keycap-focus` is active, and `journalctl -u keycap -b`
-shows `keycap: ready`.
+`keycap status` exits 1 until a keyboard is grabbed; that is not an error here. Also check that
+`systemctl status keycap` and `systemctl --user status keycap-focus` are active.
 
-## 4. Switch: Toshy off, keycap on (do these in one go)
-
-Stop the session monitor first, so nothing restarts Toshy behind you, then the rest:
+## 4. Switch
 
 ```bash
 systemctl --user disable --now toshy-session-monitor.service
 systemctl --user disable --now toshy-config.service toshy-kwin-dbus.service \
     toshy-cosmic-dbus.service toshy-wlroots-dbus.service
-```
-
-The five units are `toshy-config`, `toshy-cosmic-dbus`, `toshy-kwin-dbus`,
-`toshy-session-monitor` and `toshy-wlroots-dbus` (the cosmic and wlroots ones are already
-inactive on Plasma; disabling them keeps them from starting on another desktop). The
-keyboard is raw from now until the next command; typing still works.
-
-```bash
-sudo systemctl restart keycap      # take the keyboard now, not after keycap's retry delay
+sudo systemctl restart keycap
 keycap status                      # must say: grabbed, remapping
 ```
 
-`keycap status` also shows the Caps Lock lamp under each keyboard. The keyboard was raw for a few
-seconds, so Caps Lock may have been toggled on in that window; with Caps Lock remapped to Ctrl+Space
-pressing it cannot turn it off, and letters would come out in capitals. keycap follows the lock from
-the Caps Lock LED the desktop sets on its virtual keyboard (and the lamp it reads at the grab) and, if
-a rule takes the Caps Lock key and you did not set the lock with Shift+Caps Lock, taps Caps Lock once
-before the next key you type (the journal says `turned Caps Lock off`: `journalctl -u keycap -b`). If
-letters still come out in capitals after switching (`Caps Lock: ON` in `keycap status`), **press
-Shift+Caps Lock once**.
+The keyboard is raw for a few seconds in between, and Caps Lock may have been toggled on. If
+letters come out in capitals, press Shift+Caps Lock once.
 
-Then keep Toshy from coming back at the next login. Its autostart entries run the tray and a
-"kickstart" that restarts Toshy's services (it only fires when the units are enabled, so it is
-inert now, but move all three aside so nothing starts Toshy by surprise):
+Then stop Toshy starting at login:
 
 ```bash
 mkdir -p ~/.config/autostart.toshy-off
 mv ~/.config/autostart/Toshy_Tray.desktop ~/.config/autostart/Toshy_Systemd_Service_Kickstart.desktop \
    ~/.config/autostart/Toshy_Import_Vars.desktop ~/.config/autostart.toshy-off/
-systemctl --user stop app-Toshy_Tray@autostart.service 2>/dev/null; pkill -u "$USER" -f toshy_tray.py
+pkill -u "$USER" -f toshy_tray.py
 ```
 
-(`pkill` kills only Toshy's tray, which runs as you.) Leave Toshy's KWin script
-`toshy-dbus-notifyactivewindow` and your other KWin scripts (`macfullscreenspaces`, ...) alone:
-the first now talks to nobody, which is harmless, and the second is what Cmd+Ctrl+F relies on.
-
-Nothing here edits Toshy's files; `~/.config/toshy` stays exactly as it was.
+Nothing here edits Toshy's own files.
 
 ## 5. Verify
 
-Run these in order; each takes seconds.
+1. `pgrep -a xwaykeyz` prints nothing; `keycap status` says `grabbed, remapping`.
+2. Click one window, then another, so the focus feed sends its first message.
+3. Konsole: Ctrl+C stops `sleep 100`; Cmd+C and Cmd+V copy and paste; Cmd+D and Cmd+Z do not end
+   or suspend the shell.
+4. Kate or Firefox: Cmd+C/V/A/Z, Cmd+Left/Right (line start/end), Opt+Left/Right (word),
+   Cmd+Backspace (delete to line start).
+5. Cmd+Tab, Cmd+`, Cmd+Q, Cmd+Space (KRunner).
+6. Dolphin: Cmd+Backspace trashes the selection.
+7. If you set up Caps Lock as the input switch: it switches input, Shift+Caps Lock toggles the
+   real lock.
+8. Shift+Shift+Esc pauses keycap (`keycap status` says paused); `keycap resume` restores it.
+9. Reconnect or sleep the keyboard: it is grabbed again a few seconds later.
+10. Reboot: the keyboard is mapped at the login screen.
 
-1. `pgrep -a xwaykeyz` prints nothing; `keycap status` says `grabbed, remapping` for the K5 Max.
-2. Click one window, then another (this is the first focus message the feed sends; if you
-   restarted `keycap-focus` or keycap, do this again).
-3. Konsole: `sleep 100` then Ctrl+C stops it (physical Control stays Control); select text,
-   Cmd+C copies, Cmd+V pastes. Cmd+D, Cmd+Z and Cmd+K do not end the shell, suspend it or kill
-   the line: in a terminal every Cmd+letter is Ctrl+Shift+letter, never a bare control character.
-   Ctrl+Left and Ctrl+Right switch desktops here too, as in macOS Terminal.
-4. Kate or Firefox: Cmd+C / Cmd+V / Cmd+A / Cmd+Z; Cmd+Left / Cmd+Right (line start / end);
-   Opt+Left / Opt+Right (word); Opt+Backspace; Cmd+Backspace (delete to line start).
-5. Cmd+Tab (hold Cmd, press Tab repeatedly, release Cmd), Cmd+` (windows of one app), Cmd+Q
-   (closes the window), Cmd+Space (KRunner), Cmd+W.
-6. Dolphin: Cmd+Backspace moves the selection to the trash; Cmd+Left goes back.
-7. Physical Control+Space switches the input method (fcitx5); with your Caps Lock block, Caps
-   Lock does too and Shift+Caps toggles real Caps Lock. Type a lowercase letter: if it comes out
-   in capitals, press Shift+Caps Lock once (see step 4).
-8. Press and hold Shift, Shift, Esc together: the keyboard goes raw (Cmd+C does nothing useful).
-   `keycap status` says paused. `keycap resume` brings the mapping back.
-9. Put the keyboard to sleep (wait, or turn the K5 Max off and on, or switch it to another
-   Bluetooth host and back): `keycap status` shows it grabbed again a few seconds after it
-   reconnects, with no key stuck. Also `journalctl -u keycap -b` has no repeated errors.
-10. Reboot. At the login screen (the greeter) the keyboard should already be mapped (`journalctl -u
-    keycap -b`); after login repeat step 3. If the K5 Max is invisible before login, that is
-    the Bluetooth-keyboard limitation in your notes, not keycap.
-11. NumLock: Toshy's "forced numpad" made the numpad always a numpad. Set it in System
-    Settings, Keyboard, Hardware, "NumLock on Plasma Startup: Turn on" if you want that.
+Toshy's forced numpad is not replicated; set "NumLock on Plasma Startup" in System Settings,
+Keyboard, Hardware if you want it.
 
-Terminals: every Cmd+letter is Ctrl+Shift+letter (copy, paste, new tab and the like where the
-terminal has them, nothing otherwise), Cmd+Q still quits, Cmd+Backspace is Ctrl+U, Cmd+Delete is
-Ctrl+K, Cmd+Shift+Left/Right are Ctrl+PageUp/PageDown, Cmd+Minus and Cmd+= are the font size
-keys, Cmd+. is Ctrl+C. Ghostty has a profile of its own on top of that: Cmd+D splits right
-(Ctrl+Shift+O), Cmd+Shift+D splits down (Ctrl+Shift+E), Cmd+K clears the screen (Ctrl+L),
-Cmd+Option+I opens the inspector. Rules you want in every terminal go in `[profile.terminal]`:
-a rule in `[profile.default]` is overridden there by the Cmd+letter table.
+Not covered: Toshy's app-specific keymaps beyond terminals and file managers (browsers, VS Code,
+Sublime, ...).
 
-Known differences from Toshy: app-specific keymaps beyond terminals and file managers (browsers'
-Cmd+Shift+[ and Cmd+R, VS Code, Sublime, ...) do not exist; a terminal embedded in another
-window (an editor's panel) gets the window's profile, not `terminal`.
-
-## 6. Rolling back to Toshy
-
-keycap off first, Toshy on second, so there are never two:
+## 6. Rolling back
 
 ```bash
-cd ~/keycap
 ./uninstall.sh --restore-toshy --plasma-focus     # add --purge to delete /etc/keycap too
-```
-
-That stops and disables keycap (the keyboards go straight back to the kernel), removes its
-files and the focus feed, then enables and starts the five Toshy units in order. Then put the
-autostart entries back and restart the tray:
-
-```bash
 mv ~/.config/autostart.toshy-off/*.desktop ~/.config/autostart/ && rmdir ~/.config/autostart.toshy-off
 nohup ~/.local/bin/toshy-tray >/dev/null 2>&1 &
-systemctl --user status toshy-config.service     # active
 ```
 
-Rolling back without removing keycap (to try again later):
+To pause keycap without removing it:
 
 ```bash
 sudo systemctl disable --now keycap.service
 systemctl --user enable --now toshy-config.service toshy-kwin-dbus.service toshy-session-monitor.service
 ```
 
-If you are mid-switch and something is wrong: the emergency chord, then `sudo systemctl stop
-keycap`, then the second command above.
+## Troubleshooting
 
-## 7. If something looks wrong
-
-| You see | Meaning | What to do |
-| --- | --- | --- |
-| `held by another remapper` after step 4 | Toshy (or keyd) still has the keyboard | `pgrep -a xwaykeyz`; stop it; `sudo systemctl restart keycap` |
-| Cmd+C in Konsole interrupts | the focus feed is not reaching keycap | `systemctl --user status keycap-focus`; click another window; `journalctl --user -u keycap-focus`; the KWin script is enabled in System Settings, Window Management, KWin Scripts |
-| Cmd and Option are swapped | keycap has no `[[device]]` layout for the K5 Max, or its side switch is on Windows | add the `[[device]]` block above, with the switch on Mac |
-| `keycap status`: cannot connect | the service is not running | `systemctl status keycap`, `journalctl -u keycap -b` |
-| no keyboard listed | the K5 Max is asleep or off | wake it; it appears when it reconnects |
-| nothing mapped after the chord | paused | `keycap resume` |
-| letters come out in capitals, Caps Lock cannot be turned off | Caps Lock was on from the raw-keyboard window and a rule takes the Caps Lock key | press Shift+Caps Lock once (`keycap status` shows `Caps Lock: ON`) |
-| Cmd+D (or another Cmd+letter) acts as a bare Ctrl+letter in a terminal | the focus feed names a profile that does not inherit `terminal`, or an old keycap without the profile | `keycap --print-config` has `[profile.ghostty]`; update keycap and click another window |
+| You see | What to do |
+| --- | --- |
+| `held by another remapper` | Stop the other remapper (`pgrep -a xwaykeyz`), then `sudo systemctl restart keycap` |
+| Cmd+C in Konsole interrupts | The focus feed is not reaching keycap: check `systemctl --user status keycap-focus`, click another window, and make sure the KWin script is enabled in System Settings, Window Management, KWin Scripts |
+| Cmd and Option swapped | Add the `[[device]]` layout entry, with the keyboard's switch on Mac |
+| `cannot connect` | `systemctl status keycap`, `journalctl -u keycap -b` |
+| No keyboard listed | A Bluetooth keyboard is asleep; wake it |
+| Nothing mapped after the chord | `keycap resume` |
+| Capital letters, Caps Lock stuck | Press Shift+Caps Lock once |
