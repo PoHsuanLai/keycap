@@ -137,20 +137,20 @@ fn the_documented_personal_caps_lock_block_works() {
     ]);
 }
 
-/// The shipped Plasma file with the personal block of `docs/switch-from-toshy.md` over it: what
+/// The shipped Plasma file with the personal blocks of `docs/personal-config.md` over it: what
 /// `/etc/keycap/keycap.toml` holds on the machine this was written for.
 #[test]
 fn the_plasma_file_with_the_personal_blocks_does_what_a_mac_user_expects() {
-    let docs = include_str!("../../../docs/switch-from-toshy.md");
+    let docs = include_str!("../../../docs/personal-config.md");
     let fenced = |from: &str| -> String {
         let start = docs.find(from).expect("the block");
         docs[start..start + docs[start..].find("```").expect("its end")].to_owned()
     };
-    // The device block, then the two Caps Lock lines the docs say to add to the default rules.
+    // The device block, then the Caps Lock rules the docs say to add to the default profile.
     let personal = format!(
-        "{}\n[profile.default]\nrules = [\n{}]\n",
-        fenced("[[device]]"),
-        fenced("  { when = \"capslock\"")
+        "{}\n{}",
+        fenced("[[device]]\nmatch"),
+        fenced("[profile.default]\nrules = [\n  { when = \"capslock\"")
     );
     let personal = personal.as_str();
     let (builtin_layer, _) = builtin();
