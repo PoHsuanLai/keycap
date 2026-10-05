@@ -27,8 +27,15 @@ python3-gobject`).
 ./install.sh --desktop plasma --plasma-focus
 ```
 
-Toshy is not touched. Then add your own settings to `/etc/keycap/keycap.toml` (`sudoedit`;
-changes apply on save): the keyboard layout and, if Toshy made Caps Lock switch your input
+Toshy is not touched. Note that `/etc/keycap/keycap.toml` is the machine file: every session
+shares it, so it holds the Plasma shortcuts (Cmd+Space is KRunner, Cmd+H minimises,
+Cmd+Shift+3/4 are Spectacle). If you also log in to a desktop that forwards
+`~/.config/keycap/keycap.toml` (sill does), that desktop's rules go in your own file, which
+overrides the machine file in that session only; see
+[personal-config.md](personal-config.md#which-file-when-you-use-more-than-one-desktop).
+
+Then add your own settings to `/etc/keycap/keycap.toml` (`sudoedit`; changes apply on save): the
+keyboard layout and, if Toshy made Caps Lock switch your input
 method, the Caps Lock rules. Both are explained in [personal-config.md](personal-config.md).
 
 ## 3. Check

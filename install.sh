@@ -84,6 +84,20 @@ else
   say "  none: the built-in mapping applies"
 fi
 
+# Read-only: a desktop that is not KDE, on a machine whose shared file is the Plasma overlay.
+MACHINE_CONFIG="$(dest /etc/keycap/keycap.toml)"
+case "${XDG_CURRENT_DESKTOP:-}" in
+  *KDE*) ;;
+  *)
+    if { [[ -e "$MACHINE_CONFIG" ]] && cmp -s "$HERE/dist/keycap.plasma.toml" "$MACHINE_CONFIG"; } ||
+       { [[ ! -e "$MACHINE_CONFIG" && "$DESKTOP" == plasma ]]; }; then
+      say "  note: /etc/keycap/keycap.toml is the Plasma overlay (or about to be) and every session shares it: Cmd+Space"
+      say "  is KRunner's Alt+Space, Cmd+H and Cmd+Shift+3/4 are Plasma keys. A desktop that forwards"
+      say "  ~/.config/keycap/keycap.toml (sill does) overrides them in its own sessions only; nothing"
+      say "  here changes for it. See README.md, \"Desktops that forward a config\"."
+    fi ;;
+esac
+
 say "4. systemd, udev, SELinux"
 if [[ "$BIN_CHANGED$UNIT_CHANGED$UDEV_CHANGED" == *yes* ]] || ! unit_known keycap.service; then
   command -v restorecon >/dev/null 2>&1 &&

@@ -73,13 +73,28 @@ On Plasma, `dist/keycap.plasma.toml` adds Plasma's equivalents of macOS shortcut
 KRunner, Cmd+Ctrl+Space the emoji picker, Cmd+H minimises, Cmd+Shift+3/4/5 take screenshots, and
 Ctrl+Left/Right switch desktops. `keycap --print-config` lists every rule.
 
+Those Plasma rules are the machine file, which every session on the machine shares, so they must
+not be the whole story on a desktop that is not Plasma. What a few chords do:
+
+| Chord | Built-in mapping | Plasma (`/etc/keycap/keycap.toml`) | sill session (its layer on top) |
+| --- | --- | --- | --- |
+| Cmd+Space | Super+Space | Alt+Space (KRunner) | Super+Space (sill's launcher) |
+| Cmd+H | Ctrl+H | Super+PageDown (minimise) | Ctrl+H (nothing minimises) |
+| Cmd+Shift+3 / 4 / 5 | Ctrl+Shift+3 / 4 / 5 | Shift+Print / Alt+Print / Print (Spectacle) | Print (sill's screenshot flow) |
+
+The sill column is the layer sill ships in its `dist/keycap/keycap.toml`; see "Desktops that
+forward a config" below.
+
 ## Configuration
 
 Settings are read in three layers, each overriding the one before:
 
 1. The built-in defaults.
-2. `/etc/keycap/keycap.toml`, for the whole machine; changes apply as soon as you save.
-3. `~/.config/keycap/keycap.toml`, if your desktop forwards it.
+2. `/etc/keycap/keycap.toml`, for the whole machine; changes apply as soon as you save. **It is
+   shared by every session on the machine**, the login screen included.
+3. `~/.config/keycap/keycap.toml`, if your desktop forwards it. This layer is per user and per
+   session: only the desktop you are logged into reads the file and sends it to keycap, and keycap
+   drops it again when that session ends.
 
 A bad value is logged and ignored; the rest of the file still applies. See
 [docs/personal-config.md](docs/personal-config.md) for common settings: telling keycap a
@@ -88,6 +103,31 @@ keyboard's layout, Caps Lock as the input-method switch, and terminal rules.
 **Keyboard layout.** keycap treats Apple keyboards as Apple and everything else as PC. Keyboards
 with a Mac/Windows switch look the same to the computer in both positions, so declare them in
 your config with a `[[device]]` entry.
+
+### Desktops that forward a config
+
+On Plasma, `install.sh` puts `dist/keycap.plasma.toml` in `/etc/keycap/keycap.toml`. That file
+sends Cmd+Space to Alt+Space (KRunner), Cmd+H to a Plasma minimise key and Cmd+Shift+3/4 to
+Spectacle's Print variants, none of which another desktop binds. Editing the machine file for a
+different desktop would break Plasma, because both desktops share it.
+
+A desktop that forwards `~/.config/keycap/keycap.toml` can instead override those rules for its
+own sessions only. sill does this: it reads the seat owner's file and sends it to keycap as the
+user layer, and Plasma never does. The layer wins over the machine file, so a sill session
+gets Cmd+Space as Super+Space, Cmd+Shift+3/4/5 as Print and Cmd+H as plain Ctrl+H, while a Plasma
+session on the same machine keeps the Plasma rules. sill ships that layer in its
+`dist/keycap/keycap.toml` and its installer copies it to `~/.config/keycap/keycap.toml` when you
+have none. `replay` takes one file, so to see both layers at once, copy the rules of the user file
+after those of the machine file in a scratch file (later rules win). To check without touching a
+keyboard:
+
+```bash
+keycap replay script.txt                                  # built-in defaults
+keycap replay --config /etc/keycap/keycap.toml script.txt # a file laid over them
+```
+
+`install.sh` prints a reminder after its machine-config step when your desktop is not KDE and
+`/etc/keycap/keycap.toml` is the Plasma overlay.
 
 ### Per-app profiles
 
