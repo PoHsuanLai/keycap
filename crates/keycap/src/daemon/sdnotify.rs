@@ -115,28 +115,31 @@ mod tests {
     }
 
     #[test]
-    fn a_path_socket_receives_each_message() {
+    fn a_path_or_abstract_socket_receives_each_message() {
         let dir = Scratch::new("notify");
         let path = dir.path().join("notify.sock");
-        let listener = UnixDatagram::bind(&path).unwrap();
-        let notifier = Notifier::new(path.to_str()).unwrap();
-        notifier.ready().unwrap();
-        assert_eq!(received(&listener), "READY=1");
-        notifier.watchdog().unwrap();
-        assert_eq!(received(&listener), "WATCHDOG=1");
-        notifier.status("2 keyboards").unwrap();
-        assert_eq!(received(&listener), "STATUS=2 keyboards");
-    }
+        let path_listener = UnixDatagram::bind(&path).unwrap();
+        let path_notifier = Notifier::new(path.to_str()).unwrap();
 
-    #[test]
-    fn an_abstract_socket_is_addressed_by_its_name_after_the_at_sign() {
+        // An abstract socket is addressed by its name after the at sign.
         let name = format!("keycap-notify-test-{}", std::process::id());
-        let listener =
+        let abstract_listener =
             UnixDatagram::bind_addr(&SocketAddr::from_abstract_name(name.as_bytes()).unwrap())
                 .unwrap();
-        let notifier = Notifier::new(Some(&format!("@{name}"))).unwrap();
-        notifier.ready().unwrap();
-        assert_eq!(received(&listener), "READY=1");
+        let abstract_notifier = Notifier::new(Some(&format!("@{name}"))).unwrap();
+
+        path_notifier.ready().unwrap();
+        assert_eq!(received(&path_listener), "READY=1", "path ready");
+        path_notifier.watchdog().unwrap();
+        assert_eq!(received(&path_listener), "WATCHDOG=1", "path watchdog");
+        path_notifier.status("2 keyboards").unwrap();
+        assert_eq!(
+            received(&path_listener),
+            "STATUS=2 keyboards",
+            "path status"
+        );
+        abstract_notifier.ready().unwrap();
+        assert_eq!(received(&abstract_listener), "READY=1", "abstract ready");
     }
 
     #[test]

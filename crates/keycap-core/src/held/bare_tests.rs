@@ -42,25 +42,27 @@ fn lifting_a_bare_alt_or_super_taps_the_neutral_key_before_releasing_it() {
 }
 
 #[test]
-fn lifting_a_modifier_that_is_not_alt_or_super_writes_no_tap() {
-    let (held, _) = Held::new().press(OPTION, vec![CTRL]);
-    let (_, out) = held.lift(LEFT, vec![CTRL]);
-    assert_eq!(out, vec![up(CTRL)]);
-}
-
-#[test]
-fn lifting_an_alt_after_another_key_was_written_writes_no_tap() {
-    let (held, _) = Held::new().press(OPTION, vec![ALT]);
-    let (held, _) = held.press(LETTER, vec![HOME]);
-    let (_, out) = held.lift(LEFT, vec![ALT]);
-    assert_eq!(out, vec![up(ALT)]);
-}
-
-#[test]
-fn releasing_a_bare_alt_the_person_pressed_writes_no_tap() {
-    let (held, _) = Held::new().press(OPTION, vec![ALT]);
-    let (_, out) = held.release(OPTION);
-    assert_eq!(out, vec![up(ALT)]);
+fn no_tap_is_written_unless_a_bare_alt_or_super_was_lifted_or_released() {
+    type Script = fn() -> (Vec<OutEvent>, Logical);
+    const CASES: &[(&str, Script)] = &[
+        ("lifting a modifier that is not alt or super", || {
+            let (held, _) = Held::new().press(OPTION, vec![CTRL]);
+            (held.lift(LEFT, vec![CTRL]).1, CTRL)
+        }),
+        ("lifting an alt after another key was written", || {
+            let (held, _) = Held::new().press(OPTION, vec![ALT]);
+            let (held, _) = held.press(LETTER, vec![HOME]);
+            (held.lift(LEFT, vec![ALT]).1, ALT)
+        }),
+        ("releasing a bare alt the person pressed", || {
+            let (held, _) = Held::new().press(OPTION, vec![ALT]);
+            (held.release(OPTION).1, ALT)
+        }),
+    ];
+    for (name, script) in CASES {
+        let (out, released) = script();
+        assert_eq!(out, vec![up(released)], "{name}");
+    }
 }
 
 #[test]

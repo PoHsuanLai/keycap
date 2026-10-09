@@ -350,7 +350,7 @@ fn a_failed_write_forgets_the_buttons_of_the_old_device() {
 }
 
 #[test]
-fn an_unplugged_combo_device_releases_the_buttons_it_held() {
+fn an_unplugged_combo_device_releases_the_buttons_it_held_once_and_only_those_still_down() {
     let mut rig = Rig::new();
     rig.click(1);
     assert_eq!(rig.reader.emitter.batches.len(), 1);
@@ -369,18 +369,15 @@ fn an_unplugged_combo_device_releases_the_buttons_it_held() {
     );
     rig.reader.lose(DeviceId(0));
     assert_eq!(rig.reader.emitter.batches.len(), 2, "released once");
-}
 
-#[test]
-fn a_released_button_is_not_released_again_when_the_device_goes() {
-    let mut rig = Rig::new();
+    // Step two: a button that was already released is not released again when the device goes.
     rig.click(1);
     rig.click(0);
     rig.reader.lose(DeviceId(0));
     assert_eq!(
         rig.reader.emitter.batches.len(),
-        2,
-        "press and release only"
+        4,
+        "press and release only, nothing at the loss"
     );
 }
 

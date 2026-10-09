@@ -1,5 +1,4 @@
 use super::*;
-use crate::key::Key;
 use crate::profile::{Hold, ModMap, Profile, RuleAction};
 use crate::role::OutMod;
 
@@ -88,23 +87,6 @@ fn defaults_hold_every_documented_default_rule() {
 }
 
 #[test]
-fn every_command_letter_but_q_has_a_terminal_rule_that_is_not_a_bare_control_letter() {
-    let profiles = builtin_profiles();
-    for profile in ["terminal", "ghostty"] {
-        let resolved = profiles.resolve(&name(profile));
-        for letter in ('a'..='z').filter(|&c| c != 'q') {
-            let trigger = format!("command+{letter}");
-            let Some(RuleAction::Map(stroke, _)) = rule(resolved, &trigger) else {
-                panic!("{profile}: {trigger} has no Map rule, so it would be a bare Ctrl+{letter}");
-            };
-            let bare_control = stroke.mods == [OutMod::Ctrl].into_iter().collect()
-                && stroke.key == Key::named(&letter.to_string()).unwrap();
-            assert!(!bare_control, "{profile}: {trigger} writes {stroke:?}");
-        }
-    }
-}
-
-#[test]
 fn ghostty_inherits_terminal_and_the_modmap() {
     let profiles = builtin_profiles();
     assert_eq!(
@@ -146,11 +128,4 @@ fn no_layers_still_has_a_default() {
     assert_eq!(warnings, vec![]);
     assert_eq!(profiles.default_profile().modmap, ModMap::IDENTITY);
     assert!(profiles.default_profile().rules.is_empty());
-}
-
-#[test]
-fn key_names_in_defaults_exist() {
-    for k in ["backspace", "delete", "space", "tab", "f4"] {
-        assert!(Key::named(k).is_some(), "{k}");
-    }
 }

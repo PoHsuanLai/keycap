@@ -33,25 +33,16 @@ fn is_bare_control(down: &[&str], key: &str) -> bool {
 }
 
 #[test]
-fn command_d_in_a_terminal_is_not_end_of_file() {
-    Rig::new().expect(vec![
-        (focus("terminal"), ""),
-        (press(0, "leftmeta"), "+leftctrl SYN"),
-        (press(0, "d"), "+leftshift +d SYN"),
-        (release(0, "d"), "-d -leftshift SYN"),
-        (release(0, "leftmeta"), "-leftctrl SYN"),
-    ]);
-}
-
-#[test]
-fn command_z_in_a_terminal_is_not_suspend() {
-    Rig::new().expect(vec![
-        (focus("terminal"), ""),
-        (press(0, "leftmeta"), "+leftctrl SYN"),
-        (press(0, "z"), "+leftshift +z SYN"),
-        (release(0, "z"), "-z -leftshift SYN"),
-        (release(0, "leftmeta"), "-leftctrl SYN"),
-    ]);
+fn command_d_and_z_in_a_terminal_are_not_end_of_file_or_suspend() {
+    for key in ["d", "z"] {
+        Rig::new().expect(vec![
+            (focus("terminal"), ""),
+            (press(0, "leftmeta"), "+leftctrl SYN"),
+            (press(0, key), &format!("+leftshift +{key} SYN")),
+            (release(0, key), &format!("-{key} -leftshift SYN")),
+            (release(0, "leftmeta"), "-leftctrl SYN"),
+        ]);
+    }
 }
 
 #[test]
@@ -65,11 +56,6 @@ fn no_command_letter_is_a_bare_control_letter_in_a_terminal_or_ghostty() {
             );
         }
     }
-}
-
-#[test]
-fn command_q_still_quits_in_a_terminal() {
-    assert_eq!(chord("terminal", &["leftmeta", "q"]), ["f4", "leftalt"]);
 }
 
 #[test]
@@ -124,6 +110,8 @@ fn the_terminal_chords_ported_from_the_terminal_conventions() {
             &["leftctrl", "pagedown"],
         ),
         (&["leftalt"], "backspace", &["leftctrl", "w"]),
+        // Command+Q still quits in a terminal.
+        (&["leftmeta"], "q", &["f4", "leftalt"]),
     ];
     for &(held, last, want) in CASES {
         let keys: Vec<&str> = held.iter().copied().chain([last]).collect();
@@ -146,50 +134,65 @@ fn option_delete_taps_escape_then_d_in_a_terminal() {
 }
 
 #[test]
-fn ghostty_command_d_splits_right_and_command_shift_d_splits_down() {
-    assert_eq!(
-        chord("ghostty", &["leftmeta", "d"]),
-        sorted(&["leftctrl", "leftshift", "o"])
+fn ghostty_chords() {
+    // (name, profile, keys held in order, what is down after the last press)
+    type Case = (
+        &'static str,
+        &'static str,
+        &'static [&'static str],
+        &'static [&'static str],
     );
-    assert_eq!(
-        chord("ghostty", &["leftshift", "leftmeta", "d"]),
-        sorted(&["leftctrl", "leftshift", "e"])
-    );
-}
-
-#[test]
-fn ghostty_command_k_clears_the_screen_and_command_equal_zooms_in() {
-    assert_eq!(
-        chord("ghostty", &["leftmeta", "k"]),
-        sorted(&["leftctrl", "l"])
-    );
-    assert_eq!(
-        chord("ghostty", &["leftmeta", "equal"]),
-        sorted(&["leftctrl", "equal"])
-    );
-}
-
-#[test]
-fn ghostty_command_option_i_opens_the_inspector() {
-    assert_eq!(
-        chord("ghostty", &["leftmeta", "leftalt", "i"]),
-        sorted(&["leftctrl", "leftshift", "i"])
-    );
-}
-
-#[test]
-fn ghostty_keeps_the_terminal_chords_it_does_not_override() {
-    assert_eq!(
-        chord("ghostty", &["leftmeta", "c"]),
-        sorted(&["leftctrl", "leftshift", "c"])
-    );
-    assert_eq!(chord("ghostty", &["leftmeta", "left"]), ["home"]);
-}
-
-#[test]
-fn plain_terminal_does_not_get_the_ghostty_keys() {
-    assert_eq!(
-        chord("terminal", &["leftmeta", "k"]),
-        sorted(&["leftctrl", "leftshift", "k"])
-    );
+    const GHOSTTY_CASES: &[Case] = &[
+        (
+            "command d splits right",
+            "ghostty",
+            &["leftmeta", "d"],
+            &["leftctrl", "leftshift", "o"],
+        ),
+        (
+            "command shift d splits down",
+            "ghostty",
+            &["leftshift", "leftmeta", "d"],
+            &["leftctrl", "leftshift", "e"],
+        ),
+        (
+            "command k clears the screen",
+            "ghostty",
+            &["leftmeta", "k"],
+            &["leftctrl", "l"],
+        ),
+        (
+            "command equal zooms in",
+            "ghostty",
+            &["leftmeta", "equal"],
+            &["leftctrl", "equal"],
+        ),
+        (
+            "command option i opens the inspector",
+            "ghostty",
+            &["leftmeta", "leftalt", "i"],
+            &["leftctrl", "leftshift", "i"],
+        ),
+        (
+            "keeps the terminal copy chord",
+            "ghostty",
+            &["leftmeta", "c"],
+            &["leftctrl", "leftshift", "c"],
+        ),
+        (
+            "keeps the terminal home chord",
+            "ghostty",
+            &["leftmeta", "left"],
+            &["home"],
+        ),
+        (
+            "plain terminal lacks the ghostty clear",
+            "terminal",
+            &["leftmeta", "k"],
+            &["leftctrl", "leftshift", "k"],
+        ),
+    ];
+    for &(name, profile, keys, want) in GHOSTTY_CASES {
+        assert_eq!(chord(profile, keys), sorted(want), "{name}");
+    }
 }

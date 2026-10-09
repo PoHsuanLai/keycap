@@ -40,7 +40,8 @@ fn out_mod_names_and_keys() {
 }
 
 #[test]
-fn roles_with_without_contains() {
+fn roles_set_with_without_contains_order_and_bits() {
+    // Step 1: with, without and contains.
     let held = Roles::EMPTY.with(Role::Command).with(Role::Shift);
     assert!(Roles::EMPTY.is_empty());
     assert!(!held.is_empty());
@@ -53,10 +54,8 @@ fn roles_with_without_contains() {
     assert_eq!(released.without(Role::Shift), Roles::EMPTY);
     assert_eq!(held.with(Role::Command), held, "with is idempotent");
     assert_eq!(Roles::EMPTY.without(Role::Control), Roles::EMPTY);
-}
 
-#[test]
-fn roles_iterate_in_declaration_order() {
+    // Step 2: iteration is in declaration order.
     let held: Roles = [Role::Shift, Role::Command, Role::Control]
         .into_iter()
         .collect();
@@ -65,6 +64,15 @@ fn roles_iterate_in_declaration_order() {
         [Role::Command, Role::Control, Role::Shift]
     );
     assert_eq!(Roles::EMPTY.iter().count(), 0);
+
+    // Step 3: every member has its own bit.
+    for (i, a) in Role::ALL.into_iter().enumerate() {
+        for b in Role::ALL[i + 1..].iter().copied() {
+            assert!(!Roles::EMPTY.with(a).contains(b), "{a:?} {b:?}");
+        }
+    }
+    let all: Roles = Role::ALL.into_iter().collect();
+    assert_eq!(all.iter().count(), Role::ALL.len());
 }
 
 #[test]
@@ -80,15 +88,4 @@ fn out_mods_set_operations() {
     assert_eq!(a.difference(a), OutMods::EMPTY);
     assert!(a.contains(OutMod::Ctrl) && !a.contains(OutMod::Shift));
     assert!(!a.without(OutMod::Ctrl).contains(OutMod::Ctrl));
-}
-
-#[test]
-fn every_member_has_its_own_bit() {
-    for (i, a) in Role::ALL.into_iter().enumerate() {
-        for b in Role::ALL[i + 1..].iter().copied() {
-            assert!(!Roles::EMPTY.with(a).contains(b), "{a:?} {b:?}");
-        }
-    }
-    let all: Roles = Role::ALL.into_iter().collect();
-    assert_eq!(all.iter().count(), Role::ALL.len());
 }

@@ -326,6 +326,12 @@ mod tests {
         for &(name, got, want) in CASES {
             assert_eq!(got, want, "{name}: {got:#x}");
         }
+        // The EVIOCGRAB argument: one grabs, zero releases.
+        assert_eq!(
+            (Grab::On.arg(), Grab::Off.arg()),
+            (1, 0),
+            "EVIOCGRAB argument"
+        );
     }
 
     #[test]
@@ -334,10 +340,5 @@ mod tests {
         assert_eq!(std::mem::size_of::<UinputSetup>(), 92);
         assert_eq!(std::mem::size_of::<AbsInfo>(), 24);
         assert_eq!(std::mem::size_of::<UinputAbsSetup>(), 28);
-    }
-
-    #[test]
-    fn grab_arguments_are_one_and_zero() {
-        assert_eq!((Grab::On.arg(), Grab::Off.arg()), (1, 0));
     }
 }

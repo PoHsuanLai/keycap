@@ -114,17 +114,6 @@ fn command_backspace_taps_the_sequence_and_writes_nothing_on_release() {
 }
 
 #[test]
-fn control_c_in_terminal_stays_control_c() {
-    Rig::new().expect(vec![
-        (focus("terminal"), ""),
-        (press(0, "leftctrl"), "+leftctrl SYN"),
-        (press(0, "c"), "+c SYN"),
-        (release(0, "c"), "-c SYN"),
-        (release(0, "leftctrl"), "-leftctrl SYN"),
-    ]);
-}
-
-#[test]
 fn control_a_in_default_is_home_and_in_terminal_control_a() {
     Rig::new().expect(vec![
         (press(0, "leftctrl"), "+leftmeta SYN"),

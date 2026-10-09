@@ -144,6 +144,9 @@ fn profile_names_are_validated() {
         let got = ProfileName::parse(input).map(|n| n.as_str().to_owned());
         assert_eq!(got, want.clone().map(|()| (*input).to_owned()), "{case}");
     }
+    // The default profile is named "default"; a name displays bare.
+    assert_eq!(ProfileName::default_profile(), name("default"));
+    assert_eq!(name("term").to_string(), "term");
 }
 
 #[test]
@@ -157,12 +160,6 @@ fn invalid_name_fails_to_deserialize() {
         serde_json::from_str::<ProfileName>(r#""ok-1""#).expect("valid"),
         name("ok-1")
     );
-}
-
-#[test]
-fn default_profile_is_named_default_and_displays_bare() {
-    assert_eq!(ProfileName::default_profile(), name("default"));
-    assert_eq!(name("term").to_string(), "term");
 }
 
 #[test]

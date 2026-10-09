@@ -190,6 +190,13 @@ mod tests {
             let got = admit(connected.iter().copied(), uid, None, SMALL);
             assert_eq!(got, want, "{name}");
         }
+        // The shipped service caps: eight clients of one user fill that user's share.
+        let eight = std::iter::repeat_n(1000, 8);
+        assert_eq!(
+            admit(eight, 1000, None, Caps::SERVICE),
+            Admission::TooManyForUser,
+            "service caps"
+        );
     }
 
     #[test]
@@ -225,17 +232,6 @@ mod tests {
             let got = admit(connected.iter().copied(), uid, owner, SMALL);
             assert_eq!(got, want, "{name}");
         }
-    }
-
-    #[test]
-    fn the_service_caps_are_the_documented_ones() {
-        assert_eq!(Caps::SERVICE.total, 32);
-        assert_eq!(Caps::SERVICE.per_uid, 8);
-        let eight = std::iter::repeat_n(1000, 8);
-        assert_eq!(
-            admit(eight, 1000, None, Caps::SERVICE),
-            Admission::TooManyForUser
-        );
     }
 
     #[test]

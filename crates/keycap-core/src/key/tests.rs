@@ -43,19 +43,16 @@ fn constants_match_their_names() {
 }
 
 #[test]
-fn names_and_codes_are_unique() {
+fn names_are_unique_lowercase_tokens_with_unique_codes() {
     for (i, (n, c)) in NAMES.iter().enumerate() {
-        assert!(NAMES[i + 1..].iter().all(|(m, d)| m != n && d != c), "{n}");
-    }
-}
-
-#[test]
-fn names_are_lowercase_tokens() {
-    for (n, _) in NAMES {
+        assert!(
+            NAMES[i + 1..].iter().all(|(m, d)| m != n && d != c),
+            "{n} is not unique"
+        );
         assert!(
             n.bytes()
                 .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_'),
-            "{n}"
+            "{n} is not a lowercase token"
         );
     }
 }

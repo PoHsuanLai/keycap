@@ -72,25 +72,26 @@ fn escape_script_table() {
 }
 
 #[test]
-fn shifts_on_two_keyboards_arm_the_chord() {
+fn shifts_across_keyboards_arm_the_chord_until_a_keyboard_goes_or_lets_go() {
+    // Step 1: shifts on two keyboards arm the chord.
+    let (state, _) = Escape::new().step(D0, LS, P);
+    let (armed, _) = state.step(D1, RS, P);
+    assert_eq!(armed.step(D1, ESC, P).1, F, "two keyboards arm");
+
+    // Step 2: a vanished keyboard's keys no longer count.
     let (state, _) = Escape::new().step(D0, LS, P);
     let (state, _) = state.step(D1, RS, P);
-    assert_eq!(state.step(D1, ESC, P).1, F);
-}
+    let gone = state.device_gone(D0);
+    assert_eq!(gone.step(D1, ESC, P).1, Q, "vanished keyboard");
 
-#[test]
-fn a_vanished_keyboards_keys_no_longer_count() {
-    let (state, _) = Escape::new().step(D0, LS, P);
-    let (state, _) = state.step(D1, RS, P);
-    let state = state.device_gone(D0);
-    assert_eq!(state.step(D1, ESC, P).1, Q);
-}
-
-#[test]
-fn a_release_on_one_keyboard_leaves_the_other_keyboards_shift_down() {
+    // Step 3: a release on one keyboard leaves the other keyboard's shift down.
     let (state, _) = Escape::new().step(D0, LS, P);
     let (state, _) = state.step(D1, LS, P);
     let (state, _) = state.step(D1, RS, P);
     let (state, _) = state.step(D0, LS, R);
-    assert_eq!(state.step(D1, ESC, P).1, F, "D1's left shift is still down");
+    assert_eq!(
+        state.step(D1, ESC, P).1,
+        F,
+        "release on one keyboard: D1's left shift is still down"
+    );
 }

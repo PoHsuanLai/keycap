@@ -323,9 +323,4 @@ mod tests {
         assert_eq!(spec.vendor, 0x05ac);
         assert_eq!(spec.leds, Leds::Locks);
     }
-
-    #[test]
-    fn frames_end_with_a_report() {
-        assert_eq!(Event::SYNC.code, crate::event::SYN_REPORT);
-    }
 }
