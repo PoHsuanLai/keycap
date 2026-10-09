@@ -1,9 +1,7 @@
 //! Whole-core scripts against the shipped profiles: what the keyboard sends and what the wire
 //! sees.
 
-mod support;
-
-use support::{
+use crate::support::{
     Rig, focus, gone, pc_press, pc_release, press, release, release_all, repeat, resume,
 };
 

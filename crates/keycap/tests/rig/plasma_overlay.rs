@@ -1,12 +1,10 @@
 //! `dist/keycap.plasma.toml` laid over the built-in mapping: the Plasma shortcuts Toshy gave the
 //! Mac keyboard.
 
-mod support;
-
+use crate::support::{Rig, focus, press, release};
 use keycap::{ConfigSource, builtin, resolve};
-use support::{Rig, focus, press, release};
 
-const OVERLAY: &str = include_str!("../../../dist/keycap.plasma.toml");
+const OVERLAY: &str = include_str!("../../../../dist/keycap.plasma.toml");
 
 fn plasma_rig() -> Rig {
     let (builtin_layer, builtin_warnings) = builtin();
@@ -116,7 +114,7 @@ fn under_the_plasma_config_no_command_letter_is_a_bare_control_letter_in_a_termi
 /// The Caps Lock block of `docs/personal-config.md`, as a user layer over the built-ins.
 #[test]
 fn the_documented_personal_caps_lock_block_works() {
-    let docs = include_str!("../../../docs/personal-config.md");
+    let docs = include_str!("../../../../docs/personal-config.md");
     let start = docs.find("```toml\n[profile.default]").expect("the block") + 8;
     let block = &docs[start
         ..docs[start..]
@@ -141,7 +139,7 @@ fn the_documented_personal_caps_lock_block_works() {
 /// `/etc/keycap/keycap.toml` holds on the machine this was written for.
 #[test]
 fn the_plasma_file_with_the_personal_blocks_does_what_a_mac_user_expects() {
-    let docs = include_str!("../../../docs/personal-config.md");
+    let docs = include_str!("../../../../docs/personal-config.md");
     let fenced = |from: &str| -> String {
         let start = docs.find(from).expect("the block");
         docs[start..start + docs[start..].find("```").expect("its end")].to_owned()

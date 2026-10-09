@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use keycap_core::{ConfigLayer, ConfigSource, builtin, resolve};
+use super::*;
 
 fn dist_tomls() -> Vec<PathBuf> {
     let dist = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../dist");

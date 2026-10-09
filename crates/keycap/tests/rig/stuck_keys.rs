@@ -1,9 +1,7 @@
 //! Random keyboards through the real profiles: the written stream must always be playable on a
 //! device, and nothing may stay down once everything is released.
 
-mod support;
-
-use support::{
+use crate::support::{
     Rig, focus, gone, pc_press, pc_release, press, release, release_all, repeat, resume,
 };
 

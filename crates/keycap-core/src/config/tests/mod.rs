@@ -1,6 +1,7 @@
 //! Tests of layered configuration, by concept; the helpers here are shared by the files below.
 
 mod defaults;
+mod dist;
 mod inheritance;
 mod layering;
 mod lenient;

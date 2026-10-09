@@ -1,9 +1,7 @@
 //! The terminal and Ghostty profiles through the whole core: Command never becomes a bare
 //! Ctrl+letter (a control character), physical Control stays Control, and Ghostty's keys.
 
-mod support;
-
-use support::{Rig, focus, press, release};
+use crate::support::{Rig, focus, press, release};
 
 const LETTERS: [&str; 26] = [
     "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s",
