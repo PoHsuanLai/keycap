@@ -140,6 +140,19 @@ the focused window's class to keycap: `ghostty`, `terminal`, `filemanager` or `d
 class lists are at the top of `dist/plasma/keycap-focus`. A terminal embedded in another window
 (an editor panel) gets that window's profile.
 
+## Keymap
+
+Apps resolve their shortcuts through [chordkit](https://github.com/PoHsuanLai/chordkit) and never
+check Command or Control themselves. keycap is this desktop's source for it: your own changes
+live in `keymap` next to `keycap.toml` (`/etc/keycap/keymap`, or `$KEYCAP_CONFIG_DIR`), one
+`action = shortcut` per line (`copy = Primary+Alt+C`, `redo = none`; `#` starts a comment).
+keycap reads and watches it, keeps the last good copy if an edit is broken, and tells running
+apps when it changes. A line it cannot read is skipped and reported; a chord the desktop keeps
+for itself (Command+Space, Ctrl+1 to Ctrl+9) is refused with the reason.
+
+`keycap-client` is what a program links: `KeycapSource::standard()` is a `chordkit::KeymapSource`
+that works with or without the daemon.
+
 ## Safety
 
 - keycap grabs your keyboard, but the kernel releases it if keycap crashes or is stopped, and

@@ -34,13 +34,15 @@ touches a device, so a script replays to exactly the outputs the live daemon pro
 | `escape` | the emergency chord, both Shifts + Esc |
 | `backoff` | the pure reconnect backoff |
 | `keycap-protocol` (crate) | the socket messages and their codec |
+| `keymap` | the person's keymap file (`keymap`, chordkit's overrides line format): read, judged against the last good copy, watched |
+| `keycap-client` (crate) | a program's end of the socket, and `KeycapSource`, this desktop's chordkit keymap source |
 | `daemon` | threads, socket, discovery, the uinput keyboard, sd_notify, and `sys`: the ioctls, the only module allowed `unsafe` (besides the test-only `keycap-devtest`) |
 
 ## The socket protocol
 
 `/run/keycap/keycap.sock`, `SOCK_SEQPACKET`, mode 0666, one JSON message per packet, adjacently
 tagged (`{"kind": "...", "v": {...}}`). The first packet on a connection is `Hello`; a client
-checks `version` (`PROTOCOL_VERSION = 1`) before reading on. `MAX_PACKET` is 64 KiB, so a
+checks `version` (`PROTOCOL_VERSION = 2`, `MIN_PROTOCOL_VERSION = 1`) before reading on. `MAX_PACKET` is 64 KiB, so a
 config fits in one packet.
 
 ```rust
@@ -48,12 +50,19 @@ pub enum ToDaemon {
     Focus { profile: ProfileName },   // the whole desktop-facing contract
     UserConfig { toml: String },      // the seat owner's settings, parsed leniently
     Resume,                           // after the escape chord or a pause
+    WatchKeymap,                      // protocol 2: send the keymap now, and on each change
+    Register(Registration),           // protocol 2: an app's actions, until the connection closes
+    ListRegistered,                   // protocol 2: every app's actions
 }
 pub enum ToClient {
     Hello { version: u16, status: Status },
     Status(Status),
     ConfigWarnings(Vec<Warning>),
+    Keymap(KeymapState),              // protocol 2, only to a client that sent WatchKeymap
+    Registered(Vec<Registration>),    // protocol 2, answering ListRegistered
 }
+pub struct KeymapState { overrides: String, problems: Vec<KeymapProblem> }
+// overrides: chordkit's line format, only lines that read; problems: plain words with a line
 pub struct Status { mode: Mode, keyboards: Vec<Keyboard> }  // empty = no keyboards
 pub enum Mode { Running, Paused }                           // Paused = escape chord
 pub struct Keyboard { info: KeyboardInfo, grab: Grab }
@@ -67,7 +76,12 @@ pub enum Grab {
 
 `SO_PEERCRED` sorts each client into `Peer { SeatOwner, Observer }`, using `ACTIVE_UID` from
 `/run/systemd/seats/seat0`. Only the seat owner's `Focus`, `UserConfig` and `Resume` are
-honoured; every client receives `Status`.
+honoured; every client receives `Status`. The keymap messages are open to every client (they
+only read, or inform), and a client that never sends `WatchKeymap` is never sent a `Keymap`, so
+a version 1 client is unaffected. A client must not send them to a daemon whose `Hello` says
+less than `KEYMAP_PROTOCOL_VERSION`. Registrations are kept per connection, at most 16 apps
+each, and dropped when the connection closes. The per-uid connection cap is 64: each app of one
+person may hold a connection to hear the keymap and another while it is registered.
 
 ## Lifecycle
 

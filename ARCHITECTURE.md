@@ -10,11 +10,12 @@ how to add the next thing. keycap depends on no desktop crate and runs on any Li
 
 | Crate | Path | Purpose | May depend on |
 |---|---|---|---|
-| `keycap-protocol` | `crates/keycap-protocol` | the socket contract: `ToDaemon`, `ToClient`, `Status`, `ProfileName`, `PROTOCOL_VERSION`, `MAX_PACKET`, `encode`, `decode`, `compat` | `serde`, `serde_json`, `thiserror` |
-| `keycap` | `crates/keycap` | the pure core and the daemon; library plus the `keycap` binary | `keycap-protocol`, `serde`, `serde_json`, `thiserror`, `toml`, `notify`, `rustix` |
+| `keycap-protocol` | `crates/keycap-protocol` | the socket contract: `ToDaemon`, `ToClient`, `Status`, `ProfileName`, `KeymapState`, `Registration`, `PROTOCOL_VERSION`, `MIN_PROTOCOL_VERSION`, `MAX_PACKET`, `encode`, `decode`, `compat` | `serde`, `serde_json`, `thiserror` |
+| `keycap-client` | `crates/keycap-client` | a program's end of the socket (`Connection`) and `KeycapSource`, this desktop's `chordkit::KeymapSource`: chordkit's conventions for our desktop, `system_bindings`, the person's keymap from the daemon or the file; `register` | `keycap-protocol`, `chordkit`, `rustix` (std has no `SOCK_SEQPACKET`) |
+| `keycap` | `crates/keycap` | the pure core and the daemon; library plus the `keycap` binary | `keycap-core`, `keycap-protocol`, `keycap-client`, `chordkit`, `serde`, `serde_json`, `thiserror`, `notify`, `rustix` |
 | `keycap-devtest` | `crates/keycap-devtest` | test-only (`publish = false`): fake keyboards on `/dev/uinput`, the daemon as a child process, the output device reader, a socket client | `keycap-protocol`, `rustix` |
 
-Edges: `keycap` -> `keycap-protocol` only, and `keycap` dev-depends on `keycap-devtest`, which
+Edges: `keycap` -> `keycap-protocol` and `keycap-client` (the `status` verb's socket client), and `keycap-client` -> `keycap-protocol` and `chordkit`, never `keycap`; `keycap` also takes `chordkit` for the keymap file's judgement. keycap defines no action, chord or keymap type: those are chordkit's. And `keycap` dev-depends on `keycap-devtest`, which
 depends on `keycap-protocol` and never on `keycap`. `keycap-protocol` depends on no other workspace
 crate, and has no `toml`, `notify` or `rustix`, so a desktop takes it without pulling the
 daemon. sill imports it as a path dependency. There is no boundary script;
@@ -34,6 +35,7 @@ never name `daemon` modules.
 | L0 vocabulary | `key` (`Key`, `Modifier`, `Side`, `Mods`), `event` (`Edge`, `KeyEvent`, `Physical`, `Logical`), `time` (`Mono`) | newtypes | `pub` |
 | L1 layout | `layout` (`Layout`, `role`) | pure tables | `pub` |
 | L2 profiles | `profile` (`Trigger`, `Stroke`, `RuleAction`, `Profile`, `Profiles`), `config` (`ConfigLayer`, `resolve`, `lenient`, `load`, `watch`) | pure except `load` and `watch` (file reads, inotify) | `pub` |
+| L2 keymap | `keymap` (`Reading`, `read`, `settle`, `spawn`): the person's keymap file in chordkit's overrides format, judged against the last good copy by the pure `settle`; its watch is `config::watch::spawn_reading` | pure except `read` and `spawn` | `pub(crate)` |
 | L3 state | `held`, `gate`, `escape`, `backoff` | pure state machines | `pub` |
 | L4 remapper | `remap` (`Remapper::step`, `RemapInput`, `RemapOut`) | pure composition: `Remapper::step(self, RemapInput, &Profiles) -> (Self, Vec<RemapOut>)` | `pub` |
 | L5 effects | `daemon` (`reader`, `socket`, `discover`, `uinput`, `sdnotify`, `env`, `sys`) | threads, sockets, devices, clocks, ioctls | `pub(crate)` |
@@ -60,6 +62,7 @@ Daemon modules:
 | `daemon/reader/` | the main thread: one `poll` over the nodes and the inbox's eventfd, timeout from the next gate or backoff deadline and half the watchdog; the reader waits on nothing but `poll`. `grabs.rs` acts on a device just grabbed or let go (LEDs, twin), `twins.rs` holds the twins and the pure `grab_change`, `unknown.rs` the pure `Unknowns` set behind the once-per-generation log of an undefined focused profile |
 | `daemon/route.rs`, `daemon/evdev.rs` | one read of a node (drained until `EAGAIN`) to `RemapInput`s and pointer frames, pure `route` over the drained events |
 | `daemon/inbox.rs`, `daemon/waker.rs` | what other threads send the reader (`Request`, system config, hotplug) over one channel and one eventfd |
+| `daemon/socket/shelf.rs` | pure: the keymap in force, who watches it and what each connection registered (`Shelf::call`, `read`, `retain`); returns replies, the server sends them |
 | `daemon/socket/` | the socket thread; `seat.rs` holds the pure parts (`active_uid`, `peer_of` to `Peer { SeatOwner, Observer }`, `request_of`, `Seat::look` for owner leaving or user switch); `limits.rs` the bounds against hostile clients (32 clients, the seat owner exempt from that cap; 8 per uid; 16 messages per client per pass; listener paused 1 s on EMFILE; complaints logged once a minute per uid); `inbound.rs` the bounded read |
 | `daemon/settings.rs` | the config layers in force (built-in, system, user) and their resolution |
 | `daemon/service.rs` | `run(env)`: the virtual keyboard, socket thread, watchers, then the reader |
@@ -94,6 +97,10 @@ udev and polkit rules, `keycap.plasma.toml`, and `dist/plasma/`: the KWin script
 | The emergency chord | `escape` |
 | The mapping state machine | `remap::Remapper` |
 | Socket messages | `keycap-protocol` |
+| Actions, chords, keymaps, overrides, conventions, the resolver | `chordkit` (never redefined here) |
+| The person's keymap file | `keymap`, served by `daemon::socket::shelf` |
+| The desktop's own bindings beyond chordkit's conventions | `keycap_client::system_bindings` |
+| A program's socket client | `keycap_client::Connection` |
 | Threads, sockets, devices, clocks | `daemon` |
 | ioctls and all `unsafe` | `daemon::sys` |
 | Environment, clock, directories | `daemon::Env`, built once in `command::run` |
@@ -137,8 +144,10 @@ that stay enums:** `RemapInput`, `RemapOut`, `RuleAction`, `Edge`, `Layout`, `To
 
 ### Add a socket message
 
-1. `keycap-protocol`: the variant in `message.rs`, its vocabulary in `vocab.rs`, the round-trip
-   test; bump `PROTOCOL_VERSION` when incompatible.
+1. `keycap-protocol`: the variant in `message.rs`, its vocabulary in `vocab.rs` (or `keymap.rs`),
+   the round-trip test; bump `PROTOCOL_VERSION` when incompatible, or when an addition is sent
+   only to a client that asked (keep `MIN_PROTOCOL_VERSION`, add a test that a message of the
+   older version still decodes).
 2. `daemon/socket/seat.rs`: the arm of `request_of`, with its `Peer` check, and the `Request` it becomes in `daemon/inbox.rs`; the reader's `request` handles it.
 3. The core input or output it maps to, and the desktop, in the same change.
 
@@ -149,7 +158,8 @@ that stay enums:** `RemapInput`, `RemapOut`, `RuleAction`, `Edge`, `Layout`, `To
 | Key names, layout, classify, opcodes, protocol | table tests beside the code |
 | Whole-core behaviour | scripts of `RemapInput`s through `Remapper::step`, asserting `RemapOut`s, in `tests/` |
 | Stuck keys | a property test: every emitted press has exactly one release |
-| Socket | a private socket in a temp dir and a fake seat file, in `daemon/socket/tests.rs` |
+| Socket | a private socket in a temp dir and a fake seat file, in `daemon/socket/tests.rs`; the keymap's serving in the pure `shelf` tests plus the same file |
+| `KeycapSource` | `keycap-client`'s own tests against a fake daemon on a private socket (`testing.rs`): with the daemon, with an old one, with the file only, with nothing; watch; register; and `crates/keycap/tests/devices/keymap.rs` against the real binary |
 | Grab conflicts, pause and resume | `daemon/devices` tests: the state machine driven through `FakeGrabber` |
 | The reader's decisions | `daemon/reader/tests.rs` and `pointer_tests.rs`: a recording `Emitter` whose twins log what they are told and whether they were dropped, a private socket, no node opened |
 | Replay | `command/script.rs` table tests and `command/replay.rs` on a script in a temp dir |

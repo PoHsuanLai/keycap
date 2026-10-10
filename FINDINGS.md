@@ -82,6 +82,51 @@ real machine's sysfs masks, and what stays open.
   working script and untested here. KWin reports changes only, so after restarting the service
   one window change is needed before the profile is right.
 
+## The desktop keymap
+
+**Who owns what.** chordkit holds every keymap noun (actions, chords, overrides, the resolver,
+display) and the platform sources. keycap is this desktop's source and remapper, and defines no
+such type. It stores the person's overrides, serves them, tells apps when they change, and
+supplies the desktop's own bindings.
+
+**The file.** `keymap` in keycap's config directory (the one `keycap.toml` is in), in chordkit's
+overrides line format. Settings › Keyboard edits this file (write the whole file, then the daemon
+notices); it does not talk to the daemon to change it. The daemon (`keymap` module, watched with
+`config::watch::spawn_reading`) rereads it after 30 ms of quiet and judges it with the pure
+`settle`: a missing file is no overrides; bad lines are skipped and reported with their line; an
+unreadable, oversized or non-text file, or one in which no line reads, is a bad edit, so the last
+good copy stays and the problem is reported. Chords the desktop keeps for itself are reported too.
+
+**How apps get it.** Through quire, which takes a `chordkit::KeymapSource`: it passes
+`KeycapSource::standard()`, whose `load(platform)` is chordkit's conventions for our desktop, the
+desktop's own bindings (`keycap_client::system_bindings`, only what chordkit's conventions leave to
+the source) and the person's overrides, asked of the daemon with `WatchKeymap` and, when no daemon
+answers or it is older than protocol 2, read from the file itself. `watch(callback)` fires on the
+daemon's next `Keymap` message that differs from the last one, and, while there is no daemon, when
+the file's size or time changes. Apps may `register` their actions so Settings can list them
+(`registered()`); resolution stays in each app, in-process, through chordkit, and registrations
+end with the connection.
+
+**What the remap layer still does.** The keyboard is still remapped by profiles (`keycap.toml`):
+Command acts as Control in apps that only know Control, Cmd+Space becomes Super+Space, and so on.
+That layer works on keys, below the keymap: it does not read `keymap`. An app that resolves
+through chordkit sees keys after that layer, so a shortcut in `keymap` is a shortcut as the
+app's keymap names it, and the remap layer can still change which physical key produces it.
+Moving the desktop's own bindings (launcher, switcher) off the remap rules and onto this keymap
+is not done.
+
+**Open.**
+- The file is machine-wide (`/etc/keycap/keymap`, root-owned), like the profiles it sits beside.
+  A per-person file would be forwarded by the seat owner's desktop as `UserConfig` is, with a
+  message to set it; not built, so Settings needs privilege to write it today.
+- `system_bindings` has one row (the launcher also on Ctrl+Alt+Space, from sill's custom
+  shortcuts). chordkit's conventions for our desktop already carry the rest; confirm no other
+  desktop-owned chord differs from them.
+- A keymap client that connects as the seat owner and is the only owner connection triggers the
+  seat-vacated reset (default focus, user config cleared) when it leaves; harmless while the
+  desktop itself stays connected.
+- Registrations are not checked against chordkit's conflicts; they are only listed.
+
 ## Standing facts
 
 **A pointer twin's life follows the grab.** It is created right after a device is grabbed (the
