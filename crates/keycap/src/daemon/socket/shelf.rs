@@ -263,7 +263,7 @@ mod tests {
         let v2 = registration("mail", &[("mail.reply", "Primary+R")]);
         shelf.call(ClientId(1), Call::Register(v1.clone()));
         shelf.call(ClientId(1), Call::Register(v2.clone()));
-        assert_eq!(listed(&mut shelf, 9), [v2.clone()]);
+        assert_eq!(listed(&mut shelf, 9), std::slice::from_ref(&v2));
         shelf.call(ClientId(2), Call::Register(v2.clone()));
         assert_eq!(listed(&mut shelf, 9), [v2]);
     }
