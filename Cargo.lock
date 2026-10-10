@@ -11,7 +11,7 @@ checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 [[package]]
 name = "chordkit"
 version = "0.1.0"
-source = "git+https://github.com/PoHsuanLai/chordkit.git?rev=6bc8b634a057bb28591ee6fd6241e07d0beca03e#6bc8b634a057bb28591ee6fd6241e07d0beca03e"
+source = "git+https://github.com/PoHsuanLai/chordkit.git?rev=ba094c62006c280ac53c4c5df5c0e639c1226c07#ba094c62006c280ac53c4c5df5c0e639c1226c07"
 dependencies = [
  "thiserror",
 ]

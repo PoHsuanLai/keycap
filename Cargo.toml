@@ -23,7 +23,7 @@ notify = "8.2"
 rustix = { version = "1", features = ["event", "fs", "net", "time", "process"] }
 # The portable keymap core: actions, chords, overrides, the resolver. keycap is only this
 # desktop's source and remapper; it defines no keymap nouns of its own.
-chordkit = { git = "https://github.com/PoHsuanLai/chordkit.git", rev = "6bc8b634a057bb28591ee6fd6241e07d0beca03e" }
+chordkit = { git = "https://github.com/PoHsuanLai/chordkit.git", rev = "ba094c62006c280ac53c4c5df5c0e639c1226c07" }
 
 # A panic must kill the process, so the kernel releases the keyboard grab and systemd restarts
 # it. Only release: tests need unwinding.
