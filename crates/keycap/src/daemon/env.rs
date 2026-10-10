@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 /// Where the config directory is when nothing overrides it.
-const DEFAULT_CONFIG_DIR: &str = "/etc/keycap";
+const DEFAULT_CONFIG_DIR: &str = keycap_protocol::CONFIG_DIR;
 /// Where the socket directory is when systemd does not provide one.
 const DEFAULT_RUNTIME_DIR: &str = "/run/keycap";
 

@@ -7,10 +7,11 @@ use super::inbox::{Inbox, Message, forward, mailbox};
 use super::reader::{Reader, Roots, Wiring};
 use super::sdnotify::Notifier;
 use super::settings::Layers;
-use super::socket::{self, SeatFile, bind, socket_path};
+use super::socket::{self, SeatFile, SocketHandle, ToSocket, bind, socket_path};
 use super::uinput::Device;
 use crate::CoreStatus;
 use crate::config;
+use crate::keymap::{self, Reading};
 use crate::system;
 use std::path::Path;
 use std::sync::mpsc;
@@ -25,16 +26,23 @@ pub(crate) fn run(env: Env) -> Result<(), String> {
     let path = socket_path(&env.runtime_dir);
     let listener = bind(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let initial = status_of(&Default::default(), CoreStatus::Running);
+    let first_keymap = keymap::read(&env.config_dir);
+    keymap::settle(&Default::default(), first_keymap.clone())
+        .problems
+        .iter()
+        .for_each(|p| eprintln!("keycap: keymap: line {}: {}", p.line, p.what));
     let socket = socket::spawn(
         listener,
         inbox.clone(),
         SeatFile(env.seat_file.clone()),
         initial,
+        first_keymap,
     )
     .map_err(|e| format!("socket thread: {e}"))?;
     eprintln!("keycap: listening on {}", path.display());
     let _devices = watch_devices(&env.dev_input, &inbox)?;
     let (layers, _config) = load_config(&env, &inbox);
+    let _keymap = watch_keymap(&env.config_dir, &socket);
     Reader::new(Wiring {
         mailbox,
         socket,
@@ -103,6 +111,24 @@ fn watch_devices(dev_input: &Path, inbox: &Inbox) -> Result<notify::RecommendedW
     forward("hotplug", rx, inbox.clone(), Message::Hotplug)
         .map_err(|e| format!("hotplug thread: {e}"))?;
     Ok(watcher)
+}
+
+/// Watches the keymap file and hands every settled re-read to the socket thread, which serves
+/// the keymap. A directory that cannot be watched costs live reload only. The watcher must be
+/// kept alive.
+fn watch_keymap(dir: &Path, socket: &SocketHandle) -> Option<notify::RecommendedWatcher> {
+    let (tx, rx) = mpsc::channel::<Reading>();
+    let relay = socket.clone();
+    let thread = std::thread::Builder::new()
+        .name("keycap-keymap".to_owned())
+        .spawn(move || rx.iter().for_each(|r| relay.send(ToSocket::Keymap(r))));
+    let watcher = thread
+        .map_err(|e| format!("keymap thread: {e}"))
+        .and_then(|_| {
+            keymap::spawn(dir.to_path_buf(), tx)
+                .map_err(|e| format!("not watching the keymap in {}: {e}", dir.display()))
+        });
+    watcher.map_err(|e| eprintln!("keycap: {e}")).ok()
 }
 
 /// The built-in and system layers, and the watch that re-reads the system file. A config

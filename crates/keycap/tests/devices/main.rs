@@ -7,6 +7,7 @@
 
 mod conflict;
 mod key_table;
+mod keymap;
 mod leds;
 mod lifecycle;
 mod mapping;

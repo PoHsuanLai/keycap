@@ -7,6 +7,7 @@ mod inbound;
 mod limits;
 mod seat;
 mod server;
+mod shelf;
 #[cfg(test)]
 mod tests;
 

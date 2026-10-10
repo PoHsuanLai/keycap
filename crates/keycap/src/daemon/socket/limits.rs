@@ -10,8 +10,10 @@ use std::time::Duration;
 
 /// Clients connected at once, over everyone.
 pub(super) const MAX_CLIENTS: usize = 32;
-/// Clients connected at once for one uid.
-pub(super) const MAX_CLIENTS_PER_UID: usize = 8;
+/// Clients connected at once for one uid. Every app of one person holds a connection for the
+/// keymap's changes and another while it has registered its actions, so this is a share for a
+/// whole desktop's apps, not for one program.
+pub(super) const MAX_CLIENTS_PER_UID: usize = 64;
 /// Messages read from one client in one pass over the sockets; the rest wait for the next.
 pub(super) const MESSAGES_PER_PASS: usize = 16;
 /// Connections accepted in one pass.

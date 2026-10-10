@@ -4,8 +4,10 @@ use super::client::{WAIT, connect, recv, send};
 use super::*;
 use crate::daemon::inbox::{Mailbox, Message, Request, mailbox};
 use crate::daemon::scratch::Scratch;
+use crate::keymap::Reading;
 use keycap_protocol::{
-    self as protocol, Mode, PROTOCOL_VERSION, ProfileName, Status, ToClient, ToDaemon, Warning,
+    self as protocol, KeymapState, Mode, PROTOCOL_VERSION, ProfileName, RegisteredAction,
+    Registration, Status, ToClient, ToDaemon, Warning,
 };
 use rustix::net::SendFlags;
 use std::path::{Path, PathBuf};
@@ -48,6 +50,10 @@ struct Harness {
 
 impl Harness {
     fn new(active_uid: Option<u32>) -> Self {
+        Self::with_keymap(active_uid, Reading::Missing)
+    }
+
+    fn with_keymap(active_uid: Option<u32>, keymap: Reading) -> Self {
         let dir = Scratch::new("socket");
         let socket = socket_path(dir.path());
         let seat = dir.path().join("seat0");
@@ -55,7 +61,7 @@ impl Harness {
         write_seat(&seat, active_uid);
         let listener = bind(&socket).unwrap();
         let (inbox, mailbox) = mailbox().unwrap();
-        let handle = spawn(listener, inbox, SeatFile(seat.clone()), running()).unwrap();
+        let handle = spawn(listener, inbox, SeatFile(seat.clone()), running(), keymap).unwrap();
         Self {
             _dir: dir,
             socket,
@@ -392,4 +398,127 @@ fn no_seat_file_means_nobody_is_obeyed() {
     send(&client, &focus("terminal"));
     assert_eq!(recv(&client), None, "an observer asking is dropped");
     assert!(h.nothing_queued());
+}
+
+fn text(t: &str) -> Reading {
+    Reading::Text(t.to_owned())
+}
+
+fn keymap_of(overrides: &str) -> ToClient {
+    ToClient::Keymap(KeymapState {
+        overrides: overrides.to_owned(),
+        problems: Vec::new(),
+    })
+}
+
+fn mail() -> Registration {
+    Registration {
+        app: "mail".to_owned(),
+        actions: vec![RegisteredAction {
+            id: "mail.compose".to_owned(),
+            chord: "Primary+Shift+N".to_owned(),
+        }],
+    }
+}
+
+/// What `client` is told about the registered apps right now.
+fn registered(client: &rustix::fd::OwnedFd) -> Vec<Registration> {
+    send(client, &ToDaemon::ListRegistered);
+    loop {
+        match recv(client) {
+            Some(ToClient::Registered(all)) => return all,
+            Some(_) => {}
+            None => panic!("the daemon hung up"),
+        }
+    }
+}
+
+#[test]
+fn a_watcher_hears_the_keymap_at_once_and_again_on_each_change_and_others_never() {
+    let h = Harness::with_keymap(Some(own_uid()), text("copy = Primary+Alt+C\n"));
+    let watcher = connect(&h.socket);
+    let bystander = connect(&h.socket);
+    assert_eq!(recv(&watcher), Some(hello(running())));
+    assert_eq!(recv(&bystander), Some(hello(running())));
+
+    send(&watcher, &ToDaemon::WatchKeymap);
+    let Some(ToClient::Keymap(first)) = recv(&watcher) else {
+        panic!("no keymap");
+    };
+    assert!(first.overrides.starts_with("copy = "), "{first:?}");
+    assert_eq!(first.problems, []);
+
+    h.handle
+        .send(ToSocket::Keymap(text("paste = Primary+Alt+V\n")));
+    let Some(ToClient::Keymap(second)) = recv(&watcher) else {
+        panic!("no change");
+    };
+    assert!(second.overrides.starts_with("paste = "), "{second:?}");
+
+    // A re-read that changes nothing is not news; the next thing heard is the status.
+    h.handle
+        .send(ToSocket::Keymap(text("paste = Primary+Alt+V\n")));
+    h.handle.send(ToSocket::Status(paused()));
+    assert_eq!(recv(&watcher), Some(ToClient::Status(paused())));
+    assert_eq!(
+        recv(&bystander),
+        Some(ToClient::Status(paused())),
+        "a client that never asked hears no keymap"
+    );
+}
+
+#[test]
+fn a_bad_edit_keeps_what_watchers_hold_and_tells_them_why() {
+    let h = Harness::with_keymap(Some(own_uid()), text("copy = Primary+Alt+C\n"));
+    let watcher = connect(&h.socket);
+    assert_eq!(recv(&watcher), Some(hello(running())));
+    send(&watcher, &ToDaemon::WatchKeymap);
+    let Some(ToClient::Keymap(good)) = recv(&watcher) else {
+        panic!("no keymap");
+    };
+    h.handle
+        .send(ToSocket::Keymap(text("this is not a keymap\n")));
+    let Some(ToClient::Keymap(kept)) = recv(&watcher) else {
+        panic!("no problem report");
+    };
+    assert_eq!(kept.overrides, good.overrides);
+    assert!(!kept.problems.is_empty());
+}
+
+#[test]
+fn the_keymap_and_the_registrations_are_open_to_observers_who_stay_connected() {
+    let h = Harness::with_keymap(Some(own_uid() + 1), text("undo = none\n"));
+    let observer = connect(&h.socket);
+    assert_eq!(recv(&observer), Some(hello(running())));
+    send(&observer, &ToDaemon::WatchKeymap);
+    assert_eq!(recv(&observer), Some(keymap_of("undo = none\n")));
+    send(&observer, &ToDaemon::Register(mail()));
+    assert_eq!(registered(&observer), [mail()]);
+    send(&observer, &focus("terminal"));
+    assert_eq!(recv(&observer), None, "a real request is still refused");
+}
+
+#[test]
+fn registrations_are_listed_to_everyone_and_end_with_their_connection() {
+    let h = Harness::new(Some(own_uid()));
+    let app = connect(&h.socket);
+    let settings = connect(&h.socket);
+    assert_eq!(recv(&app), Some(hello(running())));
+    assert_eq!(recv(&settings), Some(hello(running())));
+
+    send(&app, &ToDaemon::Register(mail()));
+    // The registration and the list travel on different connections, so ask until it shows.
+    let deadline = Instant::now() + WAIT;
+    while registered(&settings).is_empty() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(registered(&settings), [mail()]);
+
+    drop(app);
+    let deadline = Instant::now() + WAIT;
+    while !registered(&settings).is_empty() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(registered(&settings), []);
+    assert!(h.nothing_queued(), "registering reached the reader");
 }

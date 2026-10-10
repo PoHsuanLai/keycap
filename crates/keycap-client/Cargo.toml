@@ -1,0 +1,17 @@
+[package]
+name = "keycap-client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A program's end of keycap: the socket client, and KeycapSource, this desktop's chordkit keymap source (conventions, the desktop's own bindings and the person's keymap file)"
+
+[lints]
+workspace = true
+
+[dependencies]
+keycap-protocol = { path = "../keycap-protocol" }
+chordkit.workspace = true
+# std has no SOCK_SEQPACKET sockets, which the protocol uses; rustix has them without unsafe.
+rustix.workspace = true

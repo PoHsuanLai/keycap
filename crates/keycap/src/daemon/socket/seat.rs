@@ -36,9 +36,21 @@ pub(crate) fn peer_of(uid: u32, active_uid: Option<u32>) -> Peer {
 /// Why a client's message was not acted on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Refusal {
-    /// Every message a client can send is a request, and an observer has no business making
-    /// one: it only listens.
+    /// An observer has no business making a request: it only listens.
     NotSeatOwner,
+    /// A keymap message, which the shelf answers and which is never a request to the reader.
+    /// The server takes those before it asks for a request, so this is not reached.
+    NotARequest,
+}
+
+impl Refusal {
+    /// The line for the log.
+    pub(crate) fn what(self) -> &'static str {
+        match self {
+            Refusal::NotSeatOwner => "sent a request without owning the seat; dropped",
+            Refusal::NotARequest => "sent a keymap message where a request was expected; dropped",
+        }
+    }
 }
 
 /// What `peer` asking for `message` becomes: only the seat owner's messages are acted on.
@@ -54,6 +66,10 @@ pub(crate) fn request_of(
             Ok(Request::UserConfig { client, toml })
         }
         (Peer::SeatOwner, ToDaemon::Resume) => Ok(Request::Resume),
+        (
+            Peer::SeatOwner,
+            ToDaemon::WatchKeymap | ToDaemon::Register(_) | ToDaemon::ListRegistered,
+        ) => Err(Refusal::NotARequest),
     }
 }
 
@@ -216,6 +232,12 @@ mod tests {
                 Peer::Observer,
                 ToDaemon::Resume,
                 Err(Refusal::NotSeatOwner),
+            ),
+            (
+                "owner keymap message",
+                Peer::SeatOwner,
+                ToDaemon::WatchKeymap,
+                Err(Refusal::NotARequest),
             ),
         ];
         for (name, peer, message, want) in cases {

@@ -7,4 +7,4 @@ mod tests;
 mod watch;
 
 pub use load::{FILE_NAME, system};
-pub use watch::{DEBOUNCE, spawn};
+pub use watch::{DEBOUNCE, spawn, spawn_reading};

@@ -13,6 +13,8 @@ workspace = true
 [dependencies]
 keycap-core = { path = "../keycap-core" }
 keycap-protocol = { path = "../keycap-protocol" }
+keycap-client = { path = "../keycap-client" }
+chordkit.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 serde_json.workspace = true

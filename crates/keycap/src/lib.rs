@@ -7,6 +7,7 @@
 pub mod command;
 mod config;
 mod daemon;
+mod keymap;
 
 pub use config::{DEBOUNCE, FILE_NAME, spawn, system};
 pub use keycap_core::{

@@ -7,11 +7,13 @@ use super::limits::{
     ACCEPTS_PER_PASS, AcceptFailure, Admission, Caps, Complaints, Intake, MESSAGES_PER_PASS, Voice,
     accept_failure, admit,
 };
-use super::seat::{Peer, Refusal, Seat, SeatFile, Tenancy, peer_of, request_of};
+use super::seat::{Peer, Seat, SeatFile, Tenancy, peer_of, request_of};
+use super::shelf::{Call, Reply, Shelf};
 use crate::daemon::clock;
 use crate::daemon::inbox::{ClientId, Inbox, Message, Request};
 use crate::daemon::readiness::Readiness;
 use crate::daemon::waker::Waker;
+use crate::keymap::Reading;
 use keycap_protocol::{
     self as protocol, PROTOCOL_VERSION, ProfileName, Status, ToClient, ToDaemon,
 };
@@ -59,12 +61,14 @@ pub(crate) fn bind(path: &Path) -> io::Result<OwnedFd> {
     Ok(fd)
 }
 
-/// Starts the socket thread on a bound listener. `status` is what the first `Hello` carries.
+/// Starts the socket thread on a bound listener. `status` is what the first `Hello` carries and
+/// `keymap` the first reading of the keymap file, served to those who ask.
 pub(crate) fn spawn(
     listener: OwnedFd,
     inbox: Inbox,
     seat: SeatFile,
     status: Status,
+    keymap: Reading,
 ) -> io::Result<SocketHandle> {
     let waker = Waker::new()?;
     let (tx, rx) = mpsc::channel();
@@ -78,6 +82,7 @@ pub(crate) fn spawn(
         intake: Intake::Open,
         complaints: Complaints::default(),
         status,
+        shelf: Shelf::starting_with(keymap),
         state: Seat::first_sight(seat.active_uid()),
         seat,
     };
@@ -106,6 +111,8 @@ struct Server {
     /// When each uid was last complained about in the log.
     complaints: Complaints,
     status: Status,
+    /// The keymap, who watches it and what each connection registered.
+    shelf: Shelf,
     seat: SeatFile,
     state: Seat,
 }
@@ -151,6 +158,8 @@ impl Server {
                 .into_iter()
                 .for_each(|id| self.receive(id, active));
             self.watch_seat(active);
+            let live: Vec<ClientId> = self.clients.iter().map(|c| c.id).collect();
+            self.shelf.retain(&live);
         }
     }
 
@@ -269,10 +278,35 @@ impl Server {
                     self.clients
                         .retain(|c| c.id != client || send(c, &reply) == Link::Alive);
                 }
+                Ok(ToSocket::Keymap(reading)) => {
+                    if let Some(replies) = self.shelf.read(reading) {
+                        self.shelf
+                            .state()
+                            .problems
+                            .iter()
+                            .for_each(|p| eprintln!("keycap: keymap: line {}: {}", p.line, p.what));
+                        self.deliver(replies);
+                    }
+                }
                 Err(mpsc::TryRecvError::Empty) => return Ok(()),
                 Err(mpsc::TryRecvError::Disconnected) => return Err(ReaderGone),
             }
         }
+    }
+
+    /// Sends each reply to its client; one that cannot be reached is dropped.
+    fn deliver(&mut self, replies: Vec<Reply>) {
+        let gone: Vec<ClientId> = replies
+            .iter()
+            .filter(|r| {
+                self.clients
+                    .iter()
+                    .find(|c| c.id == r.to)
+                    .is_some_and(|c| send(c, &r.message) == Link::Gone)
+            })
+            .map(|r| r.to)
+            .collect();
+        self.clients.retain(|c| !gone.contains(&c.id));
     }
 
     fn broadcast(&mut self, message: &ToClient) {
@@ -294,13 +328,19 @@ impl Server {
         };
         for packet in pulled.packets {
             match protocol::decode::<ToDaemon>(&packet) {
-                Ok(message) => match request_of(peer, id, message) {
-                    Ok(request) => self.inbox.send(Message::Request(request)),
-                    Err(Refusal::NotSeatOwner) => {
-                        self.complain(uid, "sent a request without owning the seat; dropped");
-                        link = Link::Gone;
-                        break;
+                Ok(message) => match Call::of(message) {
+                    Ok(call) => {
+                        let replies = self.shelf.call(id, call);
+                        self.deliver(replies);
                     }
+                    Err(message) => match request_of(peer, id, message) {
+                        Ok(request) => self.inbox.send(Message::Request(request)),
+                        Err(refusal) => {
+                            self.complain(uid, refusal.what());
+                            link = Link::Gone;
+                            break;
+                        }
+                    },
                 },
                 Err(e) => {
                     self.complain(uid, &format!("sent a malformed message ({e}); dropped"));

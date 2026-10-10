@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/keycap", "crates/keycap-core", "crates/keycap-protocol", "crates/keycap-devtest"]
+members = ["crates/keycap", "crates/keycap-core", "crates/keycap-protocol", "crates/keycap-client", "crates/keycap-devtest"]
 
 [workspace.package]
 version = "0.1.0"
@@ -21,6 +21,9 @@ notify = "8.2"
 # Poll, SOCK_SEQPACKET, eventfd, CLOCK_MONOTONIC and the ioctl plumbing without libc's unsafe
 # surface.
 rustix = { version = "1", features = ["event", "fs", "net", "time", "process"] }
+# The portable keymap core: actions, chords, overrides, the resolver. keycap is only this
+# desktop's source and remapper; it defines no keymap nouns of its own.
+chordkit = { git = "https://github.com/PoHsuanLai/chordkit.git", rev = "6bc8b634a057bb28591ee6fd6241e07d0beca03e" }
 
 # A panic must kill the process, so the kernel releases the keyboard grab and systemd restarts
 # it. Only release: tests need unwinding.
