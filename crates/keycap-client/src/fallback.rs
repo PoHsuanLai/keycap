@@ -1,4 +1,5 @@
-//! The person's keymap read straight from the file, for when no daemon answers.
+//! A keymap file read straight from disk: the person's own, and the machine's when no daemon
+//! answers.
 
 use chordkit::Overrides;
 use keycap_protocol::KEYMAP_MAX_BYTES;

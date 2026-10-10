@@ -37,8 +37,8 @@ fn the_keymap_file_is_served_watched_and_a_bad_edit_keeps_the_last_good_copy() {
     std::fs::write(&file, "copy = Primary+Alt+C\n").expect("write");
 
     let daemon = scene.daemon();
-    let source = KeycapSource::new(daemon.socket_path(), &file);
-    let first = source.personal();
+    let source = KeycapSource::new(daemon.socket_path(), &file, "");
+    let first = source.machine();
     assert_eq!(first.origin, Origin::Daemon);
     assert_eq!(first.overrides.entries().len(), 1);
     assert_eq!(first.problems, Vec::<String>::new());
@@ -48,7 +48,7 @@ fn the_keymap_file_is_served_watched_and_a_bad_edit_keeps_the_last_good_copy() {
     std::thread::sleep(Duration::from_millis(500));
     std::fs::write(&file, "paste = Primary+Alt+V\n").expect("write");
     wait_for("the change", || count.load(Ordering::SeqCst) >= 1);
-    let second = source.personal();
+    let second = source.machine();
     assert_eq!(second.overrides.entries()[0].action.id(), "paste");
 
     let before = count.load(Ordering::SeqCst);
@@ -56,7 +56,7 @@ fn the_keymap_file_is_served_watched_and_a_bad_edit_keeps_the_last_good_copy() {
     wait_for("the problem report", || {
         count.load(Ordering::SeqCst) > before
     });
-    let kept = source.personal();
+    let kept = source.machine();
     assert_eq!(kept.overrides, second.overrides, "the last good copy stays");
     assert!(!kept.problems.is_empty());
     assert_eq!(kept.origin, Origin::Daemon);
@@ -75,7 +75,7 @@ fn the_keymap_file_is_served_watched_and_a_bad_edit_keeps_the_last_good_copy() {
 fn registrations_are_listed_and_end_when_the_app_lets_go() {
     let scene = Scene::new("keymap-register");
     let daemon = scene.daemon();
-    let source = KeycapSource::new(daemon.socket_path(), scene.dir().join("config/keymap"));
+    let source = KeycapSource::new(daemon.socket_path(), scene.dir().join("config/keymap"), "");
     let app = AppId::new("mail").expect("app");
     let compose = AppAction::new("mail.compose").expect("action");
     let chord: DefaultChord = "Primary+Shift+N".parse().expect("chord");

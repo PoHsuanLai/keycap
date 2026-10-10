@@ -80,8 +80,9 @@ honoured; every client receives `Status`. The keymap messages are open to every 
 only read, or inform), and a client that never sends `WatchKeymap` is never sent a `Keymap`, so
 a version 1 client is unaffected. A client must not send them to a daemon whose `Hello` says
 less than `KEYMAP_PROTOCOL_VERSION`. Registrations are kept per connection, at most 16 apps
-each, and dropped when the connection closes. The per-uid connection cap is 64: each app of one
-person may hold a connection to hear the keymap and another while it is registered.
+each, and dropped when the connection closes. A connection that has sent only keymap messages is
+an observer for the seat (it is not the owner being present, so its leaving resets nothing) and
+counts against its own per-uid cap of 64; the cap on other connections stays 8.
 
 ## Lifecycle
 

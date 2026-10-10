@@ -522,3 +522,48 @@ fn registrations_are_listed_to_everyone_and_end_with_their_connection() {
     assert_eq!(registered(&settings), []);
     assert!(h.nothing_queued(), "registering reached the reader");
 }
+
+#[test]
+fn a_keymap_watcher_coming_and_going_never_resets_the_reader() {
+    let h = Harness::new(Some(own_uid()));
+    for _ in 0..3 {
+        let watcher = connect(&h.socket);
+        assert_eq!(recv(&watcher), Some(hello(running())));
+        send(&watcher, &ToDaemon::WatchKeymap);
+        assert!(matches!(recv(&watcher), Some(ToClient::Keymap(_))));
+        drop(watcher);
+    }
+    let registrar = connect(&h.socket);
+    assert_eq!(recv(&registrar), Some(hello(running())));
+    send(&registrar, &ToDaemon::Register(mail()));
+    drop(registrar);
+    std::thread::sleep(Duration::from_millis(400));
+    assert!(h.nothing_queued(), "no focus reset, no cleared user config");
+}
+
+#[test]
+fn keymap_connections_do_not_use_up_the_owners_share_and_a_real_owner_still_resets_on_leaving() {
+    let h = Harness::new(Some(own_uid()));
+    let watchers: Vec<_> = (0..limits::MAX_CLIENTS_PER_UID + 4)
+        .map(|_| {
+            let c = connect(&h.socket);
+            assert_eq!(recv(&c), Some(hello(running())));
+            send(&c, &ToDaemon::WatchKeymap);
+            assert!(matches!(recv(&c), Some(ToClient::Keymap(_))));
+            c
+        })
+        .collect();
+    let owner = connect(&h.socket);
+    assert_eq!(recv(&owner), Some(hello(running())), "room for the owner");
+    send(&owner, &focus("terminal"));
+    assert_eq!(h.requests(1).len(), 1);
+    drop(watchers);
+    drop(owner);
+    assert_eq!(
+        h.requests(2),
+        [
+            Request::Focus(ProfileName::default_profile()),
+            Request::ClearUserConfig
+        ]
+    );
+}

@@ -41,6 +41,7 @@ impl Rig {
             inbox.clone(),
             SeatFile(dir.path().join("seat0")),
             initial,
+            crate::keymap::Reading::Missing,
         )
         .unwrap();
         let reader = Reader::new(Wiring {

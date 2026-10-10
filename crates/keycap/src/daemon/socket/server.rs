@@ -4,8 +4,8 @@
 use super::handle::{SocketHandle, ToSocket};
 use super::inbound::{Stream, pull};
 use super::limits::{
-    ACCEPTS_PER_PASS, AcceptFailure, Admission, Caps, Complaints, Intake, MESSAGES_PER_PASS, Voice,
-    accept_failure, admit,
+    ACCEPTS_PER_PASS, AcceptFailure, Admission, Caps, Complaints, Intake,
+    MAX_KEYMAP_CLIENTS_PER_UID, MESSAGES_PER_PASS, Voice, accept_failure, admit,
 };
 use super::seat::{Peer, Seat, SeatFile, Tenancy, peer_of, request_of};
 use super::shelf::{Call, Reply, Shelf};
@@ -92,11 +92,25 @@ pub(crate) fn spawn(
     Ok(SocketHandle { tx, waker })
 }
 
+/// What a connection has shown itself to be. The seat owner's connections steer keycap; a
+/// connection that only reads the keymap or registers actions is an observer for the seat even
+/// when it runs as the seat owner's uid, so its coming and going never resets the reader.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Role {
+    /// Nothing sent yet; counted with the owners, as every connection was before.
+    Undecided,
+    /// Has sent a request to the reader.
+    Steering,
+    /// Has used only the keymap messages.
+    KeymapOnly,
+}
+
 struct Client {
     id: ClientId,
     fd: OwnedFd,
     /// The uid the kernel recorded when the client connected.
     uid: u32,
+    role: Role,
 }
 
 struct Server {
@@ -229,7 +243,10 @@ impl Server {
         };
         let uid = cred.uid.as_raw();
         match admit(
-            self.clients.iter().map(|c| c.uid),
+            self.clients
+                .iter()
+                .filter(|c| c.role != Role::KeymapOnly)
+                .map(|c| c.uid),
             uid,
             self.seat.active_uid(),
             Caps::SERVICE,
@@ -244,6 +261,7 @@ impl Server {
             id: ClientId(self.next_client),
             fd,
             uid,
+            role: Role::Undecided,
         };
         self.next_client += 1;
         let hello = ToClient::Hello {
@@ -330,11 +348,19 @@ impl Server {
             match protocol::decode::<ToDaemon>(&packet) {
                 Ok(message) => match Call::of(message) {
                     Ok(call) => {
+                        if self.keymap_only(id, uid, active) == Link::Gone {
+                            self.complain(uid, "too many keymap connections; dropped");
+                            link = Link::Gone;
+                            break;
+                        }
                         let replies = self.shelf.call(id, call);
                         self.deliver(replies);
                     }
                     Err(message) => match request_of(peer, id, message) {
-                        Ok(request) => self.inbox.send(Message::Request(request)),
+                        Ok(request) => {
+                            self.set_role(id, Role::Steering);
+                            self.inbox.send(Message::Request(request));
+                        }
                         Err(refusal) => {
                             self.complain(uid, refusal.what());
                             link = Link::Gone;
@@ -354,15 +380,46 @@ impl Server {
         }
     }
 
+    fn set_role(&mut self, id: ClientId, role: Role) {
+        if let Some(client) = self.clients.iter_mut().find(|c| c.id == id) {
+            client.role = role;
+        }
+    }
+
+    /// A keymap message from `id`: a connection that has not steered anything is an observer
+    /// from now on, which is no change of the seat's owner (it was never one), so the seat is
+    /// brought up to date without a reset. `Gone` when `uid` already has its share.
+    fn keymap_only(&mut self, id: ClientId, uid: u32, active: Option<u32>) -> Link {
+        let current = self.clients.iter().find(|c| c.id == id).map(|c| c.role);
+        if current != Some(Role::Undecided) {
+            return Link::Alive;
+        }
+        let sharing = self
+            .clients
+            .iter()
+            .filter(|c| c.uid == uid && c.role == Role::KeymapOnly)
+            .count();
+        if sharing >= MAX_KEYMAP_CLIENTS_PER_UID {
+            return Link::Gone;
+        }
+        self.set_role(id, Role::KeymapOnly);
+        let (state, _) = self.state.look(active, self.owners(active));
+        self.state = state;
+        Link::Alive
+    }
+
+    /// The connections of the seat's owner that count as the owner being present.
+    fn owners(&self, active: Option<u32>) -> usize {
+        self.clients
+            .iter()
+            .filter(|c| c.role != Role::KeymapOnly && peer_of(c.uid, active) == Peer::SeatOwner)
+            .count()
+    }
+
     /// Looks at the seat: when its owner is gone or changed, the reader goes back to `default`
     /// and forgets the owner's settings.
     fn watch_seat(&mut self, active: Option<u32>) {
-        let owners = self
-            .clients
-            .iter()
-            .filter(|c| peer_of(c.uid, active) == Peer::SeatOwner)
-            .count();
-        let (state, tenancy) = self.state.look(active, owners);
+        let (state, tenancy) = self.state.look(active, self.owners(active));
         self.state = state;
         if tenancy == Tenancy::Vacated {
             self.inbox.send(Message::Request(Request::Focus(

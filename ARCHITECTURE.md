@@ -11,7 +11,7 @@ how to add the next thing. keycap depends on no desktop crate and runs on any Li
 | Crate | Path | Purpose | May depend on |
 |---|---|---|---|
 | `keycap-protocol` | `crates/keycap-protocol` | the socket contract: `ToDaemon`, `ToClient`, `Status`, `ProfileName`, `KeymapState`, `Registration`, `PROTOCOL_VERSION`, `MIN_PROTOCOL_VERSION`, `MAX_PACKET`, `encode`, `decode`, `compat` | `serde`, `serde_json`, `thiserror` |
-| `keycap-client` | `crates/keycap-client` | a program's end of the socket (`Connection`) and `KeycapSource`, this desktop's `chordkit::KeymapSource`: chordkit's conventions for our desktop, `system_bindings`, the person's keymap from the daemon or the file; `register` | `keycap-protocol`, `chordkit`, `rustix` (std has no `SOCK_SEQPACKET`) |
+| `keycap-client` | `crates/keycap-client` | a program's end of the socket (`Connection`) and `KeycapSource`, this desktop's `chordkit::KeymapSource`: chordkit's conventions for our desktop, `system_bindings`, the machine's keymap from the daemon or its file, then the person's own file; `register` | `keycap-protocol`, `chordkit`, `rustix` (std has no `SOCK_SEQPACKET`) |
 | `keycap` | `crates/keycap` | the pure core and the daemon; library plus the `keycap` binary | `keycap-core`, `keycap-protocol`, `keycap-client`, `chordkit`, `serde`, `serde_json`, `thiserror`, `notify`, `rustix` |
 | `keycap-devtest` | `crates/keycap-devtest` | test-only (`publish = false`): fake keyboards on `/dev/uinput`, the daemon as a child process, the output device reader, a socket client | `keycap-protocol`, `rustix` |
 
@@ -98,7 +98,8 @@ udev and polkit rules, `keycap.plasma.toml`, and `dist/plasma/`: the KWin script
 | The mapping state machine | `remap::Remapper` |
 | Socket messages | `keycap-protocol` |
 | Actions, chords, keymaps, overrides, conventions, the resolver | `chordkit` (never redefined here) |
-| The person's keymap file | `keymap`, served by `daemon::socket::shelf` |
+| The machine's keymap file | `keymap`, served by `daemon::socket::shelf` |
+| The person's keymap file | read by `keycap_client::KeycapSource` (Settings writes it); the daemon never reads it |
 | The desktop's own bindings beyond chordkit's conventions | `keycap_client::system_bindings` |
 | A program's socket client | `keycap_client::Connection` |
 | Threads, sockets, devices, clocks | `daemon` |

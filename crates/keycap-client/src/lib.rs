@@ -23,5 +23,5 @@ mod watch;
 pub use connection::{ClientError, Connection, Heard};
 pub use keycap_protocol::{Registration, SOCKET_PATH};
 pub use register::Registered;
-pub use source::{KeycapSource, Origin, Personal};
+pub use source::{KeycapSource, Layer, Origin};
 pub use system::system_bindings;

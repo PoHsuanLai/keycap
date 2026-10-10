@@ -89,23 +89,37 @@ display) and the platform sources. keycap is this desktop's source and remapper,
 such type. It stores the person's overrides, serves them, tells apps when they change, and
 supplies the desktop's own bindings.
 
-**The file.** `keymap` in keycap's config directory (the one `keycap.toml` is in), in chordkit's
-overrides line format. Settings › Keyboard edits this file (write the whole file, then the daemon
-notices); it does not talk to the daemon to change it. The daemon (`keymap` module, watched with
-`config::watch::spawn_reading`) rereads it after 30 ms of quiet and judges it with the pure
-`settle`: a missing file is no overrides; bad lines are skipped and reported with their line; an
-unreadable, oversized or non-text file, or one in which no line reads, is a bad edit, so the last
-good copy stays and the problem is reported. Chords the desktop keeps for itself are reported too.
+**Two files, the person's last.** The machine's `keymap` (`/etc/keycap/keymap`, admin-owned,
+optional) is read by the daemon; the person's own `$XDG_CONFIG_HOME/keycap/keymap` (else
+`~/.config/keycap/keymap`) is read by `keycap-client` in each program and never by the daemon.
+Both use chordkit's overrides line format. The person's file wins per action. Settings ›
+Keyboard writes the person's file (the whole file, to a temporary name and renamed over it) and
+needs no privilege; programs notice by polling its size and time every quarter second, so no
+message to the daemon is involved. `KeycapSource::person_file()` says where it is.
+
+**Judging.** The daemon (`keymap` module, watched with `config::watch::spawn_reading`) rereads
+the machine file after 30 ms of quiet and judges it with the pure `settle`: a missing file is no
+overrides; bad lines are skipped and reported with their line; an unreadable, oversized or
+non-text file, or one in which no line reads, is a bad edit, so the last good copy stays and the
+problem is reported. Chords the desktop keeps for itself are reported too. The person's file is
+read leniently by the client: a bad line is skipped and reported, and an unusable file counts as
+empty with one problem (no last-good copy is kept for it). Problems from both files are returned
+by `load_reporting`, each labelled "System keymap:" or "Your keymap:".
 
 **How apps get it.** Through quire, which takes a `chordkit::KeymapSource`: it passes
 `KeycapSource::standard()`, whose `load(platform)` is chordkit's conventions for our desktop, the
 desktop's own bindings (`keycap_client::system_bindings`, only what chordkit's conventions leave to
-the source) and the person's overrides, asked of the daemon with `WatchKeymap` and, when no daemon
-answers or it is older than protocol 2, read from the file itself. `watch(callback)` fires on the
-daemon's next `Keymap` message that differs from the last one, and, while there is no daemon, when
-the file's size or time changes. Apps may `register` their actions so Settings can list them
-(`registered()`); resolution stays in each app, in-process, through chordkit, and registrations
-end with the connection.
+the source), the machine's overrides (asked of the daemon with `WatchKeymap`, or, when no daemon
+answers or it is older than protocol 2, read from `/etc/keycap/keymap`) and then the person's.
+`watch(callback)` fires on the daemon's next `Keymap` message that differs from the last one, on a
+change of the person's file, and, while there is no daemon, of the machine's file. Apps may
+`register` their actions so Settings can list them (`registered()`); resolution stays in each
+app, in-process, through chordkit, and registrations end with the connection.
+
+**Seat standing of keymap clients.** A connection that only sends keymap messages is an observer
+for the seat even when it runs as the seat owner's uid: it is classed on its first keymap message
+(`Role::KeymapOnly`), is not counted as the owner being present, and its leaving never resets the
+reader. It counts against its own per-uid limit (64), not the owner's (8).
 
 **What the remap layer still does.** The keyboard is still remapped by profiles (`keycap.toml`):
 Command acts as Control in apps that only know Control, Cmd+Space becomes Super+Space, and so on.
@@ -116,15 +130,11 @@ Moving the desktop's own bindings (launcher, switcher) off the remap rules and o
 is not done.
 
 **Open.**
-- The file is machine-wide (`/etc/keycap/keymap`, root-owned), like the profiles it sits beside.
-  A per-person file would be forwarded by the seat owner's desktop as `UserConfig` is, with a
-  message to set it; not built, so Settings needs privilege to write it today.
 - `system_bindings` has one row (the launcher also on Ctrl+Alt+Space, from sill's custom
   shortcuts). chordkit's conventions for our desktop already carry the rest; confirm no other
   desktop-owned chord differs from them.
-- A keymap client that connects as the seat owner and is the only owner connection triggers the
-  seat-vacated reset (default focus, user config cleared) when it leaves; harmless while the
-  desktop itself stays connected.
+- A connection that connects and leaves without sending anything is still counted as an owner
+  until it goes, so it can trigger the reset; keymap clients always send first.
 - Registrations are not checked against chordkit's conflicts; they are only listed.
 
 ## Standing facts

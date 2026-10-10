@@ -143,12 +143,13 @@ class lists are at the top of `dist/plasma/keycap-focus`. A terminal embedded in
 ## Keymap
 
 Apps resolve their shortcuts through [chordkit](https://github.com/PoHsuanLai/chordkit) and never
-check Command or Control themselves. keycap is this desktop's source for it: your own changes
-live in `keymap` next to `keycap.toml` (`/etc/keycap/keymap`, or `$KEYCAP_CONFIG_DIR`), one
-`action = shortcut` per line (`copy = Primary+Alt+C`, `redo = none`; `#` starts a comment).
-keycap reads and watches it, keeps the last good copy if an edit is broken, and tells running
-apps when it changes. A line it cannot read is skipped and reported; a chord the desktop keeps
-for itself (Command+Space, Ctrl+1 to Ctrl+9) is refused with the reason.
+check Command or Control themselves. keycap is this desktop's source for it. Your own changes
+live in `~/.config/keycap/keymap` (or `$XDG_CONFIG_HOME/keycap/keymap`), one `action = shortcut`
+per line (`copy = Primary+Alt+C`, `redo = none`; `#` starts a comment); Settings writes it and
+no privilege is needed. An administrator may add machine-wide changes in `/etc/keycap/keymap`;
+yours win. keycap watches the machine file, keeps its last good copy if an edit is broken, and
+tells running apps when anything changes. A line it cannot read is skipped and reported; a chord
+the desktop keeps for itself (Command+Space, Ctrl+1 to Ctrl+9) is refused with the reason.
 
 `keycap-client` is what a program links: `KeycapSource::standard()` is a `chordkit::KeymapSource`
 that works with or without the daemon.

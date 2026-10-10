@@ -106,8 +106,8 @@ impl Shelf {
             return;
         };
         let apps = self.registered.entry(client).or_default();
-        match apps.iter_mut().find(|r| r.app == clean.app) {
-            Some(existing) => *existing = clean,
+        match apps.iter().position(|r| r.app == clean.app) {
+            Some(at) => apps[at] = clean,
             None if apps.len() < MAX_APPS_PER_CLIENT => apps.push(clean),
             None => {}
         }
