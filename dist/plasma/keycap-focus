@@ -30,9 +30,10 @@ TERMINALS = frozenset(
 )
 TERMINAL_CONTAINS = ("ghostty", "ptyxis")
 
-# Terminals with a profile of their own, which inherits `terminal` (defaults.toml). The part is
+# Apps with a profile of their own (defaults.toml): ghostty inherits `terminal`; temor reads the
+# desktop keymap itself and gets `keymap-aware`, Command as Super unchanged. The part is
 # searched for in the resource class like TERMINAL_CONTAINS.
-OWN_PROFILES = (("ghostty", "ghostty"),)
+OWN_PROFILES = (("ghostty", "ghostty"), ("org.quire.temor", "keymap-aware"))
 
 # File managers, from Toshy's list: they get the `filemanager` profile.
 FILE_MANAGERS = frozenset(

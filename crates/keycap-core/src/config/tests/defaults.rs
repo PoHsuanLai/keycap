@@ -1,6 +1,6 @@
 use super::*;
 use crate::profile::{Hold, ModMap, Profile, RuleAction};
-use crate::role::OutMod;
+use crate::role::{OutMod, OutMods};
 
 #[test]
 fn defaults_toml_parses_with_zero_warnings() {
@@ -128,4 +128,70 @@ fn no_layers_still_has_a_default() {
     assert_eq!(warnings, vec![]);
     assert_eq!(profiles.default_profile().modmap, ModMap::IDENTITY);
     assert!(profiles.default_profile().rules.is_empty());
+}
+
+/// What `trigger` writes in `profile` when no rule rewrites it: each held role as its modifier.
+fn as_typed(profile: &Profile, trigger: &Trigger) -> RuleAction {
+    let mods = trigger.roles.iter().fold(OutMods::EMPTY, |mods, role| {
+        mods.with(profile.modmap.out(role))
+    });
+    RuleAction::Map(
+        Stroke {
+            mods,
+            key: trigger.key,
+        },
+        Hold::Restore,
+    )
+}
+
+/// The chords `default` rewrites for the desktop itself, which `keymap-aware` keeps.
+const DESKTOP_CHORDS: [&str; 8] = [
+    "command+tab",
+    "command+shift+tab",
+    "command+space",
+    "command+grave",
+    "command+shift+grave",
+    "control+space",
+    "control+shift+space",
+    "command+q",
+];
+
+#[test]
+fn keymap_aware_writes_command_as_super_and_control_as_control() {
+    let profiles = builtin_profiles();
+    let aware = profiles.resolve(&name("keymap-aware"));
+    assert_eq!(
+        aware.modmap,
+        ModMap {
+            command: OutMod::Super,
+            option: OutMod::Alt,
+            control: OutMod::Ctrl,
+        }
+    );
+    assert_eq!(rule(aware, "command+d"), None, "no rewrite of Cmd+D");
+    assert_eq!(rule(aware, "command+shift+d"), None);
+    assert_eq!(rule(aware, "command+left"), Some(&map("super+left")));
+}
+
+#[test]
+fn keymap_aware_rewrites_only_the_desktops_chords() {
+    let profiles = builtin_profiles();
+    let default = profiles.default_profile();
+    let aware = profiles.resolve(&name("keymap-aware"));
+    let desktop: Vec<Trigger> = DESKTOP_CHORDS.iter().map(|c| trigger(c)).collect();
+    for (trigger, from_default) in &default.rules {
+        let got = aware
+            .rules
+            .get(trigger)
+            .expect("every default trigger stays ruled");
+        match desktop.contains(trigger) {
+            true => assert_eq!(got, from_default, "{trigger:?} is the desktop's"),
+            false => assert_eq!(
+                *got,
+                as_typed(aware, trigger),
+                "{trigger:?} must pass as typed"
+            ),
+        }
+    }
+    assert_eq!(aware.rules.len(), default.rules.len());
 }

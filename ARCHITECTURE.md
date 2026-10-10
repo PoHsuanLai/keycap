@@ -138,7 +138,7 @@ that stay enums:** `RemapInput`, `RemapOut`, `RuleAction`, `Edge`, `Layout`, `To
 2. A scenario test that focuses the profile and drives its rules, and one that switches into
    and out of it with a modifier held.
 3. The desktop must send `Focus { profile: NAME }`; keycap needs no change for that. This is
-   how a profile for one app is made (`ghostty` inherits `terminal`): the desktop maps its app id
+   how a profile for one app is made (`ghostty` inherits `terminal`; `keymap-aware` is for apps that read the keymap themselves and gets Super unchanged): the desktop maps its app id
    to the name (on Plasma, `OWN_PROFILES` in `dist/plasma/keycap-focus`, with a case in
    `test_keycap_focus.py`).
 4. The README mapping table gains a row.

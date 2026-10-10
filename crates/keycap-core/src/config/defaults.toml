@@ -79,6 +79,36 @@ rules = [
   { when = "command+equal", then = "ctrl+equal" },
 ]
 
+# An app that reads the desktop keymap itself (temor, and any app that resolves chords through
+# chordkit) gets Command as Super, unchanged: it needs Cmd+D and Cmd+Shift+D told apart, which
+# the terminal profile's Ctrl+Shift+letter cannot do. Physical Control stays Control, as in a
+# terminal. The editing rules `default` rewrites (Cmd+arrows to Home/End, Option+arrows to word
+# moves, the Backspace and Delete family, Control+A/E) are restated as themselves so the app sees
+# the real chord; the desktop's own chords (Cmd+Tab, Cmd+Space, Cmd+`, Cmd+Q) stay inherited.
+# Rules cannot be deleted down an `inherits` chain, only replaced, hence the restating.
+[profile.keymap-aware]
+inherits = "default"
+modmap = { command = "super", control = "ctrl" }
+rules = [
+  { when = "command+left", then = "super+left" },
+  { when = "command+right", then = "super+right" },
+  { when = "command+up", then = "super+up" },
+  { when = "command+down", then = "super+down" },
+  { when = "command+shift+left", then = "super+shift+left" },
+  { when = "command+shift+right", then = "super+shift+right" },
+  { when = "command+shift+up", then = "super+shift+up" },
+  { when = "command+shift+down", then = "super+shift+down" },
+  { when = "option+left", then = "alt+left" },
+  { when = "option+right", then = "alt+right" },
+  { when = "option+shift+left", then = "alt+shift+left" },
+  { when = "option+shift+right", then = "alt+shift+right" },
+  { when = "option+backspace", then = "alt+backspace" },
+  { when = "option+delete", then = "alt+delete" },
+  { when = "command+backspace", then = "super+backspace" },
+  { when = "control+a", then = "ctrl+a" },
+  { when = "control+e", then = "ctrl+e" },
+]
+
 # A file manager: Cmd+Backspace moves the selection to the trash (not "select to the first item,
 # then delete"), and the arrows navigate as in Finder.
 [profile.filemanager]

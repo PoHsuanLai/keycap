@@ -27,6 +27,10 @@ class ProfileChoice(unittest.TestCase):
         for name in ["ghostty", "com.mitchellh.ghostty", "Ghostty", "com.mitchellh.ghostty-debug"]:
             self.assertEqual(keycap_focus.profile_for(name), "ghostty", name)
 
+    def test_temor_gets_keymap_aware_not_terminal(self):
+        for name in ["org.quire.Temor", "org.quire.temor"]:
+            self.assertEqual(keycap_focus.profile_for(name), "keymap-aware", name)
+
     def test_file_managers_get_the_filemanager_profile(self):
         for name in ["org.kde.dolphin", "dolphin", "Thunar", "org.gnome.Nautilus", "nemo"]:
             self.assertEqual(keycap_focus.profile_for(name), "filemanager", name)

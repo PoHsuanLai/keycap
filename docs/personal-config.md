@@ -82,3 +82,20 @@ rules = [
   { when = "command+k", then = "ctrl+l" },   # Cmd+K clears the screen
 ]
 ```
+
+## Apps that read the keymap themselves
+
+temor and every quire app resolve Cmd through chordkit, so they must see it unchanged: the
+`terminal` profile writes Cmd+D and Cmd+Shift+D both as Ctrl+Shift+D, and a keymap-aware terminal
+could not tell a right split from a downward one. The `keymap-aware` profile writes Cmd as Super
+and leaves Cmd+letter alone. temor gets it by default. To give it to another app, have the desktop
+send that profile name for the app (on Plasma add its class to `OWN_PROFILES` in
+`dist/plasma/keycap-focus`; on sill an app declares `X-Keycap-Profile=keymap-aware` in its
+desktop entry, or you override it in sill's settings). To change one chord for those apps:
+
+```toml
+[profile.keymap-aware]
+rules = [
+  { when = "command+h", then = "super+h" },   # Cmd+H reaches the app instead of the desktop's rule
+]
+```

@@ -3,6 +3,35 @@ FINDINGS
 
 Open items and standing facts.
 
+## Keymap-aware apps
+
+An app that resolves Cmd itself through chordkit (temor, any quire app) must receive Super, not
+the `terminal` profile's Ctrl+Shift+letter: Cmd+D and Cmd+Shift+D collapse to one chord there.
+Foreign terminals (foot, kitty, ...) keep the rewrite.
+
+**Mechanism: a profile, `keymap-aware`, chosen by the desktop from the app id.** Registration
+(`ToDaemon::Register`) was considered and rejected: keycap only ever learns the focused window as
+a profile name (`Focus`), never an app id, and a registration is tied to a connection, not a
+window, so the daemon cannot tell which focused window the registering app owns. A guess
+(any registration flips the focused terminal) would let a foreign terminal lose its rewrite while
+temor runs in the background. The desktop does know the app id, and already maps it to a profile
+(`ghostty` is the precedent), so the new profile needs no protocol change.
+
+The profile inherits `default`, writes Command as Super and Control as Control, and restates the
+editing rules `default` rewrites (Cmd+arrows, Option+arrows, the Backspace/Delete family,
+Control+A/E) as themselves, because a rule cannot be deleted down an `inherits` chain. The
+desktop's own chords (Cmd+Tab, Cmd+Space, Cmd+`, Cmd+Q) stay rewritten. A unit test fails if a
+new `default` rule is neither a desktop chord nor restated.
+
+Wiring: temor's app id is `org.quire.Temor` (its desktop entry, `StartupWMClass`). Plasma:
+`OWN_PROFILES` in `dist/plasma/keycap-focus` maps it. sill: temor lists `TerminalEmulator`, so
+sill's category table would give it `terminal`; sill's `DeclaredProfile` (`X-Keycap-Profile`) or
+`OwnProfiles` must name `keymap-aware` for it (both rank above the category table). Quire apps
+are not `TerminalEmulator`, so they never get the terminal rewrite; they get `default` (Cmd as
+Ctrl) unless they too declare `keymap-aware`. A desktop-wide rule set in `[profile.default]` is
+inherited, but one the desktop restates for a chord (sill's Cmd+H to Ctrl+H) must be restated in
+`[profile.keymap-aware]` too.
+
 ## Open items
 
 **The profile mechanism cannot see inside a window.** A terminal embedded in another app (an

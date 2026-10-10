@@ -67,6 +67,7 @@ Profiles change this per app:
 | --- | --- | --- |
 | `terminal` | terminal emulators | Cmd+letter becomes Ctrl+Shift+letter, so Cmd+D is never end-of-file and Ctrl+C still interrupts; Cmd+Backspace kills to line start |
 | `ghostty` | Ghostty | `terminal`, plus Ghostty's split, clear and inspector keys |
+| `keymap-aware` | apps that read the keymap themselves (temor) | Cmd stays Super, so Cmd+D and Cmd+Shift+D reach the app apart; only the desktop's own chords (Cmd+Tab, Cmd+Space, Cmd+`, Cmd+Q) are rewritten |
 | `filemanager` | file managers | Cmd+Backspace trashes the selection; Cmd+arrows navigate |
 
 On Plasma, `dist/keycap.plasma.toml` adds Plasma's equivalents of macOS shortcuts: Cmd+Space opens
@@ -136,7 +137,7 @@ The desktop tells keycap which profile to use for the focused window. Define you
 falls back to `default`.
 
 On Plasma, `--plasma-focus` installs a small KWin script and the `keycap-focus` helper that send
-the focused window's class to keycap: `ghostty`, `terminal`, `filemanager` or `default`. The
+the focused window's class to keycap: `ghostty`, `keymap-aware`, `terminal`, `filemanager` or `default`. The
 class lists are at the top of `dist/plasma/keycap-focus`. A terminal embedded in another window
 (an editor panel) gets that window's profile.
 
