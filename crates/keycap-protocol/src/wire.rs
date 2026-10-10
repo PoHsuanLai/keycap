@@ -7,8 +7,21 @@ use crate::message::ToClient;
 
 /// Where keycap listens.
 pub const SOCKET_PATH: &str = "/run/keycap/keycap.sock";
-/// The protocol version carried by `Hello`.
-pub const PROTOCOL_VERSION: u16 = 1;
+/// Where keycap's configuration lives unless `KEYCAP_CONFIG_DIR` says otherwise.
+pub const CONFIG_DIR: &str = "/etc/keycap";
+/// The person's keymap file inside the config directory, in chordkit's overrides line format.
+pub const KEYMAP_FILE: &str = "keymap";
+/// The largest keymap file anyone reads, so the served copy always fits one packet.
+pub const KEYMAP_MAX_BYTES: u64 = 32 * 1024;
+/// The protocol version carried by `Hello`. Version 2 added the keymap messages
+/// (`WatchKeymap`, `Register`, `ListRegistered`, `Keymap`, `Registered`); every message of
+/// version 1 is unchanged and a daemon sends the new ones only to a client that asked.
+pub const PROTOCOL_VERSION: u16 = 2;
+/// The oldest version whose messages this crate still reads and writes unchanged.
+pub const MIN_PROTOCOL_VERSION: u16 = 1;
+/// The first version that has the keymap messages: a client must not send them to a daemon
+/// that says less in its `Hello` (the daemon would drop the connection as malformed).
+pub const KEYMAP_PROTOCOL_VERSION: u16 = 2;
 /// No message is larger than this; it is sized so a whole config fits in one packet.
 pub const MAX_PACKET: usize = 65536;
 
@@ -44,10 +57,13 @@ pub enum Compat {
     },
 }
 
-/// `message`'s verdict on the connection: only a `Hello` of another version is incompatible.
+/// `message`'s verdict on the connection: only a `Hello` of a version outside
+/// `MIN_PROTOCOL_VERSION..=PROTOCOL_VERSION` is incompatible.
 pub fn compat(message: &ToClient) -> Compat {
     match message {
-        ToClient::Hello { version, .. } if *version != PROTOCOL_VERSION => {
+        ToClient::Hello { version, .. }
+            if !(MIN_PROTOCOL_VERSION..=PROTOCOL_VERSION).contains(version) =>
+        {
             Compat::Incompatible { version: *version }
         }
         _ => Compat::Compatible,

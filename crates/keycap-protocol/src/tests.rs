@@ -58,7 +58,27 @@ fn samples() -> Vec<ToClient> {
         key: "profile.term.rules".into(),
         problem: "unknown key name".into(),
     }]));
+    all.push(ToClient::Keymap(KeymapState::default()));
+    all.push(ToClient::Keymap(KeymapState {
+        overrides: "copy = Primary+C\nredo = none\n".into(),
+        problems: vec![KeymapProblem {
+            line: 3,
+            what: "\"nope\" is not a standard action".into(),
+        }],
+    }));
+    all.push(ToClient::Registered(vec![]));
+    all.push(ToClient::Registered(vec![registration()]));
     all
+}
+
+fn registration() -> Registration {
+    Registration {
+        app: "mail".into(),
+        actions: vec![RegisteredAction {
+            id: "mail.compose".into(),
+            chord: "Primary+Shift+N".into(),
+        }],
+    }
 }
 
 fn to_daemon_samples() -> Vec<ToDaemon> {
@@ -70,6 +90,9 @@ fn to_daemon_samples() -> Vec<ToDaemon> {
             toml: "[profile.default]\n".into(),
         },
         ToDaemon::Resume,
+        ToDaemon::WatchKeymap,
+        ToDaemon::Register(registration()),
+        ToDaemon::ListRegistered,
     ]
 }
 
@@ -210,4 +233,72 @@ fn only_a_hello_of_another_version_is_incompatible() {
     for (case, msg, want) in cases {
         assert_eq!(compat(msg), *want, "{case}");
     }
+}
+
+#[test]
+fn keymap_messages_have_a_stable_wire_form() {
+    assert_eq!(json(&ToDaemon::WatchKeymap), r#"{"kind":"watch_keymap"}"#);
+    assert_eq!(
+        json(&ToDaemon::ListRegistered),
+        r#"{"kind":"list_registered"}"#
+    );
+    assert_eq!(
+        json(&ToDaemon::Register(registration())),
+        r#"{"kind":"register","v":{"app":"mail","actions":[{"id":"mail.compose","chord":"Primary+Shift+N"}]}}"#
+    );
+    assert_eq!(
+        json(&ToClient::Keymap(KeymapState {
+            overrides: "undo = none\n".into(),
+            problems: vec![]
+        })),
+        r#"{"kind":"keymap","v":{"overrides":"undo = none\n","problems":[]}}"#
+    );
+}
+
+#[test]
+fn messages_written_by_a_version_1_peer_still_decode() {
+    let to_daemon: &[(&str, ToDaemon)] = &[
+        (
+            r#"{"kind":"focus","v":{"profile":"terminal"}}"#,
+            ToDaemon::Focus {
+                profile: name("terminal"),
+            },
+        ),
+        (
+            r#"{"kind":"user_config","v":{"toml":"x"}}"#,
+            ToDaemon::UserConfig { toml: "x".into() },
+        ),
+        (r#"{"kind":"resume"}"#, ToDaemon::Resume),
+    ];
+    for (text, want) in to_daemon {
+        assert_eq!(&decode::<ToDaemon>(text.as_bytes()).expect("decodes"), want);
+    }
+    let hello = r#"{"kind":"hello","v":{"version":1,"status":{"mode":"running","keyboards":[]}}}"#;
+    let heard = decode::<ToClient>(hello.as_bytes()).expect("decodes");
+    assert_eq!(compat(&heard), Compat::Compatible);
+}
+
+#[test]
+fn a_keymap_state_with_no_problems_field_is_refused_not_guessed() {
+    let text = r#"{"kind":"keymap","v":{"overrides":""}}"#;
+    assert!(decode::<ToClient>(text.as_bytes()).is_err());
+}
+
+#[test]
+fn the_version_window_is_min_through_current() {
+    let hello = |version| ToClient::Hello {
+        version,
+        status: Status {
+            mode: Mode::Running,
+            keyboards: vec![],
+        },
+    };
+    assert_eq!(compat(&hello(KEYMAP_PROTOCOL_VERSION)), Compat::Compatible);
+    assert_eq!(compat(&hello(MIN_PROTOCOL_VERSION)), Compat::Compatible);
+    assert_eq!(
+        compat(&hello(MIN_PROTOCOL_VERSION - 1)),
+        Compat::Incompatible {
+            version: MIN_PROTOCOL_VERSION - 1
+        }
+    );
 }
