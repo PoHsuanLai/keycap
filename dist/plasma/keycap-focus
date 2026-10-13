@@ -30,10 +30,12 @@ TERMINALS = frozenset(
 )
 TERMINAL_CONTAINS = ("ghostty", "ptyxis")
 
-# Apps with a profile of their own (defaults.toml): ghostty inherits `terminal`; temor reads the
-# desktop keymap itself and gets `keymap-aware`, Command as Super unchanged. The part is
+# Apps with a profile of their own (defaults.toml): ghostty inherits `terminal`. temor gets
+# `terminal` on Plasma, not `keymap-aware`: KWin takes Super+T/W/D/V (tiles, overview, show
+# desktop, clipboard), so Command as Super would not reach it, and temor's KDE keymap reads
+# Command+letter as the Ctrl+Shift+letter `terminal` writes. The part is
 # searched for in the resource class like TERMINAL_CONTAINS.
-OWN_PROFILES = (("ghostty", "ghostty"), ("org.quire.temor", "keymap-aware"))
+OWN_PROFILES = (("ghostty", "ghostty"), ("org.quire.temor", "terminal"))
 
 # File managers, from Toshy's list: they get the `filemanager` profile.
 FILE_MANAGERS = frozenset(
