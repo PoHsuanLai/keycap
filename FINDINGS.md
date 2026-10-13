@@ -24,7 +24,10 @@ desktop's own chords (Cmd+Tab, Cmd+Space, Cmd+`, Cmd+Q) stay rewritten. A unit t
 new `default` rule is neither a desktop chord nor restated.
 
 Wiring: temor's app id is `org.quire.Temor` (its desktop entry, `StartupWMClass`). Plasma:
-`OWN_PROFILES` in `dist/plasma/keycap-focus` maps it. sill: temor lists `TerminalEmulator`, so
+`OWN_PROFILES` in `dist/plasma/keycap-focus` maps it to `terminal`, not `keymap-aware` (changed
+2026-10-14): KWin binds Super+T, Super+W, Super+D and Super+V globally, so Command as Super never
+reached temor there, and chordkit's KDE keymap expects the Ctrl+Shift+letter forms `terminal`
+writes. The cost on Plasma is that Cmd+D and Cmd+Shift+D arrive as one chord. sill: temor lists `TerminalEmulator`, so
 sill's category table would give it `terminal`; sill's `DeclaredProfile` (`X-Keycap-Profile`) or
 `OwnProfiles` must name `keymap-aware` for it (both rank above the category table). Quire apps
 are not `TerminalEmulator`, so they never get the terminal rewrite; they get `default` (Cmd as
