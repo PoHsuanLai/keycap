@@ -42,17 +42,17 @@ pub(crate) fn spawn(
 ) -> io::Result<Stop> {
     let stopped = Arc::new(AtomicBool::new(false));
     let seen = Arc::clone(&stopped);
+    // The files are looked at before the thread starts, so a change made right after `spawn`
+    // returns is a change, not the baseline.
+    let files = Files {
+        machine: fingerprint(&machine_file),
+        person: fingerprint(&person_file),
+        machine_file,
+        person_file,
+    };
     std::thread::Builder::new()
         .name("keycap-keymap-watch".to_owned())
-        .spawn(move || {
-            let files = Files {
-                machine: fingerprint(&machine_file),
-                person: fingerprint(&person_file),
-                machine_file,
-                person_file,
-            };
-            run(&socket, files, &on_change, &seen);
-        })?;
+        .spawn(move || run(&socket, files, &on_change, &seen))?;
     Ok(Stop(stopped))
 }
 
