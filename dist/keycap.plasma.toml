@@ -4,8 +4,7 @@
 # config (see docs/personal-config.md).
 #
 # Each line is the macOS shortcut written as the Plasma shortcut that does the same job:
-# - Cmd+Space is Spotlight; Plasma's launcher is KRunner on Alt+Space. (The built-in Super+Space
-#   is sill's launcher on COSMIC.)
+# - Cmd+Space is Spotlight; Plasma's launcher is KRunner on Alt+Space.
 # - Cmd+Ctrl+Space is the emoji picker (Plasma: Meta+.), Cmd+Ctrl+F is full screen, Cmd+H hides
 #   (Plasma: minimise), Cmd+F3 shows the desktop, Cmd+Shift+3/4/5 are the screenshot shortcuts
 #   (Spectacle: Shift+Print, Alt+Print, Print), Ctrl+Left/Right change desktop (Spaces).

@@ -32,7 +32,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-TOSHY_UNITS=(toshy-config.service toshy-cosmic-dbus.service toshy-kwin-dbus.service
+TOSHY_UNITS=(toshy-config.service toshy-kwin-dbus.service
   toshy-session-monitor.service toshy-wlroots-dbus.service)
 
 say "keycap uninstall ($([[ $DRY_RUN == yes ]] && echo 'dry run: nothing is changed' || echo 'for real'))"

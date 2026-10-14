@@ -81,7 +81,7 @@ keyboard needs only the `input` group's write access to the node. A device that 
 `BTN_TOUCH` or `BTN_TOOL_*` with no EV_ABS is carried by the keyboard as before. LED forwarding from the virtual keyboard to a grabbed one is covered by a CI device test once green.
 
 **Manual acceptance, waiting for the user and hardware.** What remains manual after CI is a real
-Apple or Bluetooth keyboard, a real compositor session (COSMIC, sill's `Focus`), and a logind
+Apple or Bluetooth keyboard, a real compositor session (sill's `Focus`), and a logind
 user switch. The list is in docs/development.md, "Manual checks".
 
 **Pre-switch review of 2026-10-03 (the user's K5 Max over Bluetooth).** What was checked on the

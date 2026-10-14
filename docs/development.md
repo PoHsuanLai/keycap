@@ -199,7 +199,7 @@ What CI cannot reach, waiting for the user and real hardware:
 
 - A real Apple keyboard, and a Bluetooth keyboard reconnecting (a uhid device, not a fake).
 - Install the unit and check the mapping at the login screen, in a real compositor session
-  (the COSMIC session, sill's `Focus` messages, Cmd+C in a terminal and in a GUI app).
+  (sill's `Focus` messages, Cmd+C in a terminal and in a GUI app).
 - That the compositor gives the virtual keyboard the session's layout.
 - A user switch under logind: `ACTIVE_UID` changing, the old owner no longer obeyed.
 - Run keyd at the same time: the `Conflict` notification appears.

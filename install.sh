@@ -3,11 +3,11 @@
 # (for Plasma) the machine config. Safe to run again: a file already in place and identical is
 # left alone, and /etc/keycap/keycap.toml is never overwritten.
 #
-#   ./install.sh [--dry-run] [--desktop plasma|cosmic|none] [--plasma-focus] [--no-start]
+#   ./install.sh [--dry-run] [--desktop plasma|none] [--plasma-focus] [--no-start]
 #
 #   --dry-run       print every command, change nothing (does not build, does not use sudo)
 #   --desktop D     which machine config to install: plasma (dist/keycap.plasma.toml, the
-#                   default when $XDG_CURRENT_DESKTOP mentions KDE) or cosmic/none (the built-in
+#                   default when $XDG_CURRENT_DESKTOP mentions KDE) or none (the built-in
 #                   mapping alone)
 #   --plasma-focus  also install the Plasma focus feed (terminal vs default profile): the
 #                   keycap-focus service for this user and its KWin script
@@ -28,7 +28,7 @@ BUILD=yes
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) DRY_RUN=yes ;;
-    --desktop) DESKTOP="${2:?--desktop needs plasma, cosmic or none}"; shift ;;
+    --desktop) DESKTOP="${2:?--desktop needs plasma or none}"; shift ;;
     --plasma-focus) PLASMA_FOCUS=yes ;;
     --no-start) START=no ;;
     --no-build) BUILD=no ;;
@@ -44,7 +44,7 @@ if [[ -z "$DESKTOP" ]]; then
     *) DESKTOP=none ;;
   esac
 fi
-case "$DESKTOP" in plasma|cosmic|none) ;; *) say "install.sh: --desktop must be plasma, cosmic or none"; exit 2 ;; esac
+case "$DESKTOP" in plasma|none) ;; *) say "install.sh: --desktop must be plasma or none"; exit 2 ;; esac
 
 BIN="${KEYCAP_BIN:-$HERE/target/release/keycap}"
 say "keycap install ($([[ $DRY_RUN == yes ]] && echo 'dry run: nothing is changed' || echo 'for real')); desktop: $DESKTOP"

@@ -20,7 +20,7 @@ import warnings
 # Resource classes (lower case) of terminal emulators, from Toshy's list; a name that starts
 # with a part in TERMINAL_CONTAINS also counts (ghostty and Ptyxis put version or app ids in it).
 TERMINALS = frozenset(
-    """alacritty com.raggesilver.blackbox com.system76.cosmicterm contour cutefish-terminal
+    """alacritty com.raggesilver.blackbox contour cutefish-terminal
     deepin-terminal dev.warp.warp eterm gnome-terminal gnome-terminal-server guake hyper
     io.elementary.terminal kgx kitty konsole lxterminal mate-terminal org.codeberg.dnkl.foot
     foot org.gnome.console org.gnome.terminal org.kde.konsole org.kde.yakuake
@@ -37,7 +37,7 @@ OWN_PROFILES = (("ghostty", "ghostty"), ("org.quire.temor", "keymap-aware"))
 
 # File managers, from Toshy's list: they get the `filemanager` profile.
 FILE_MANAGERS = frozenset(
-    """caja com.system76.cosmicfiles dde-file-manager dolphin io.elementary.files krusader
+    """caja dde-file-manager dolphin io.elementary.files krusader
     nautilus nemo org.gnome.nautilus org.kde.dolphin org.kde.krusader pcmanfm pcmanfm-qt
     peony-qt spacefm thunar""".split()
 )

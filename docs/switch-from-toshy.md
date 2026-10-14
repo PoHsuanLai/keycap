@@ -59,7 +59,7 @@ keycap: running
 ```bash
 systemctl --user disable --now toshy-session-monitor.service
 systemctl --user disable --now toshy-config.service toshy-kwin-dbus.service \
-    toshy-cosmic-dbus.service toshy-wlroots-dbus.service
+    toshy-wlroots-dbus.service
 sudo systemctl restart keycap
 keycap status                      # must say: grabbed, remapping
 ```

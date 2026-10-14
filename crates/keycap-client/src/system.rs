@@ -12,8 +12,7 @@ type Row = (StandardAction, &'static [&'static str]);
 
 /// One row per action the desktop binds differently from chordkit's conventions.
 const ROWS: &[Row] = &[
-    // sill's launcher is also on Ctrl+Alt+Space (dist/cosmic custom shortcuts), where a keyboard
-    // has no Command key.
+    // sill's launcher is also on Ctrl+Alt+Space, where a keyboard has no Command key.
     (StandardAction::Launcher, &["Super+Space", "Ctrl+Alt+Space"]),
 ];
 
