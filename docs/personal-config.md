@@ -40,6 +40,32 @@ file's in a scratch file and replay that.
 `keycap --print-config` prints the built-in defaults to copy from. A bad value is logged and
 ignored.
 
+## Chords that keep a modifier down: `hold`
+
+An app switcher stays open while its modifier is held, and closes the moment it goes up. A rule
+whose output is a single stroke takes `hold`:
+
+| `hold` | The stroke's modifiers |
+| --- | --- |
+| `restore` (default) | come up with the key; the held roles' own outputs are put back |
+| `while_held` | belong to the Command or Option or Control key you are holding, and come up only when it does |
+
+With `while_held`, holding Cmd and pressing Tab, Tab, Shift+Tab sends the modifier once, then
+Tab, Tab, Shift+Tab under it, with no Ctrl in between; releasing Cmd releases the modifier. Any
+chord written with a held non-Shift role works, so a desktop whose switcher is on Super says:
+
+```toml
+# the switcher on Super+Tab, open while Cmd is held
+[profile.default]
+rules = [
+  { when = "command+tab", then = "super+tab", hold = "while_held" },
+  { when = "command+shift+tab", then = "super+shift+tab", hold = "while_held" },
+]
+```
+
+Without `hold`, Super goes up after each Tab and the switcher commits at once. A trigger with
+no held non-Shift role (`shift+y`) has nothing to own the modifier and behaves as `restore`.
+
 ## Keyboard layout
 
 Keyboards with a Mac/Windows switch (Keychron and others) look identical to the computer in both

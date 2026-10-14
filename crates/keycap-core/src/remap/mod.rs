@@ -7,6 +7,8 @@ mod model;
 mod press;
 mod step;
 #[cfg(test)]
+mod switcher_tests;
+#[cfg(test)]
 mod tests;
 
 pub use model::{CoreStatus, RemapInput, RemapOut, Remapper};

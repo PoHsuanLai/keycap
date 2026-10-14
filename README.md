@@ -57,7 +57,7 @@ Only one program can hold a keyboard at a time. If another remapper (keyd, Toshy
 | Option+Left / Right | Ctrl+Left / Ctrl+Right |
 | Option+Backspace | Ctrl+Backspace |
 | Cmd+Backspace | Delete to line start |
-| Cmd+Tab, Cmd+` | Alt+Tab, Alt+` (switch apps, windows of one app) |
+| Cmd+Tab, Cmd+` | Alt+Tab, Alt+` (switch apps, windows of one app); the Alt stays down while Cmd is held, so repeated Tab and Shift+Tab walk the switcher |
 | Cmd+Q | Alt+F4 |
 | Ctrl+A / Ctrl+E | Home / End |
 
