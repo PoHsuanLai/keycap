@@ -1,11 +1,15 @@
 # Shared by install.sh and uninstall.sh. Sourced, never run.
 #
 # Every change goes through `step`: it prints the command, and runs it unless --dry-run. Root
-# commands go through sudo, except under DESTDIR (a staging root for tests), where the files land
-# under that directory as you and nothing talks to systemd or udev.
+# commands go through the first escalation helper found ($SUDO, sudo, doas, pkexec); with none,
+# they are printed for you to run as root. Under DESTDIR (a staging root for packages and tests)
+# the files land under that directory as you and nothing talks to systemd or udev.
 
 DRY_RUN=no
 DESTDIR="${DESTDIR:-}"
+PREFIX=/usr/local
+# yes once a root step was printed instead of run (no escalation helper).
+MANUAL=no
 
 say() { printf '%s\n' "$*"; }
 
@@ -17,9 +21,47 @@ step() {
   [[ "$DRY_RUN" == yes ]] || "$@"
 }
 
-# as_root CMD...: the command with sudo in front, unless we already are root or stage in DESTDIR.
-as_root() {
-  if [[ -n "$DESTDIR" || "$(id -u)" == 0 ]]; then "$@"; else sudo "$@"; fi
+# ESCALATE: the words that put a command in front of root, empty when none is available.
+# $SUDO may hold arguments ("sudo -n"); the first word must be a program on PATH.
+ESCALATE=()
+pick_escalator() {
+  local candidate words
+  for candidate in "${SUDO:-}" sudo doas pkexec; do
+    [[ -n "$candidate" ]] || continue
+    read -ra words <<<"$candidate"
+    if command -v "${words[0]}" >/dev/null 2>&1; then
+      ESCALATE=("${words[@]}")
+      return 0
+    fi
+  done
+  return 0
+}
+pick_escalator
+
+# set_layout: where each kind of file goes for $PREFIX. The default prefix keeps the machine-local
+# places in /etc (an admin's files outrank the vendor ones); any other prefix is a package or a
+# bundle, so the vendor directories under it. The machine config is /etc/keycap either way.
+set_layout() {
+  BINDIR="$PREFIX/bin"
+  if [[ "$PREFIX" == /usr/local ]]; then
+    UNITDIR=/etc/systemd/system
+    UDEVDIR=/etc/udev/rules.d
+    POLKITDIR=/etc/polkit-1/rules.d
+    MODULESDIR=/etc/modules-load.d
+  else
+    UNITDIR="$PREFIX/lib/systemd/system"
+    UDEVDIR="$PREFIX/lib/udev/rules.d"
+    POLKITDIR="$PREFIX/share/polkit-1/rules.d"
+    MODULESDIR="$PREFIX/lib/modules-load.d"
+  fi
+}
+
+# absolute_arg FLAG VALUE: VALUE with trailing slashes dropped, or exit 2 when it is not absolute.
+absolute_arg() {
+  case "$2" in
+    /*) local v="${2%/}"; printf '%s' "${v:-/}" ;;
+    *) say "$0: $1 needs an absolute path"; exit 2 ;;
+  esac
 }
 
 # dest PATH: where an absolute system path really goes.
@@ -28,7 +70,23 @@ dest() { printf '%s%s' "$DESTDIR" "$1"; }
 # root_step DESCRIPTION CMD...: a step that needs root.
 root_step() {
   local what="$1"; shift
-  if [[ -n "$DESTDIR" || "$(id -u)" == 0 ]]; then step "$what" "$@"; else step "$what" sudo "$@"; fi
+  if [[ -n "$DESTDIR" || "$(id -u)" == 0 ]]; then
+    step "$what" "$@"
+  elif (( ${#ESCALATE[@]} > 0 )); then
+    step "$what" "${ESCALATE[@]}" "$@"
+  else
+    MANUAL=yes
+    say "  $what"
+    say "      (no sudo, doas or pkexec here: run this as root)"
+    say "      \$ $*"
+  fi
+}
+
+# manual_note: the closing line when root steps were printed instead of run.
+manual_note() {
+  [[ "$MANUAL" == yes ]] || return 0
+  say "Some steps need root and no sudo, doas or pkexec was found. Run the commands marked above as root,"
+  say "or set SUDO to your own helper and run this again."
 }
 
 # Only real systems have a systemd, udev and SELinux to tell; a DESTDIR staging run skips them.
