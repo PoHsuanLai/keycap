@@ -26,8 +26,11 @@ so terminals get terminal-safe shortcuts. It works on any Linux with systemd.
 ./uninstall.sh [--purge] [--plasma-focus]
 ```
 
-`install.sh` builds a release binary and installs it with sudo, along with a systemd unit and
-the udev and polkit rules it needs. Running it again changes only what differs. Requires a Rust
+`install.sh` builds a release binary and installs it as root (through `$SUDO`, sudo, doas or
+pkexec; with none it prints the commands), along with a systemd unit, the udev and polkit rules it
+needs, and `modules-load.d/keycap.conf` so `uinput` loads at boot. `--prefix P` installs under P
+(default `/usr/local`; any other prefix uses the vendor directories under it) and `--destdir D`
+stages everything under D without root, for packages. Running it again changes only what differs. Requires a Rust
 toolchain; the Plasma focus feed also needs `python3-gobject`. To switch from Toshy, see
 [docs/switch-from-toshy.md](docs/switch-from-toshy.md).
 

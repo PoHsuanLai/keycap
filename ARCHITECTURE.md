@@ -73,8 +73,8 @@ Daemon modules:
 `lib.rs` holds declarations and root re-exports only.
 
 Outside `crates/`: `install.sh`, `uninstall.sh` and `scripts/lib.sh` (every change goes through
-`step`, so `--dry-run` prints and `DESTDIR` stages; idempotent by `cmp`), `dist/` (the unit, the
-udev and polkit rules, `keycap.plasma.toml`, and `dist/plasma/`: the KWin script and the
+`step`, so `--dry-run` prints and `--destdir` stages under `--prefix`; idempotent by `cmp`), `dist/` (the unit, the
+udev and polkit rules, the `uinput` modules-load file, `keycap.plasma.toml`, and `dist/plasma/`: the KWin script and the
 `keycap-focus` D-Bus-to-socket helper with its unit and tests), `docs/switch-from-toshy.md`.
 
 ## 3. One home

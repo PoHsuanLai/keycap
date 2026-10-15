@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Remove keycap: the opposite of install.sh, safe to run again.
 #
-#   ./uninstall.sh [--dry-run] [--purge] [--plasma-focus] [--restore-toshy]
+#   ./uninstall.sh [--dry-run] [--prefix P] [--destdir D] [--purge] [--plasma-focus] [--restore-toshy]
 #
 #   --dry-run        print every command, change nothing
+#   --prefix P       the prefix install.sh was given (default /usr/local)
+#   --destdir D      remove from the staging root D, as you; nothing talks to systemd or udev
 #   --purge          also remove /etc/keycap (your machine config)
 #   --plasma-focus   also remove the Plasma focus feed (user unit, helper, KWin script)
 #   --restore-toshy  afterwards, enable and start Toshy's user units again. Without it, no
@@ -23,14 +25,18 @@ RESTORE=no
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) DRY_RUN=yes ;;
+    --prefix) PREFIX="$(absolute_arg --prefix "${2:?--prefix needs a directory}")"; shift ;;
+    --destdir) DESTDIR="$(absolute_arg --destdir "${2:?--destdir needs a directory}")"; shift ;;
     --purge) PURGE=yes ;;
     --plasma-focus) PLASMA_FOCUS=yes ;;
     --restore-toshy) RESTORE=yes ;;
-    -h|--help) sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) say "uninstall.sh: unknown argument $1 (try --help)"; exit 2 ;;
   esac
   shift
 done
+
+set_layout
 
 TOSHY_UNITS=(toshy-config.service toshy-kwin-dbus.service
   toshy-session-monitor.service toshy-wlroots-dbus.service)
@@ -46,10 +52,11 @@ else
 fi
 
 say "2. files"
-remove_file /usr/local/bin/keycap
-remove_file /etc/systemd/system/keycap.service
-remove_file /etc/udev/rules.d/70-keycap.rules
-remove_file /etc/polkit-1/rules.d/keycap.polkit.rules
+remove_file "$BINDIR/keycap"
+remove_file "$UNITDIR/keycap.service"
+remove_file "$UDEVDIR/70-keycap.rules"
+remove_file "$POLKITDIR/keycap.polkit.rules"
+remove_file "$MODULESDIR/keycap.conf"
 if [[ "$PURGE" == yes ]]; then
   if [[ -d "$(dest /etc/keycap)" ]]; then
     root_step "remove /etc/keycap" rm -rf "$(dest /etc/keycap)"
@@ -63,6 +70,7 @@ if [[ "$CHANGED" == yes ]]; then
   system_step "reload systemd" systemctl daemon-reload
   system_step "reload udev rules" udevadm control --reload-rules
 fi
+manual_note
 
 if [[ "$PLASMA_FOCUS" == yes ]]; then
   say "3. Plasma focus feed"

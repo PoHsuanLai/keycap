@@ -3,9 +3,16 @@
 # (for Plasma) the machine config. Safe to run again: a file already in place and identical is
 # left alone, and /etc/keycap/keycap.toml is never overwritten.
 #
-#   ./install.sh [--dry-run] [--desktop plasma|none] [--plasma-focus] [--no-start]
+#   ./install.sh [--dry-run] [--prefix P] [--destdir D] [--desktop plasma|none] [--plasma-focus]
+#                [--no-start] [--no-build]
 #
-#   --dry-run       print every command, change nothing (does not build, does not use sudo)
+#   --dry-run       print every command, change nothing (does not build, does not escalate)
+#   --prefix P      install under P (default /usr/local). The default keeps the unit, udev, polkit
+#                   and module-load files in /etc; any other prefix puts them in the vendor
+#                   directories under P (P/lib/systemd/system, P/lib/udev/rules.d, ...), and the
+#                   unit's ExecStart names P/bin/keycap
+#   --destdir D     stage every file under D as you: no root, no systemd, no udev, no per-user
+#                   step (for packages and release bundles). $DESTDIR works too
 #   --desktop D     which machine config to install: plasma (dist/keycap.plasma.toml, the
 #                   default when $XDG_CURRENT_DESKTOP mentions KDE) or none (the built-in
 #                   mapping alone)
@@ -13,6 +20,9 @@
 #                   keycap-focus service for this user and its KWin script
 #   --no-start      install and enable the service but do not start it now
 #   --no-build      use the binary that is already built (or $KEYCAP_BIN)
+#
+# Root steps use $SUDO, sudo, doas or pkexec, whichever is found first; with none, they are printed
+# for you to run as root.
 #
 # It does not stop Toshy or any other remapper; docs/switch-from-toshy.md has the order.
 set -euo pipefail
@@ -28,11 +38,13 @@ BUILD=yes
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) DRY_RUN=yes ;;
+    --prefix) PREFIX="$(absolute_arg --prefix "${2:?--prefix needs a directory}")"; shift ;;
+    --destdir) DESTDIR="$(absolute_arg --destdir "${2:?--destdir needs a directory}")"; shift ;;
     --desktop) DESKTOP="${2:?--desktop needs plasma or none}"; shift ;;
     --plasma-focus) PLASMA_FOCUS=yes ;;
     --no-start) START=no ;;
     --no-build) BUILD=no ;;
-    -h|--help) sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) say "install.sh: unknown argument $1 (try --help)"; exit 2 ;;
   esac
   shift
@@ -45,9 +57,20 @@ if [[ -z "$DESKTOP" ]]; then
   esac
 fi
 case "$DESKTOP" in plasma|none) ;; *) say "install.sh: --desktop must be plasma or none"; exit 2 ;; esac
+set_layout
 
 BIN="${KEYCAP_BIN:-$HERE/target/release/keycap}"
-say "keycap install ($([[ $DRY_RUN == yes ]] && echo 'dry run: nothing is changed' || echo 'for real')); desktop: $DESKTOP"
+say "keycap install ($([[ $DRY_RUN == yes ]] && echo 'dry run: nothing is changed' || echo 'for real')); desktop: $DESKTOP; prefix: $PREFIX${DESTDIR:+; staging into $DESTDIR}"
+
+# render_unit OUT: the shipped unit with ExecStart naming the installed binary (never the
+# DESTDIR-prefixed path).
+render_unit() {
+  sed "s|^ExecStart=.*|ExecStart=$BINDIR/keycap|" "$HERE/dist/keycap.service" >"$1"
+}
+
+RENDERED="$(mktemp -d)"
+trap 'rm -rf "$RENDERED"' EXIT
+render_unit "$RENDERED/keycap.service"
 
 say "1. build"
 if [[ "$BUILD" == no ]]; then
@@ -55,18 +78,20 @@ if [[ "$BUILD" == no ]]; then
 elif [[ "$DRY_RUN" == yes ]]; then
   say "  would run: cargo build --release (in $HERE)"
 else
-  (cd "$HERE" && cargo build --release)
+  (cd "$HERE" && cargo build --release --locked)
 fi
 
 say "2. files"
-install_file 755 "$BIN" /usr/local/bin/keycap
+install_file 755 "$BIN" "$BINDIR/keycap"
 BIN_CHANGED=$CHANGED; CHANGED=no
-install_file 644 "$HERE/dist/keycap.service" /etc/systemd/system/keycap.service
+install_file 644 "$RENDERED/keycap.service" "$UNITDIR/keycap.service"
 UNIT_CHANGED=$CHANGED; CHANGED=no
-install_file 644 "$HERE/dist/70-keycap.rules" /etc/udev/rules.d/70-keycap.rules
+install_file 644 "$HERE/dist/70-keycap.rules" "$UDEVDIR/70-keycap.rules"
 UDEV_CHANGED=$CHANGED; CHANGED=no
-install_file 644 "$HERE/dist/keycap.polkit.rules" /etc/polkit-1/rules.d/keycap.polkit.rules
+install_file 644 "$HERE/dist/keycap.polkit.rules" "$POLKITDIR/keycap.polkit.rules"
 CHANGED=no
+install_file 644 "$HERE/dist/keycap-modules.conf" "$MODULESDIR/keycap.conf"
+MODULES_CHANGED=$CHANGED; CHANGED=no
 
 say "3. machine config (/etc/keycap/keycap.toml, never overwritten)"
 if [[ "$DESKTOP" == plasma ]]; then
@@ -98,16 +123,21 @@ case "${XDG_CURRENT_DESKTOP:-}" in
     fi ;;
 esac
 
-say "4. systemd, udev, SELinux"
-if [[ "$BIN_CHANGED$UNIT_CHANGED$UDEV_CHANGED" == *yes* ]] || ! unit_known keycap.service; then
-  command -v restorecon >/dev/null 2>&1 &&
+say "4. systemd, udev, kernel module, SELinux"
+if [[ "$BIN_CHANGED$UNIT_CHANGED$UDEV_CHANGED$MODULES_CHANGED" == *yes* ]] || ! unit_known keycap.service; then
+  # Only labelled systems have restorecon; the installed files are named, not the staged ones.
+  if command -v restorecon >/dev/null 2>&1; then
     system_step "give the installed files their default SELinux labels" \
-      restorecon -F /usr/local/bin/keycap /etc/systemd/system/keycap.service \
-        /etc/udev/rules.d/70-keycap.rules /etc/polkit-1/rules.d/keycap.polkit.rules
+      restorecon -F "$BINDIR/keycap" "$UNITDIR/keycap.service" "$UDEVDIR/70-keycap.rules" \
+        "$POLKITDIR/keycap.polkit.rules" "$MODULESDIR/keycap.conf"
+  fi
   system_step "reload systemd" systemctl daemon-reload
-  [[ "$UDEV_CHANGED" == yes ]] &&
-    system_step "reload udev rules" udevadm control --reload-rules &&
+  system_step "load uinput now (it loads at boot from $MODULESDIR/keycap.conf)" modprobe uinput ||
+    say "  uinput did not load now; it loads at the next boot"
+  if [[ "$UDEV_CHANGED" == yes ]]; then
+    system_step "reload udev rules" udevadm control --reload-rules
     system_step "re-apply them to /dev/uinput" udevadm trigger --subsystem-match=misc
+  fi
 else
   say "  nothing changed; nothing to reload"
 fi
@@ -125,7 +155,9 @@ else
   system_step "enable and start keycap" systemctl enable --now keycap.service
 fi
 
-if [[ "$PLASMA_FOCUS" == yes ]]; then
+if [[ "$PLASMA_FOCUS" == yes && -n "$DESTDIR" ]]; then
+  say "6. Plasma focus feed: skipped (it is a per-user step; run it on the machine, not into $DESTDIR)"
+elif [[ "$PLASMA_FOCUS" == yes ]]; then
   say "6. Plasma focus feed (this user)"
   step "the helper" install -Dm755 "$HERE/dist/plasma/keycap-focus" "$HOME/.local/bin/keycap-focus"
   step "its user unit" install -Dm644 "$HERE/dist/plasma/keycap-focus.service" "$HOME/.config/systemd/user/keycap-focus.service"
@@ -143,5 +175,6 @@ if [[ "$PLASMA_FOCUS" == yes ]]; then
   step "make KWin load it" gdbus call --session --dest org.kde.KWin --object-path /KWin --method org.kde.KWin.reconfigure
 fi
 
+manual_note
 say "done. Check it:  keycap status   (or: systemctl status keycap)"
 say "Emergency: both Shift keys + Esc gives the keyboards back; \`keycap resume\` takes them again."
