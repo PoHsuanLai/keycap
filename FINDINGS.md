@@ -69,9 +69,9 @@ refusal for (d), because a defined profile is the only thing a name can select.
 - *The user layer is cut when it arrives.* Changing `[user_layer]` in the machine file later does not re-cut a
   layer already in force; the shell sends its file again on change or restart.
 - *Probing needs `ProtectProc=default`.* A process without privileges cannot read another user's
-  `/proc/<pid>/root` (peephole reads it for sandbox metadata) or image path. `Procs` in `socket/shell.rs`
-  turns the refused `root` read into "not found" so the probe reaches the control group. Interface ask to
-  peephole: treat a refused `<pid>/root/.flatpak-info` as hidden, as `exe` already is, then delete `Procs`.
+  `/proc/<pid>/root` (peephole reads it for sandbox metadata) or image path. peephole v0.1.3 reads a
+  refused `<pid>/root/.flatpak-info` as "no sandbox", as it reads a refused `exe` as hidden, so the probe
+  reaches the control group; keycap's own `Procs` wrapper for this is gone.
 - *INPUT-14.* The Plasma `keycap-focus` helper (Python under Gio, not JavaScript) answers `Focus` only to
   the connection that owns `org.kde.KWin` now (`GetNameOwner` per call) and owns its own name with
   `DO_NOT_QUEUE`, exiting if it is taken.

@@ -93,8 +93,8 @@ Two outside parties decide what keycap trusts, and both are in the unit's reach 
   the active uid: it hears status, watches the keymap and registers actions and may `Resume`; any other request ends its
   connection) and `Observer` (another user). Only `Steering` is obeyed for `Focus` and `UserConfig`.
   `ProtectProc=default` (with `ProcSubset=pid`) lets keycap read `/proc/<pid>/cgroup` of the shell's process;
-  it still cannot read another user's image or sandbox metadata, which is why `Procs` in `shell.rs` reads a
-  refused `<pid>/root` as "no sandbox".
+  it still cannot read another user's image or sandbox metadata, and peephole reads a refused `<pid>/root`
+  as "no sandbox".
   This is a speed bump: a program of the same user can put itself in a control group of that name. What it
   gets is bounded by what the user layer may say, which is the part that holds: `ConfigLayer::confined`
   drops a rule whose trigger has no modifier held (Shift counts), drops a `then` that is a list or empty

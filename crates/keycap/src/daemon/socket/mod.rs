@@ -6,7 +6,6 @@ mod handle;
 mod inbound;
 mod limits;
 mod peer;
-mod procs;
 mod seat;
 mod server;
 mod shelf;

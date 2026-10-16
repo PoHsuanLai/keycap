@@ -1,8 +1,8 @@
 //! The config layers in force, and the profiles they resolve to.
 
 use crate::{
-    ConfigLayer, ConfigSource, LayoutOverrides, Oversize, Profiles, Sequences, builtin,
-    layout_overrides, resolve, within_limits,
+    ConfigLayer, ConfigSource, LayoutOverrides, Oversize, Profiles, builtin, layout_overrides,
+    resolve, within_limits,
 };
 use keycap_protocol::Warning;
 

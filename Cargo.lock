@@ -93,10 +93,14 @@ dependencies = [
  "keycap-devtest",
  "keycap-protocol",
  "notify",
+ "peephole",
+ "peephole-core",
  "rustix",
  "serde",
  "serde_json",
  "thiserror",
+ "turnstile-client",
+ "turnstile-wire",
 ]
 
 [[package]]
@@ -215,6 +219,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42b8cfee0e339a0337359f3c88165702ac6e600dc01c0cc9579a92d62b08477a"
 dependencies = [
  "bitflags",
+]
+
+[[package]]
+name = "peephole"
+version = "0.1.3"
+source = "git+https://github.com/PoHsuanLai/peephole?tag=v0.1.3#c5c886625fa9a4a24ae8c7da39622b133ace997b"
+dependencies = [
+ "peephole-core",
+ "rustix",
+ "thiserror",
+]
+
+[[package]]
+name = "peephole-core"
+version = "0.1.3"
+source = "git+https://github.com/PoHsuanLai/peephole?tag=v0.1.3#c5c886625fa9a4a24ae8c7da39622b133ace997b"
+dependencies = [
+ "serde",
+ "thiserror",
+ "toml",
 ]
 
 [[package]]
@@ -378,6 +402,24 @@ name = "toml_writer"
 version = "1.1.2+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d56353a2a665ad0f41a421187180aab746c8c325620617ad883a99a1cbe66d2"
+
+[[package]]
+name = "turnstile-client"
+version = "0.1.0"
+source = "git+https://github.com/PoHsuanLai/turnstile?tag=v0.1.0#9d04aa4ec99c22681acb01032927ddb5a896652c"
+dependencies = [
+ "rustix",
+ "thiserror",
+ "turnstile-wire",
+]
+
+[[package]]
+name = "turnstile-wire"
+version = "0.1.0"
+source = "git+https://github.com/PoHsuanLai/turnstile?tag=v0.1.0#9d04aa4ec99c22681acb01032927ddb5a896652c"
+dependencies = [
+ "thiserror",
+]
 
 [[package]]
 name = "unicode-ident"

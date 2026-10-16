@@ -8,7 +8,6 @@
 //! the unit name in the control group is all there is to go on, and the process is held by its
 //! pidfd so the name cannot belong to a process that has since been replaced.
 
-use super::procs::Procs;
 use peephole::{Alive, Pinned, Prober, ProcFs, RealProc};
 use peephole_core::roles::SHELL;
 use peephole_core::{CgroupPath, PinNeed, RoleName, Standing, Table, judge};
@@ -121,7 +120,7 @@ impl Steering {
 
 /// The real check: hold the process, read its control group, judge it against the steering table.
 #[derive(Debug)]
-pub(crate) struct ShellCheck<P: ProcFs = Procs> {
+pub(crate) struct ShellCheck<P: ProcFs = RealProc> {
     prober: Prober<P>,
     table: Table,
 }
@@ -134,7 +133,7 @@ impl ShellCheck {
             eprintln!("keycap: nobody may steer: the steering table is unusable: {e}");
             Table::empty()
         });
-        Self::new(Prober::new(Procs(RealProc::system())), table)
+        Self::new(Prober::new(RealProc::system()), table)
     }
 }
 
