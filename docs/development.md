@@ -158,7 +158,7 @@ The daemon reads its environment once, at start:
 | --- | --- | --- |
 | `NOTIFY_SOCKET`, `WATCHDOG_USEC` | systemd's `sd_notify` socket and watchdog interval | none |
 | `RUNTIME_DIRECTORY` | where `keycap.sock` lives | `/run/keycap` |
-| `KEYCAP_CONFIG_DIR` | where `keycap.toml` is read | `/etc/keycap` |
+| `KEYCAP_CONFIG_DIR` | where `keycap.toml` is read, only if root-only (a file in a test's scratch folder is not used) | `/etc/keycap` |
 | `KEYCAP_VENDOR_DIR` | where the desktop's shipped `keycap.toml` is read, under the one above; tests point it at a folder that is not there | `/usr/lib/keycap` |
 | `KEYCAP_SEAT_FILE` | logind's seat state file, for the active uid | `/run/systemd/seats/seat0` |
 | `KEYCAP_SYS_INPUT`, `KEYCAP_DEV_INPUT` | where nodes are listed and opened | `/sys/class/input`, `/dev/input` |

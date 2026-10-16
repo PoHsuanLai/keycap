@@ -4,8 +4,10 @@ Your own choices go in a TOML file. keycap reads two places you edit, the later 
 what a desktop ships and lies under both; leave it alone and override it here.
 
 1. `/etc/keycap/keycap.toml`: machine-wide, applies at the login screen too, reloaded when
-   saved. **Every session on the machine shares it**, whichever desktop it runs. On Plasma,
-   `install.sh` puts `dist/keycap.plasma.toml` here first; it already has a `[profile.default]`
+   saved. **Every session on the machine shares it**, whichever desktop it runs. keycap uses it
+   only when root owns it and nobody else can change it, or any folder above it: make it with
+   `sudo` and mode `644`. A file anyone else could write is ignored, and the log says so (the
+   vendor file is judged the same way). On Plasma, `install.sh` puts `dist/keycap.plasma.toml` here first; it already has a `[profile.default]`
    table, so add your rules to the end of its `rules = [...]` list and put `[[device]]` blocks at
    the end of the file.
 2. `~/.config/keycap/keycap.toml`, if your desktop forwards it: this layer is yours alone and

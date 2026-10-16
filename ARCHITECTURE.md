@@ -33,7 +33,7 @@ never name `daemon` modules.
 |---|---|---|---|
 | L0 vocabulary | `key` (`Key`, `Modifier`, `Side`, `Mods`), `event` (`Edge`, `KeyEvent`, `Physical`, `Logical`), `time` (`Mono`) | newtypes | `pub` |
 | L1 layout | `layout` (`Layout`, `role`) | pure tables | `pub` |
-| L2 profiles | `profile` (`Trigger`, `Stroke`, `RuleAction`, `Profile`, `Profiles`), `config` (`ConfigLayer`, `resolve`, `lenient`, `load`, `vendor`, `watch`) | pure except `load`, `vendor` and `watch` (file reads, inotify) | `pub` |
+| L2 profiles | `profile` (`Trigger`, `Stroke`, `RuleAction`, `Profile`, `Profiles`), `config` (`ConfigLayer`, `resolve`, `lenient`, `load`, `vendor`, `watch`) | pure except `load`, `vendor` and `watch` (file reads, inotify; `load` and `vendor` share the root-only reader `trusted`) | `pub` |
 | L2 keymap | `keymap` (`Reading`, `read`, `settle`, `spawn`): the person's keymap file in chordkit's overrides format, judged against the last good copy by the pure `settle`; its watch is `config::watch::spawn_reading` | pure except `read` and `spawn` | `pub(crate)` |
 | L3 state | `held`, `gate`, `escape`, `backoff` | pure state machines | `pub` |
 | L4 remapper | `remap` (`Remapper::step`, `RemapInput`, `RemapOut`) | pure composition: `Remapper::step(self, RemapInput, &Profiles) -> (Self, Vec<RemapOut>)` | `pub` |
@@ -291,16 +291,17 @@ in with `include_str!`; the vendor file `/usr/lib/keycap/keycap.toml`, the machi
 per profile, per modmap field and per trigger, except that the user layer is cut down as the section
 "Who steers" says (the vendor and machine files have no such limits).
 
-**The vendor file.** A desktop ships its defaults in `/usr/lib/keycap/keycap.toml`, laid over the built-in
-mapping and under `/etc/keycap/keycap.toml`, which stays the administrator's (systemd's `/usr/lib` and `/etc`
-split). The vendor file has the machine file's trust, so it may hold a rule on a key pressed alone (the
-desktop's Caps Lock rule), and its `[user_layer] sequences` counts when the machine file sets none. Because a
-package or release writes it, not an administrator, `config::vendor` reads it only when it is root-only:
-`peephole`'s check, the file and every folder above it root's and not writable by group or others, and a link
-never passes. A file that fails is no layer and one plain-words warning in the log; a missing file or folder is
-no layer and no warning. The folder (`$KEYCAP_VENDOR_DIR`, else `/usr/lib/keycap`) is watched as the config
-folder is, and a missing folder is not watched, so a vendor file installed after the daemon started is read at
-its next start. The machine file gets no such ownership check yet (see FINDINGS, "Vendor layer").
+**The vendor file and the machine file.** A desktop ships its defaults in `/usr/lib/keycap/keycap.toml`, laid over
+the built-in mapping and under `/etc/keycap/keycap.toml`, which stays the administrator's (systemd's `/usr/lib` and
+`/etc` split). The vendor file has the machine file's trust, so it may hold a rule on a key pressed alone (the
+desktop's Caps Lock rule), and its `[user_layer] sequences` counts when the machine file sets none. Both are
+trusted, so both are read by one function, `config::trusted::read_layer`, and only when root-only: `peephole`'s
+check, the file and every folder above it root's and not writable by group or others, and a link never passes.
+The file is also read through a 64 KiB cap. A file that fails is no layer and one plain-words warning in the log
+(`installed defaults: ...` or `machine settings: ...`); a missing file or folder is no layer and no warning.
+The vendor folder (`$KEYCAP_VENDOR_DIR`, else `/usr/lib/keycap`) is watched as the config folder is, and a
+missing folder is not watched, so a vendor file installed after the daemon started is read at its next start.
+A test that points `$KEYCAP_CONFIG_DIR` at a scratch folder has no machine layer from a file in it.
 
 ```toml
 [profile.default]

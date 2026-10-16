@@ -42,8 +42,9 @@ inherited, but one the desktop restates for a chord (sill's Cmd+H to Ctrl+H) mus
 - *uinput access (INPUT-02)* is done: the desktop's root service owns `/dev/uinput` and keycap is handed
   its devices (see "Where the virtual devices come from"). The standalone install keeps `GROUP="input"`.
 - *Unit hardening (INPUT-15), part.* `PrivateUsers=` may unmap the `input` supplementary group,
-  and who owns `/etc/keycap` under `DynamicUser=` with `ConfigurationDirectory=` is unconfirmed;
-  both wait for a `systemd-analyze security` run and a look at the real directory.
+  and who owns `/etc/keycap` under `DynamicUser=` with `ConfigurationDirectory=` is unconfirmed (it now matters:
+  the machine file is read only when root-only, see "Vendor layer"); both wait for a `systemd-analyze security`
+  run and a look at the real directory.
 - *Supply chain (INPUT-16)* is not in this lane; CI still checks licenses only.
 - *chordkit's own readers (INPUT-12).* chordkit-kde and chordkit-gnome still read their files
   unbounded (interface ask: use a bounded regular-file read like `keycap_client::read_text`).
@@ -52,16 +53,25 @@ inherited, but one the desktop restates for a chord (sill's Cmd+H to Ctrl+H) mus
 must never write the administrator's `/etc/keycap`. So keycap has a fourth layer, `/usr/lib/keycap/keycap.toml`
 (`$KEYCAP_VENDOR_DIR`), between the built-in mapping and the machine file: built-in < vendor < machine < person.
 It has the machine file's trust (lone-key rules allowed; `[user_layer] sequences` counts when the machine file sets
-none). Because a package writes it, it is read only when root-only, through peephole's own check
-(`dirs_trust` + `weaker` over `RealProc`): file and every folder above root's, not group/other-writable, a link
-never passes. Otherwise it is no layer and one warning ("installed defaults: not used, because someone other than
-an administrator could change this file or a folder it is in"). A missing file or folder is no layer and no
-warning; a missing folder is not watched, so a vendor file installed while the daemon runs is read at its next
-start. Tests: `config/tests.rs` (trust
-table, missing), `daemon/settings.rs` (order, bare key, `sequences`). Open: the machine file `/etc/keycap/keycap.toml`
-has no ownership check at all in keycap today (it is read with `read_to_string`); the trust the user-layer boundary
-leans on is only that `/etc` is root's. Giving it the same peephole check is a one-line change in `config::system`
-but would make an administrator's group-writable file stop applying, so it waits for an owner decision.
+none). A missing folder is not watched, so a vendor file installed while the daemon runs is read at its next start.
+Tests: `config/tests.rs` (`trusted_files`), `daemon/settings.rs` (order, bare key, `sequences`).
+
+*Decided (owner, 2026-10-17): the machine file is checked too.* Both files are read by one reader,
+`config/trusted.rs`, through peephole's own check (`dirs_trust` + `weaker` over `RealProc`): the file and every
+folder above it root's, not group/other-writable, and a link never passes. Otherwise the file is no layer and one
+warning in plain words ("installed defaults: not used, because someone other than an administrator could change this
+file or a folder it is in"; the machine file's says "machine settings: ..."). A missing file or folder is no layer and
+no warning. Both files are capped at 64 KiB (`LAYER_FILE_CAP`). Consequences:
+- An administrator's group-writable `/etc/keycap/keycap.toml` stops applying, and the log says why. That is the point:
+  the user-layer boundary (a rule on a key pressed alone only from a root-owned file) no longer leans on `/etc`
+  alone being root's.
+- A test that points `$KEYCAP_CONFIG_DIR` at a scratch folder gets no machine layer from a file written there (the
+  scratch folder is the test user's). `keycap-devtest`'s daemon writes none today, so it is unaffected; a test that
+  needs a machine layer needs a different seam, not a looser check. `config/tests.rs` proves the refusal on the real
+  file system.
+- Unconfirmed: whether `/etc/keycap` is root's under `DynamicUser=` with `ConfigurationDirectory=` (see the unit
+  hardening item above). If systemd makes it the dynamic user's, the machine file is refused until that is settled;
+  the log line names it.
 
 **Who steers (INPUT-03, INPUT-14, wave 2).** The owner decided keycap gets a light identity check and a reduced
 user layer, and no root identity service and no new capability. The shell is the one connection obeyed for
