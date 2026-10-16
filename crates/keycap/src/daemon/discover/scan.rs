@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 pub(crate) const SYS_INPUT: &str = "/sys/class/input";
 /// Where their device nodes are.
 pub(crate) const DEV_INPUT: &str = "/dev/input";
+/// Where udev keeps what it knows about each device, by device numbers.
+pub(crate) const UDEV_DATA: &str = "/run/udev/data";
 
 /// A node worth grabbing.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,13 +21,20 @@ pub(crate) struct Candidate {
 
 /// Every keyboard node listed under `sys_root` (normally `/sys/class/input`), as a path under
 /// `dev_root` (normally `/dev/input`), ordered by node name. Unreadable entries are skipped:
-/// a node that vanishes mid-scan is simply not a candidate.
-pub(crate) fn scan(sys_root: &Path, dev_root: &Path, allow: &VirtualAllowance) -> Vec<Candidate> {
+/// a node that vanishes mid-scan is simply not a candidate, and neither is one that udev
+/// (`udev_data`, normally `/run/udev/data`) puts on a seat other than ours.
+pub(crate) fn scan(
+    sys_root: &Path,
+    dev_root: &Path,
+    udev_data: &Path,
+    allow: &VirtualAllowance,
+) -> Vec<Candidate> {
     let mut nodes: Vec<PathBuf> = std::fs::read_dir(sys_root)
         .into_iter()
         .flatten()
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| super::hotplug::concerns_us(p))
+        .filter(|p| super::seat::on_our_seat(p, udev_data))
         .collect();
     nodes.sort();
     nodes

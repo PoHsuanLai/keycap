@@ -156,6 +156,7 @@ The daemon reads its environment once, at start:
 | `KEYCAP_CONFIG_DIR` | where `keycap.toml` is read | `/etc/keycap` |
 | `KEYCAP_SEAT_FILE` | logind's seat state file, for the active uid | `/run/systemd/seats/seat0` |
 | `KEYCAP_SYS_INPUT`, `KEYCAP_DEV_INPUT` | where nodes are listed and opened | `/sys/class/input`, `/dev/input` |
+| `KEYCAP_UDEV_DATA` | where udev's database says which seat a node is on | `/run/udev/data` |
 | `KEYCAP_GRAB_VIRTUAL` | one virtual device, by exact name, that may be grabbed (see Safety rules) | none |
 | `KEYCAP_ALLOW_UINPUT_PROBE` | lets `--check-uinput` open the node | none |
 

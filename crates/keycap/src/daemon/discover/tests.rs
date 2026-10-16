@@ -383,7 +383,12 @@ fn scan_reads_a_sysfs_tree_and_keeps_only_eligible_keyboards() {
     );
     std::fs::create_dir_all(sys.join("event7")).unwrap();
 
-    let found = scan(&sys, dev, &VirtualAllowance::Nobody);
+    let found = scan(
+        &sys,
+        dev,
+        &root.path().join("udev"),
+        &VirtualAllowance::Nobody,
+    );
     let summary: Vec<(&str, &Path, Eligibility, u16)> = found
         .iter()
         .map(|c| {
@@ -415,12 +420,40 @@ fn scan_reads_a_sysfs_tree_and_keeps_only_eligible_keyboards() {
 }
 
 #[test]
+fn scan_leaves_a_keyboard_on_another_seat_alone() {
+    let root = Scratch::new("scan-seat");
+    let (sys, udev) = (root.path().join("sys"), root.path().join("udev"));
+    std::fs::create_dir_all(&udev).unwrap();
+    let kb_ev = [EV_SYN, EV_KEY];
+    for (name, numbers) in [("event0", "13:64"), ("event1", "13:65")] {
+        node(
+            &sys,
+            name,
+            name,
+            (0x0001, 0x0001),
+            (&kb_ev, &typing_keys(), &[]),
+        );
+        std::fs::write(sys.join(name).join("dev"), format!("{numbers}\n")).unwrap();
+    }
+    std::fs::write(udev.join("c13:65"), "E:ID_SEAT=seat1\n").unwrap();
+    let found = scan(
+        &sys,
+        Path::new("/fake/dev/input"),
+        &udev,
+        &VirtualAllowance::Nobody,
+    );
+    let names: Vec<&str> = found.iter().map(|c| c.identity.name.as_str()).collect();
+    assert_eq!(names, ["event0"], "event1 is on seat1");
+}
+
+#[test]
 fn scan_of_a_missing_root_is_empty() {
     let root = Scratch::new("scan-missing");
     assert_eq!(
         scan(
             &root.path().join("nope"),
             Path::new("/dev/input"),
+            &root.path().join("udev"),
             &VirtualAllowance::Nobody
         ),
         []

@@ -53,6 +53,7 @@ impl Rig {
             roots: Roots {
                 sys: dir.path().join("sys"),
                 dev: dir.path().join("dev"),
+                udev: dir.path().join("udev"),
                 allow: VirtualAllowance::Nobody,
             },
             layers: Layers::builtin_only(),

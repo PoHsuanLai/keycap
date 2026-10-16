@@ -44,6 +44,8 @@ use unknown::Unknowns;
 pub(crate) struct Roots {
     pub sys: PathBuf,
     pub dev: PathBuf,
+    /// Where udev's database says which seat a node is on.
+    pub udev: PathBuf,
     pub allow: VirtualAllowance,
 }
 
@@ -53,6 +55,7 @@ impl Roots {
         Self {
             sys: env.sys_input.clone(),
             dev: env.dev_input.clone(),
+            udev: env.udev_data.clone(),
             allow: env.grab_virtual.clone(),
         }
     }

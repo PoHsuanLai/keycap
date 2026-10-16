@@ -1,7 +1,7 @@
 //! What the daemon takes from the process environment, read once in `command::run` so nothing
 //! below it reads `std::env`.
 
-use super::discover::{DEV_INPUT, SYS_INPUT, VirtualAllowance};
+use super::discover::{DEV_INPUT, SYS_INPUT, UDEV_DATA, VirtualAllowance};
 use super::socket::SEAT_FILE;
 use super::uinput::{PROBE_PERMIT, ProbePermit};
 use std::path::PathBuf;
@@ -32,6 +32,8 @@ pub(crate) struct Env {
     pub sys_input: PathBuf,
     /// `$KEYCAP_DEV_INPUT`, else `/dev/input`: where the nodes are opened and watched.
     pub dev_input: PathBuf,
+    /// `$KEYCAP_UDEV_DATA`, else `/run/udev/data`: where discovery reads a node's seat.
+    pub udev_data: PathBuf,
     /// `$KEYCAP_GRAB_VIRTUAL`: the one virtual device, by exact name, discovery may grab. Only
     /// the unit's environment sets it; it exists for tests whose keyboard is a uinput device.
     pub grab_virtual: VirtualAllowance,
@@ -54,6 +56,7 @@ impl Env {
             seat_file: dir("KEYCAP_SEAT_FILE", DEFAULT_SEAT_FILE),
             sys_input: dir("KEYCAP_SYS_INPUT", SYS_INPUT),
             dev_input: dir("KEYCAP_DEV_INPUT", DEV_INPUT),
+            udev_data: dir("KEYCAP_UDEV_DATA", UDEV_DATA),
             grab_virtual: VirtualAllowance::from_env_value(
                 lookup("KEYCAP_GRAB_VIRTUAL").as_deref(),
             ),
@@ -90,6 +93,7 @@ mod tests {
             ("KEYCAP_SEAT_FILE", "/tmp/seat0"),
             ("KEYCAP_SYS_INPUT", "/tmp/sys"),
             ("KEYCAP_DEV_INPUT", "/tmp/dev"),
+            ("KEYCAP_UDEV_DATA", "/tmp/udev"),
             ("KEYCAP_GRAB_VIRTUAL", "test keyboard"),
         ]));
         assert_eq!(env.notify_socket.as_deref(), Some("/run/systemd/notify"));
@@ -98,6 +102,7 @@ mod tests {
         assert_eq!(env.seat_file, PathBuf::from("/tmp/seat0"));
         assert_eq!(env.sys_input, PathBuf::from("/tmp/sys"));
         assert_eq!(env.dev_input, PathBuf::from("/tmp/dev"));
+        assert_eq!(env.udev_data, PathBuf::from("/tmp/udev"));
         assert_eq!(
             env.grab_virtual,
             VirtualAllowance::Named("test keyboard".to_owned())
@@ -115,6 +120,7 @@ mod tests {
         assert_eq!(env.seat_file, PathBuf::from("/run/systemd/seats/seat0"));
         assert_eq!(env.sys_input, PathBuf::from("/sys/class/input"));
         assert_eq!(env.dev_input, PathBuf::from("/dev/input"));
+        assert_eq!(env.udev_data, PathBuf::from("/run/udev/data"));
         assert_eq!(env.grab_virtual, VirtualAllowance::Nobody);
         assert_eq!(env.probe, ProbePermit::Refused);
         assert_eq!(env.watchdog, None);

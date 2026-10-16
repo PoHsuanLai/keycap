@@ -110,7 +110,12 @@ impl<E: Emitter> Reader<E> {
         if looking == Lookout::Nothing {
             return;
         }
-        for candidate in scan(&self.roots.sys, &self.roots.dev, &self.roots.allow) {
+        for candidate in scan(
+            &self.roots.sys,
+            &self.roots.dev,
+            &self.roots.udev,
+            &self.roots.allow,
+        ) {
             if looking.wants(&candidate.identity.path) {
                 self.appear(candidate.identity);
             }

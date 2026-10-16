@@ -37,7 +37,12 @@ struct Ready {
 impl<E: Emitter> Reader<E> {
     /// Scans for keyboards, tells systemd the daemon is ready, then loops until `poll` fails.
     pub(crate) fn run(mut self) -> Result<(), String> {
-        for candidate in scan(&self.roots.sys, &self.roots.dev, &self.roots.allow) {
+        for candidate in scan(
+            &self.roots.sys,
+            &self.roots.dev,
+            &self.roots.udev,
+            &self.roots.allow,
+        ) {
             self.appear(candidate.identity);
         }
         self.publish();
