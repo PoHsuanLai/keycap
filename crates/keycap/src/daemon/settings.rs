@@ -158,33 +158,27 @@ mod tests {
         let stroke = |s: &str| {
             crate::RuleAction::Map(crate::Stroke::parse(s).unwrap(), crate::Hold::Restore)
         };
-        let cases: [(
-            &str,
-            Option<String>,
-            Option<String>,
-            Option<crate::RuleAction>,
-        ); 4] = [
-            ("neither file", None, None, None),
+        type Case = (&'static str, Option<String>, Option<String>);
+        let cases: [(Case, Option<crate::RuleAction>); 4] = [
+            (("neither file", None, None), None),
             (
-                "the vendor file alone",
-                Some(caps("ctrl+space")),
-                None,
+                ("the vendor file alone", Some(caps("ctrl+space")), None),
                 Some(stroke("ctrl+space")),
             ),
             (
-                "the machine file alone",
-                None,
-                Some(caps("alt+space")),
+                ("the machine file alone", None, Some(caps("alt+space"))),
                 Some(stroke("alt+space")),
             ),
             (
-                "the machine file over the vendor file",
-                Some(caps("ctrl+space")),
-                Some(caps("alt+space")),
+                (
+                    "the machine file over the vendor file",
+                    Some(caps("ctrl+space")),
+                    Some(caps("alt+space")),
+                ),
                 Some(stroke("alt+space")),
             ),
         ];
-        for (case, vendor, system, want) in cases {
+        for ((case, vendor, system), want) in cases {
             let mut layers = Layers::builtin_only();
             if let Some(text) = vendor {
                 layers = layers.with_vendor(layer(&text, ConfigSource::Vendor));
