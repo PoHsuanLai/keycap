@@ -46,6 +46,10 @@ FILE_MANAGERS = frozenset(
 
 SOCKET = os.path.join(os.environ.get("KEYCAP_RUNTIME_DIR", "/run/keycap"), "keycap.sock")
 BUS_NAME = "org.keycap.Focus"
+# The only caller of Focus: the KWin script runs inside KWin, so its calls come from the connection
+# that owns this name. Any other program on the session bus is refused.
+KWIN_NAME = "org.kde.KWin"
+BUS_DAEMON = "org.freedesktop.DBus"
 OBJECT_PATH = "/org/keycap/Focus"
 INTERFACE_XML = """
 <node><interface name="org.keycap.Focus">
@@ -65,6 +69,12 @@ def profile_for(resource_class):
     if name in FILE_MANAGERS:
         return "filemanager"
     return "default"
+
+
+def from_kwin(sender, owner):
+    """Whether a call from the bus connection `sender` comes from KWin, whose connection is `owner`
+    (None when nobody owns the name)."""
+    return owner is not None and sender == owner
 
 
 def focus_message(profile):
@@ -148,7 +158,24 @@ def main(argv):
     gi.require_version("Gio", "2.0")
     from gi.repository import Gio, GLib
 
-    def on_call(_conn, _sender, _path, _iface, method, params, invocation):
+    def kwin_owner(conn):
+        """The unique name that owns org.kde.KWin now, or None (not running, or the bus did not answer)."""
+        try:
+            reply = conn.call_sync(
+                BUS_DAEMON, "/org/freedesktop/DBus", BUS_DAEMON, "GetNameOwner",
+                GLib.Variant("(s)", (KWIN_NAME,)), GLib.VariantType("(s)"),
+                Gio.DBusCallFlags.NONE, 1000, None,
+            )
+        except GLib.Error:
+            return None
+        return reply.unpack()[0]
+
+    def on_call(conn, sender, _path, _iface, method, params, invocation):
+        if not from_kwin(sender, kwin_owner(conn)):
+            invocation.return_dbus_error(
+                "org.freedesktop.DBus.Error.AccessDenied", "only KWin may report the focused window"
+            )
+            return
         if method == "Focus":
             on_focus(params.unpack()[0])
         invocation.return_value(None)
@@ -160,10 +187,21 @@ def main(argv):
     if not dry_run:
         GLib.timeout_add_seconds(2, lambda: keycap.restore() or True)
 
+    loop = GLib.MainLoop()
+    lost = []
+
+    def on_lost(*_):
+        print(f"keycap-focus: {BUS_NAME} is taken by another program; exiting", file=sys.stderr, flush=True)
+        lost.append(True)
+        loop.quit()
+
+    # DO_NOT_QUEUE: a program that owns the name first is not waited out and then replaced.
     Gio.bus_own_name(
-        Gio.BusType.SESSION, BUS_NAME, Gio.BusNameOwnerFlags.NONE, on_bus, None, lambda *_: sys.exit(1)
+        Gio.BusType.SESSION, BUS_NAME, Gio.BusNameOwnerFlags.DO_NOT_QUEUE, on_bus, None, on_lost
     )
-    GLib.MainLoop().run()
+    loop.run()
+    if lost:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

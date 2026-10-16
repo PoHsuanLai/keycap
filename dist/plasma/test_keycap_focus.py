@@ -43,6 +43,18 @@ class ProfileChoice(unittest.TestCase):
         self.assertEqual(keycap_focus.focus_message("terminal"), b'{"kind":"focus","v":{"profile":"terminal"}}')
 
 
+class OnlyKWinMayReport(unittest.TestCase):
+    def test_a_call_is_accepted_only_from_the_connection_that_owns_kwins_name(self):
+        for sender, owner, want in [
+            (":1.12", ":1.12", True),
+            (":1.13", ":1.12", False),
+            (":1.12", None, False),
+            ("", None, False),
+            (":1.120", ":1.12", False),
+        ]:
+            self.assertEqual(keycap_focus.from_kwin(sender, owner), want, (sender, owner))
+
+
 class AgainstAFakeDaemon(unittest.TestCase):
     """A SOCK_SEQPACKET listener standing in for keycap: Hello first, then the Focus packet."""
 
