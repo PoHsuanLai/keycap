@@ -35,6 +35,7 @@ pub(crate) fn run(env: Env) -> Result<(), String> {
         listener,
         inbox.clone(),
         SeatFile(env.seat_file.clone()),
+        env.steering.vouch(),
         initial,
         first_keymap,
     )

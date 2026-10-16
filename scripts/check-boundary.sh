@@ -47,7 +47,8 @@ done
 EDGES=(
   "keycap-core: keycap-protocol thiserror toml"
   "keycap-protocol: serde serde_json thiserror"
-  "keycap: chordkit keycap-client keycap-core keycap-protocol notify rustix serde serde_json thiserror"
+  # keycap also links peephole (who the socket's peer is) by tag; it brings no bus or async runtime.
+  "keycap: chordkit keycap-client keycap-core keycap-protocol notify peephole peephole-core rustix serde serde_json thiserror"
   # keycap-client: what an app links to read the desktop keymap. The protocol, chordkit's pure core
   # and rustix for the SOCK_SEQPACKET socket std lacks; no runtime, no file watcher.
   "keycap-client: chordkit keycap-protocol rustix"

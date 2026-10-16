@@ -1,8 +1,8 @@
 //! The config layers in force, and the profiles they resolve to.
 
 use crate::{
-    ConfigLayer, ConfigSource, LayoutOverrides, Oversize, Profiles, builtin, layout_overrides,
-    resolve, within_limits,
+    ConfigLayer, ConfigSource, LayoutOverrides, Oversize, Profiles, Sequences, builtin,
+    layout_overrides, resolve, within_limits,
 };
 use keycap_protocol::Warning;
 
@@ -47,6 +47,16 @@ impl Layers {
     pub(crate) fn accepted(self) -> Result<Self, Oversize> {
         within_limits(&[self.builtin.clone(), self.system.clone(), self.user.clone()])?;
         Ok(self)
+    }
+
+    /// The seat owner's settings text as the socket delivers it: read, then cut down to what
+    /// their own settings may say under the system file's `[user_layer]` choice. Refused whole
+    /// (`Oversize`) when it holds too many rules; the layers in force are untouched either way.
+    pub(crate) fn offered(&self, toml: &str) -> Result<(ConfigLayer, Vec<Warning>), Oversize> {
+        let (layer, mut warnings) = parse_user(toml);
+        let (layer, cut) = layer.confined(self.system.sequences())?;
+        warnings.extend(cut);
+        Ok((layer, warnings))
     }
 
     /// The seat owner has gone: their settings no longer apply.
@@ -128,6 +138,39 @@ mod tests {
         assert_eq!(in_force, Layers::builtin_only());
         let small = parse_user("[profile.work]\nmodmap = { command = \"alt\" }\n").0;
         assert!(in_force.with_user(small).accepted().is_ok());
+    }
+
+    #[test]
+    fn what_the_socket_delivers_is_cut_down_by_the_system_files_choice_about_lists() {
+        const BODY: &str = "[profile.default]\nrules = [\n\
+            { when = \"enter\", then = \"a\" },\n\
+            { when = \"control+option+j\", then = [\"a\", \"b\"] },\n\
+            { when = \"control+option+k\", then = \"k\" },\n]\n";
+        let in_force = |layers: &Layers| {
+            let (layer, warnings) = layers.offered(BODY).unwrap();
+            let (profiles, _) = layers.with_user(layer).resolve();
+            let has = |when: &str| {
+                let trigger = crate::Trigger::parse(when).unwrap();
+                profiles.default_profile().rules.contains_key(&trigger)
+            };
+            (
+                warnings.len(),
+                has("enter"),
+                has("control+option+j"),
+                has("control+option+k"),
+            )
+        };
+        let refusing = Layers::builtin_only();
+        assert_eq!(in_force(&refusing), (2, false, false, true), "the default");
+        let allowing = refusing.with_system(layer(
+            "[user_layer]\nsequences = \"allow\"\n",
+            ConfigSource::System,
+        ));
+        assert_eq!(
+            in_force(&allowing),
+            (1, false, true, true),
+            "the list is let through, the bare key is not"
+        );
     }
 
     #[test]

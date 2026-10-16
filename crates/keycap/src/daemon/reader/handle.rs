@@ -8,7 +8,6 @@ use crate::daemon::discover::{Hotplug, Identity, scan};
 use crate::daemon::events::{InputEvent, encode};
 use crate::daemon::inbox::{Message, Request};
 use crate::daemon::leds;
-use crate::daemon::settings::parse_user;
 use crate::daemon::socket::ToSocket;
 use crate::daemon::uinput::Emitter;
 use crate::{DeviceId, RemapInput, RemapOut};
@@ -64,10 +63,24 @@ impl<E: Emitter> Reader<E> {
                     std::mem::take(&mut self.unknowns).note(&profile, &self.profiles);
                 self.unknowns = unknowns;
                 notice.line().iter().for_each(|line| eprintln!("{line}"));
+                // A name the settings do not define writes as `default` (profiles.resolve), is
+                // logged once, and is taken up if a later config defines it.
                 self.feed(RemapInput::Focus(profile));
             }
             Request::UserConfig { client, toml } => {
-                let (layer, mut warnings) = parse_user(&toml);
+                let (layer, mut warnings) = match self.layers.offered(&toml) {
+                    Ok(offer) => offer,
+                    Err(over) => {
+                        let refusal = over.warning();
+                        log_warning(&refusal);
+                        self.socket.send(ToSocket::Warnings {
+                            client,
+                            warnings: vec![refusal],
+                        });
+                        return;
+                    }
+                };
+                warnings.iter().for_each(log_warning);
                 match self.layers.with_user(layer).accepted() {
                     Ok(layers) => {
                         self.layers = layers;

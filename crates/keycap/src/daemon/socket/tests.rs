@@ -1,6 +1,9 @@
-//! The socket thread end to end on a private path with a fake seat file.
+//! The socket thread end to end on a private path with a fake seat file. A client of these
+//! tests is a process of this test binary: the shell when the harness is told to treat every
+//! program of the seat's user as one, an ordinary program when the steering table is empty.
 
 use super::client::{WAIT, connect, recv, send};
+use super::shell::{ShellCheck, Vouch};
 use super::*;
 use crate::daemon::inbox::{Mailbox, Message, Request, mailbox};
 use crate::daemon::scratch::Scratch;
@@ -9,6 +12,8 @@ use keycap_protocol::{
     self as protocol, KeymapState, Mode, PROTOCOL_VERSION, ProfileName, RegisteredAction,
     Registration, Status, ToClient, ToDaemon, Warning,
 };
+use peephole::{FixtureProc, Prober};
+use peephole_core::Table;
 use rustix::net::SendFlags;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -54,6 +59,17 @@ impl Harness {
     }
 
     fn with_keymap(active_uid: Option<u32>, keymap: Reading) -> Self {
+        Self::start(active_uid, keymap, Steering::SeatUser.vouch())
+    }
+
+    /// A harness in which no client is the shell: the steering table has no rows and the
+    /// `/proc` it reads is empty, so every program of the seat's user is an ordinary one.
+    fn without_a_shell(active_uid: Option<u32>) -> Self {
+        let nobody = ShellCheck::new(Prober::new(FixtureProc::new()), Table::empty());
+        Self::start(active_uid, Reading::Missing, Box::new(nobody))
+    }
+
+    fn start(active_uid: Option<u32>, keymap: Reading, vouch: Box<dyn Vouch>) -> Self {
         let dir = Scratch::new("socket");
         let socket = socket_path(dir.path());
         let seat = dir.path().join("seat0");
@@ -61,7 +77,15 @@ impl Harness {
         write_seat(&seat, active_uid);
         let listener = bind(&socket).unwrap();
         let (inbox, mailbox) = mailbox().unwrap();
-        let handle = spawn(listener, inbox, SeatFile(seat.clone()), running(), keymap).unwrap();
+        let handle = spawn(
+            listener,
+            inbox,
+            SeatFile(seat.clone()),
+            vouch,
+            running(),
+            keymap,
+        )
+        .unwrap();
         Self {
             _dir: dir,
             socket,
@@ -215,8 +239,7 @@ fn an_observer_that_sends_a_request_is_dropped_and_nothing_is_relayed() {
 }
 
 #[test]
-fn every_kind_of_request_from_an_observer_ends_its_connection() {
-    let h = Harness::new(Some(own_uid() + 1));
+fn every_kind_of_request_from_anyone_but_the_shell_ends_its_connection() {
     let requests = [
         focus("terminal"),
         ToDaemon::UserConfig {
@@ -224,13 +247,44 @@ fn every_kind_of_request_from_an_observer_ends_its_connection() {
         },
         ToDaemon::Resume,
     ];
-    for request in requests {
-        let observer = connect(&h.socket);
-        assert_eq!(recv(&observer), Some(hello(running())));
-        send(&observer, &request);
-        assert_eq!(recv(&observer), None, "{request:?}");
+    let harnesses = [
+        ("another user", Harness::new(Some(own_uid() + 1))),
+        (
+            "a program that is not the shell",
+            Harness::without_a_shell(Some(own_uid())),
+        ),
+    ];
+    for (who, h) in harnesses {
+        for request in &requests {
+            let client = connect(&h.socket);
+            assert_eq!(recv(&client), Some(hello(running())));
+            send(&client, request);
+            assert_eq!(recv(&client), None, "{who}: {request:?}");
+        }
+        assert!(h.nothing_queued(), "{who}");
     }
-    assert!(h.nothing_queued());
+}
+
+#[test]
+fn a_program_that_is_not_the_shell_may_watch_and_register_but_never_steers_or_counts_as_the_owner()
+{
+    let h = Harness::without_a_shell(Some(own_uid()));
+    let app = connect(&h.socket);
+    assert_eq!(recv(&app), Some(hello(running())));
+    send(&app, &ToDaemon::Register(mail()));
+    assert_eq!(registered(&app), [mail()], "its registration stands");
+    send(&app, &ToDaemon::WatchKeymap);
+    assert!(matches!(recv(&app), Some(ToClient::Keymap(_))));
+    drop(app);
+
+    let another = connect(&h.socket);
+    assert_eq!(recv(&another), Some(hello(running())));
+    drop(another);
+    std::thread::sleep(Duration::from_millis(400));
+    assert!(
+        h.nothing_queued(),
+        "its coming and going never resets the reader"
+    );
 }
 
 #[test]

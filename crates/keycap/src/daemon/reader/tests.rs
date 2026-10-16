@@ -8,7 +8,7 @@ use crate::daemon::inbox::{ClientId, Inbox, Message, Request, mailbox};
 use crate::daemon::route::Routed;
 use crate::daemon::scratch::Scratch;
 use crate::daemon::socket::client::{connect, recv};
-use crate::daemon::socket::{SeatFile, bind, socket_path, spawn};
+use crate::daemon::socket::{SeatFile, Steering, bind, socket_path, spawn};
 use crate::daemon::uinput::RecordingEmitter;
 use crate::{DeviceId, Edge, Key, Layout, Mono, Physical, RemapInput};
 use keycap_protocol::{Mode, ProfileName, ToClient};
@@ -40,6 +40,7 @@ impl Rig {
             listener,
             inbox.clone(),
             SeatFile(dir.path().join("seat0")),
+            Steering::SeatUser.vouch(),
             initial,
             crate::keymap::Reading::Missing,
         )
@@ -172,6 +173,107 @@ fn a_user_config_reresolves_replies_with_its_warnings_and_clearing_it_restores_t
     rig.key("leftmeta", Edge::Press);
     rig.key("c", Edge::Press);
     assert_eq!(rig.last_write(), [(code("c"), 1)], "the defaults are back");
+}
+
+/// The warnings a `UserConfig` of `toml` was answered with.
+fn config_warnings(rig: &mut Rig, toml: String) -> Vec<keycap_protocol::Warning> {
+    rig.request(Request::UserConfig {
+        client: ClientId(0),
+        toml,
+    });
+    match recv(&rig.client) {
+        Some(ToClient::ConfigWarnings(warnings)) => warnings,
+        other => panic!("expected ConfigWarnings, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_user_config_loses_the_rules_a_session_may_not_set_and_keeps_the_rest() {
+    let mut rig = Rig::new();
+    let toml = "[profile.default]\nrules = [\n\
+        { when = \"enter\", then = \"a\" },\n\
+        { when = \"command+j\", then = [\"a\", \"b\"] },\n\
+        { when = \"command+k\", then = \"x\" },\n]\n";
+    let warnings = config_warnings(&mut rig, toml.to_owned());
+    assert_eq!(warnings.len(), 2, "{warnings:?}");
+
+    rig.key("enter", Edge::Press);
+    assert_eq!(
+        rig.last_write(),
+        [(code("enter"), 1)],
+        "Enter alone is not remapped"
+    );
+    rig.key("enter", Edge::Release);
+    rig.key("leftmeta", Edge::Press);
+    rig.key("j", Edge::Press);
+    assert_eq!(rig.last_write(), [(code("j"), 1)], "the list is not typed");
+    rig.key("j", Edge::Release);
+    rig.key("k", Edge::Press);
+    assert_eq!(
+        rig.last_write(),
+        [(code("leftctrl"), 0), (code("x"), 1)],
+        "the single stroke is in force"
+    );
+}
+
+#[test]
+fn a_user_config_of_too_many_rules_is_refused_whole_and_the_settings_in_force_stay() {
+    let mut rig = Rig::new();
+    let letters = ('a'..='z').map(String::from);
+    let keys: Vec<String> = letters
+        .chain((0..10).map(|d| d.to_string()))
+        .chain((1..=12).map(|n| format!("f{n}")))
+        .collect();
+    let rules: Vec<String> = [
+        "command+",
+        "option+",
+        "control+",
+        "shift+",
+        "command+shift+",
+        "option+shift+",
+    ]
+    .iter()
+    .flat_map(|r| {
+        keys.iter()
+            .map(move |k| format!("{{ when = \"{r}{k}\", then = \"a\" }}"))
+    })
+    .take(257)
+    .collect();
+    let warnings = config_warnings(
+        &mut rig,
+        format!("[profile.default]\nrules = [{}]\n", rules.join(",")),
+    );
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].problem.contains("257"), "{warnings:?}");
+
+    rig.key("leftmeta", Edge::Press);
+    rig.key("c", Edge::Press);
+    assert_eq!(
+        rig.last_write(),
+        [(code("c"), 1)],
+        "the defaults are still in force"
+    );
+}
+
+#[test]
+fn a_focus_on_a_profile_nobody_defined_writes_as_default() {
+    let copy = |rig: &mut Rig| {
+        rig.key("leftmeta", Edge::Press);
+        rig.key("c", Edge::Press);
+        let written = rig.last_write();
+        rig.key("c", Edge::Release);
+        rig.key("leftmeta", Edge::Release);
+        written
+    };
+    let mut rig = Rig::new();
+    rig.request(Request::Focus(ProfileName::parse("terminal").unwrap()));
+    assert_eq!(copy(&mut rig).len(), 2, "terminal: Ctrl+Shift+C");
+    rig.request(Request::Focus(ProfileName::parse("mystery").unwrap()));
+    assert_eq!(
+        copy(&mut rig),
+        [(code("c"), 1)],
+        "an undefined name is the default profile"
+    );
 }
 
 #[test]

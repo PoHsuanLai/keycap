@@ -2,7 +2,7 @@
 //! below it reads `std::env`.
 
 use super::discover::{DEV_INPUT, SYS_INPUT, UDEV_DATA, VirtualAllowance};
-use super::socket::SEAT_FILE;
+use super::socket::{SEAT_FILE, Steering};
 use super::uinput::{PROBE_PERMIT, ProbePermit};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -37,6 +37,9 @@ pub(crate) struct Env {
     /// `$KEYCAP_GRAB_VIRTUAL`: the one virtual device, by exact name, discovery may grab. Only
     /// the unit's environment sets it; it exists for tests whose keyboard is a uinput device.
     pub grab_virtual: VirtualAllowance,
+    /// `$KEYCAP_STEERING`: who may steer. Only the unit's environment sets it; it exists for
+    /// tests whose client is not in the shell's unit.
+    pub steering: Steering,
     /// Whether `--check-uinput` may open the uinput node.
     pub probe: ProbePermit,
     /// `$WATCHDOG_USEC` as a duration: how often systemd expects a ping at the latest.
@@ -60,6 +63,7 @@ impl Env {
             grab_virtual: VirtualAllowance::from_env_value(
                 lookup("KEYCAP_GRAB_VIRTUAL").as_deref(),
             ),
+            steering: Steering::from_env_value(lookup("KEYCAP_STEERING").as_deref()),
             probe: ProbePermit::from_env_value(lookup(PROBE_PERMIT).as_deref()),
             watchdog: non_empty("WATCHDOG_USEC")
                 .and_then(|s| s.parse::<u64>().ok())
@@ -95,6 +99,7 @@ mod tests {
             ("KEYCAP_DEV_INPUT", "/tmp/dev"),
             ("KEYCAP_UDEV_DATA", "/tmp/udev"),
             ("KEYCAP_GRAB_VIRTUAL", "test keyboard"),
+            ("KEYCAP_STEERING", "seat-user"),
         ]));
         assert_eq!(env.notify_socket.as_deref(), Some("/run/systemd/notify"));
         assert_eq!(env.config_dir, PathBuf::from("/tmp/cfg"));
@@ -107,6 +112,7 @@ mod tests {
             env.grab_virtual,
             VirtualAllowance::Named("test keyboard".to_owned())
         );
+        assert_eq!(env.steering, Steering::SeatUser);
         assert_eq!(env.probe, ProbePermit::Granted);
         assert_eq!(env.watchdog, Some(Duration::from_secs(1)));
     }
@@ -122,6 +128,7 @@ mod tests {
         assert_eq!(env.dev_input, PathBuf::from("/dev/input"));
         assert_eq!(env.udev_data, PathBuf::from("/run/udev/data"));
         assert_eq!(env.grab_virtual, VirtualAllowance::Nobody);
+        assert_eq!(env.steering, Steering::ShellUnit);
         assert_eq!(env.probe, ProbePermit::Refused);
         assert_eq!(env.watchdog, None);
     }

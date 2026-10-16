@@ -4,6 +4,7 @@
 use keycap_protocol::ToDaemon;
 use std::path::PathBuf;
 
+use super::shell::Claim;
 use crate::daemon::inbox::{ClientId, Request};
 
 /// Where logind records the seat's state.
@@ -12,8 +13,11 @@ pub(crate) const SEAT_FILE: &str = "/run/systemd/seats/seat0";
 /// What a connected client may do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Peer {
-    /// Runs as the user at the seat: `Focus`, `UserConfig` and `Resume` are honoured.
-    SeatOwner,
+    /// The shell of the user at the seat: `Focus`, `UserConfig` and `Resume` are honoured.
+    Steering,
+    /// Another program of the user at the seat: hears status and may register actions, but is
+    /// never obeyed.
+    Plain,
     /// Anyone else: hears status, is never obeyed.
     Observer,
 }
@@ -25,10 +29,12 @@ pub(crate) fn active_uid(text: &str) -> Option<u32> {
         .and_then(|value| value.trim().parse().ok())
 }
 
-/// A client's standing, from the uid the kernel vouches for and the seat's active uid.
-pub(crate) fn peer_of(uid: u32, active_uid: Option<u32>) -> Peer {
-    match active_uid {
-        Some(active) if active == uid => Peer::SeatOwner,
+/// A client's standing, from the uid the kernel vouches for, the seat's active uid and what
+/// the client has shown itself to be. The shell counts only for the user whose manager runs it.
+pub(super) fn peer_of(uid: u32, active_uid: Option<u32>, claim: Claim) -> Peer {
+    match (active_uid, claim) {
+        (Some(active), Claim::Shell { user }) if active == uid && user == uid => Peer::Steering,
+        (Some(active), _) if active == uid => Peer::Plain,
         _ => Peer::Observer,
     }
 }
@@ -36,8 +42,8 @@ pub(crate) fn peer_of(uid: u32, active_uid: Option<u32>) -> Peer {
 /// Why a client's message was not acted on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Refusal {
-    /// An observer has no business making a request: it only listens.
-    NotSeatOwner,
+    /// Only the shell steers: any other client only listens.
+    NotSteering,
     /// A keymap message, which the shelf answers and which is never a request to the reader.
     /// The server takes those before it asks for a request, so this is not reached.
     NotARequest,
@@ -47,27 +53,25 @@ impl Refusal {
     /// The line for the log.
     pub(crate) fn what(self) -> &'static str {
         match self {
-            Refusal::NotSeatOwner => "sent a request without owning the seat; dropped",
+            Refusal::NotSteering => "sent a request without being the shell of the seat; dropped",
             Refusal::NotARequest => "sent a keymap message where a request was expected; dropped",
         }
     }
 }
 
-/// What `peer` asking for `message` becomes: only the seat owner's messages are acted on.
+/// What `peer` asking for `message` becomes: only the shell's messages are acted on.
 pub(crate) fn request_of(
     peer: Peer,
     client: ClientId,
     message: ToDaemon,
 ) -> Result<Request, Refusal> {
     match (peer, message) {
-        (Peer::Observer, _) => Err(Refusal::NotSeatOwner),
-        (Peer::SeatOwner, ToDaemon::Focus { profile }) => Ok(Request::Focus(profile)),
-        (Peer::SeatOwner, ToDaemon::UserConfig { toml }) => {
-            Ok(Request::UserConfig { client, toml })
-        }
-        (Peer::SeatOwner, ToDaemon::Resume) => Ok(Request::Resume),
+        (Peer::Plain | Peer::Observer, _) => Err(Refusal::NotSteering),
+        (Peer::Steering, ToDaemon::Focus { profile }) => Ok(Request::Focus(profile)),
+        (Peer::Steering, ToDaemon::UserConfig { toml }) => Ok(Request::UserConfig { client, toml }),
+        (Peer::Steering, ToDaemon::Resume) => Ok(Request::Resume),
         (
-            Peer::SeatOwner,
+            Peer::Steering,
             ToDaemon::WatchKeymap | ToDaemon::Register(_) | ToDaemon::ListRegistered,
         ) => Err(Refusal::NotARequest),
     }
@@ -171,20 +175,66 @@ mod tests {
 
     #[test]
     fn peer_table() {
-        const CASES: &[(&str, u32, Option<u32>, Peer)] = &[
-            ("the active user", 1000, Some(1000), Peer::SeatOwner),
-            ("another user", 1001, Some(1000), Peer::Observer),
-            ("no active user", 1000, None, Peer::Observer),
-            ("root is not special", 0, Some(1000), Peer::Observer),
-            ("root can own the seat", 0, Some(0), Peer::SeatOwner),
+        const SHELL_1000: Claim = Claim::Shell { user: 1000 };
+        const CASES: &[(&str, u32, Option<u32>, Claim, Peer)] = &[
+            (
+                "the user's shell",
+                1000,
+                Some(1000),
+                SHELL_1000,
+                Peer::Steering,
+            ),
+            (
+                "another program of the user",
+                1000,
+                Some(1000),
+                Claim::Other,
+                Peer::Plain,
+            ),
+            (
+                "a shell under another user's manager",
+                1000,
+                Some(1000),
+                Claim::Shell { user: 1001 },
+                Peer::Plain,
+            ),
+            (
+                "another user's shell",
+                1001,
+                Some(1000),
+                Claim::Shell { user: 1001 },
+                Peer::Observer,
+            ),
+            (
+                "the shell while another user is active",
+                1000,
+                Some(1001),
+                SHELL_1000,
+                Peer::Observer,
+            ),
+            ("no active user", 1000, None, SHELL_1000, Peer::Observer),
+            (
+                "root is not special",
+                0,
+                Some(1000),
+                Claim::Other,
+                Peer::Observer,
+            ),
+            (
+                "root can own the seat",
+                0,
+                Some(0),
+                Claim::Shell { user: 0 },
+                Peer::Steering,
+            ),
         ];
-        for &(name, uid, active, want) in CASES {
-            assert_eq!(peer_of(uid, active), want, "{name}");
+        for &(name, uid, active, claim, want) in CASES {
+            assert_eq!(peer_of(uid, active, claim), want, "{name}");
         }
     }
 
     #[test]
-    fn only_the_seat_owner_is_obeyed() {
+    fn only_the_shell_is_obeyed() {
         let client = ClientId(3);
         let profile = ProfileName::parse("terminal").unwrap();
         let focus = || ToDaemon::Focus {
@@ -195,14 +245,14 @@ mod tests {
         };
         let cases = [
             (
-                "owner focus",
-                Peer::SeatOwner,
+                "shell focus",
+                Peer::Steering,
                 focus(),
                 Ok(Request::Focus(profile.clone())),
             ),
             (
-                "owner config",
-                Peer::SeatOwner,
+                "shell config",
+                Peer::Steering,
                 config(),
                 Ok(Request::UserConfig {
                     client,
@@ -210,8 +260,8 @@ mod tests {
                 }),
             ),
             (
-                "owner resume",
-                Peer::SeatOwner,
+                "shell resume",
+                Peer::Steering,
                 ToDaemon::Resume,
                 Ok(Request::Resume),
             ),
@@ -219,23 +269,41 @@ mod tests {
                 "observer focus",
                 Peer::Observer,
                 focus(),
-                Err(Refusal::NotSeatOwner),
+                Err(Refusal::NotSteering),
             ),
             (
                 "observer config",
                 Peer::Observer,
                 config(),
-                Err(Refusal::NotSeatOwner),
+                Err(Refusal::NotSteering),
             ),
             (
                 "observer resume",
                 Peer::Observer,
                 ToDaemon::Resume,
-                Err(Refusal::NotSeatOwner),
+                Err(Refusal::NotSteering),
             ),
             (
-                "owner keymap message",
-                Peer::SeatOwner,
+                "plain focus",
+                Peer::Plain,
+                focus(),
+                Err(Refusal::NotSteering),
+            ),
+            (
+                "plain config",
+                Peer::Plain,
+                config(),
+                Err(Refusal::NotSteering),
+            ),
+            (
+                "plain resume",
+                Peer::Plain,
+                ToDaemon::Resume,
+                Err(Refusal::NotSteering),
+            ),
+            (
+                "shell keymap message",
+                Peer::Steering,
                 ToDaemon::WatchKeymap,
                 Err(Refusal::NotARequest),
             ),

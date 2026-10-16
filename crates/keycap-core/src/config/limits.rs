@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use keycap_protocol::{ProfileName, Warning};
 
+use super::confine::MAX_USER_RULES;
 use super::layer::{ConfigLayer, ProfileLayer};
 use super::lenient::{dotted, warning};
 use super::resolve::merge;
@@ -22,9 +23,21 @@ pub const MAX_RULES_PER_PROFILE: usize = 512;
 /// Which limit a configuration is over.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Oversize {
-    Profiles { found: usize },
-    InheritSteps { profile: ProfileName, found: usize },
-    Rules { profile: ProfileName, found: usize },
+    Profiles {
+        found: usize,
+    },
+    InheritSteps {
+        profile: ProfileName,
+        found: usize,
+    },
+    Rules {
+        profile: ProfileName,
+        found: usize,
+    },
+    /// The seat owner's layer alone has too many rules.
+    UserRules {
+        found: usize,
+    },
 }
 
 impl Oversize {
@@ -45,6 +58,12 @@ impl Oversize {
             Oversize::Rules { profile, found } => warning(
                 &dotted("profile", profile.as_str()),
                 format!("has {found} rules and at most {MAX_RULES_PER_PROFILE} are used. {KEPT}"),
+            ),
+            Oversize::UserRules { found } => warning(
+                "profile",
+                format!(
+                    "your own settings have {found} rules and at most {MAX_USER_RULES} are used. {KEPT}"
+                ),
             ),
         }
     }

@@ -2,6 +2,8 @@
 //! may steer, what it missed, and sending to it.
 
 use super::limits::Pace;
+use super::seat::{Peer, peer_of};
+use super::shell::Origin;
 use crate::daemon::inbox::ClientId;
 use keycap_protocol::{self as protocol, KeymapState, MAX_PACKET, Status, ToClient};
 use rustix::fd::{AsFd, OwnedFd};
@@ -9,7 +11,7 @@ use rustix::io::Errno;
 use rustix::net::SendFlags;
 use std::collections::BTreeSet;
 
-/// What a connection has shown itself to be. The seat owner's connections steer keycap; a
+/// What a connection has shown itself to be. The shell's connections steer keycap; a
 /// connection that only reads the keymap or registers actions is an observer for the seat even
 /// when it runs as the seat owner's uid, so its coming and going never resets the reader.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,6 +37,8 @@ pub(super) struct Client {
     pub(super) fd: OwnedFd,
     /// The uid the kernel recorded when the client connected.
     pub(super) uid: u32,
+    /// What the client showed itself to be when it connected.
+    pub(super) origin: Origin,
     pub(super) role: Role,
     /// How many requests to the reader it has made lately.
     pub(super) pace: Pace,
@@ -71,15 +75,21 @@ impl Sent {
 }
 
 impl Client {
-    pub(super) fn new(id: ClientId, fd: OwnedFd, uid: u32, pace: Pace) -> Self {
+    pub(super) fn new(id: ClientId, fd: OwnedFd, uid: u32, origin: Origin, pace: Pace) -> Self {
         Self {
             id,
             fd,
             uid,
+            origin,
             role: Role::Undecided,
             pace,
             owed: BTreeSet::new(),
         }
+    }
+
+    /// What this client may do while `active` has the seat.
+    pub(super) fn peer(&self, active: Option<u32>) -> Peer {
+        peer_of(self.uid, active, self.origin.claim())
     }
 
     /// Sends the latest of everything this client missed, keeping what still does not go.
@@ -136,7 +146,7 @@ mod tests {
         .unwrap();
         let now = crate::Mono::default();
         (
-            Client::new(ClientId(0), ours, 1000, Pace::starting(now)),
+            Client::new(ClientId(0), ours, 1000, Origin::Other, Pace::starting(now)),
             theirs,
         )
     }

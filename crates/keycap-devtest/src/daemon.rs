@@ -32,9 +32,9 @@ pub struct Daemon {
 }
 
 impl Daemon {
-    /// Spawns the daemon. The seat file names the uid this process runs as, so the harness's
-    /// own client is the seat owner. The stderr log is appended to, so a restart keeps the
-    /// first run's lines.
+    /// Spawns the daemon. The seat file names the uid this process runs as, and the daemon is
+    /// told to steer for the seat's user, so the harness's own client is the seat owner. The
+    /// stderr log is appended to, so a restart keeps the first run's lines.
     pub fn start(spec: &DaemonSpec<'_>) -> Result<Self, Failure> {
         let dir = |name: &str| -> Result<PathBuf, Failure> {
             let path = spec.scratch.join(name);
@@ -58,6 +58,8 @@ impl Daemon {
         let child = Command::new(spec.binary)
             .env_clear()
             .env("KEYCAP_GRAB_VIRTUAL", spec.grab_virtual)
+            // The harness's client is not in the shell's unit, so it steers as the seat's user.
+            .env("KEYCAP_STEERING", "seat-user")
             .env("KEYCAP_CONFIG_DIR", &config_dir)
             .env("KEYCAP_SEAT_FILE", &seat_file)
             .env("RUNTIME_DIRECTORY", &runtime_dir)

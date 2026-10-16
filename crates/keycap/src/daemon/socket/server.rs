@@ -1,4 +1,4 @@
-//! The socket thread: accepts clients, tells each its `Hello`, relays seat-owner requests to
+//! The socket thread: accepts clients, tells each its `Hello`, relays the shell's requests to
 //! the reader and the reader's status to everyone.
 
 use super::handle::{SocketHandle, ToSocket};
@@ -8,8 +8,9 @@ use super::limits::{
     MAX_KEYMAP_CLIENTS_PER_UID, MESSAGES_PER_PASS, Pace, Pacing, Voice, accept_failure, admit,
 };
 use super::peer::{Client, Link, Owed, Role, Sent, send};
-use super::seat::{Peer, Seat, SeatFile, Tenancy, peer_of, request_of};
+use super::seat::{Peer, Seat, SeatFile, Tenancy, request_of};
 use super::shelf::{Call, Reply, Shelf};
+use super::shell::Vouch;
 use crate::daemon::clock;
 use crate::daemon::inbox::{ClientId, Delivery, Inbox, Message, Request};
 use crate::daemon::readiness::Readiness;
@@ -41,7 +42,7 @@ pub(crate) fn socket_path(runtime_dir: &Path) -> PathBuf {
 }
 
 /// Binds the listening socket, replacing a stale file, mode 0666 so any local desktop can
-/// connect (the seat check, not the file mode, decides whom keycap obeys).
+/// connect (the seat check and the shell check, not the file mode, decide whom keycap obeys).
 pub(crate) fn bind(path: &Path) -> io::Result<OwnedFd> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
@@ -62,12 +63,14 @@ pub(crate) fn bind(path: &Path) -> io::Result<OwnedFd> {
     Ok(fd)
 }
 
-/// Starts the socket thread on a bound listener. `status` is what the first `Hello` carries and
-/// `keymap` the first reading of the keymap file, served to those who ask.
+/// Starts the socket thread on a bound listener. `vouch` says which connection is the shell,
+/// `status` is what the first `Hello` carries and `keymap` the first reading of the keymap
+/// file, served to those who ask.
 pub(crate) fn spawn(
     listener: OwnedFd,
     inbox: Inbox,
     seat: SeatFile,
+    vouch: Box<dyn Vouch>,
     status: Status,
     keymap: Reading,
 ) -> io::Result<SocketHandle> {
@@ -86,6 +89,7 @@ pub(crate) fn spawn(
         shelf: Shelf::starting_with(keymap),
         state: Seat::first_sight(seat.active_uid()),
         seat,
+        vouch,
     };
     std::thread::Builder::new()
         .name("keycap-socket".to_owned())
@@ -109,6 +113,7 @@ struct Server {
     shelf: Shelf,
     seat: SeatFile,
     state: Seat,
+    vouch: Box<dyn Vouch>,
 }
 
 /// What a poll found readable.
@@ -231,10 +236,14 @@ impl Server {
                 return self.complain(uid, "refused: too many connections for this user");
             }
         }
+        // Asked of every connection, whoever has the seat now: the shell may connect a moment
+        // before logind names its user the seat's owner.
+        let origin = self.vouch.origin(&fd);
         let client = Client::new(
             ClientId(self.next_client),
             fd,
             uid,
+            origin,
             Pace::starting(clock::now()),
         );
         self.next_client += 1;
@@ -333,7 +342,7 @@ impl Server {
         let Some(client) = self.clients.iter().find(|c| c.id == id) else {
             return;
         };
-        let (uid, peer) = (client.uid, peer_of(client.uid, active));
+        let (uid, peer) = (client.uid, client.peer(active));
         let pulled = pull(&client.fd, MESSAGES_PER_PASS);
         let mut link = match pulled.stream {
             Stream::Closed => Link::Gone,
@@ -430,11 +439,11 @@ impl Server {
         Link::Alive
     }
 
-    /// The connections of the seat's owner that count as the owner being present.
+    /// The connections of the seat's shell that count as the owner being present.
     fn owners(&self, active: Option<u32>) -> usize {
         self.clients
             .iter()
-            .filter(|c| c.role != Role::KeymapOnly && peer_of(c.uid, active) == Peer::SeatOwner)
+            .filter(|c| c.role != Role::KeymapOnly && c.peer(active) == Peer::Steering)
             .count()
     }
 

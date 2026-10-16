@@ -177,4 +177,4 @@ fi
 
 manual_note
 say "done. Check it:  keycap status   (or: systemctl status keycap)"
-say "Emergency: both Shift keys + Esc gives the keyboards back; \`keycap resume\` takes them again."
+say "Emergency: both Shift keys + Esc gives the keyboards back; \`sudo systemctl restart keycap\` takes them again."

@@ -15,5 +15,5 @@ pub use keycap_core::{
     Edge, Escape, EscapeChord, GrabGate, Held, Hold, KEYS_DOWN_BYTES, Key, KeysDown, Layout,
     LayoutOverrides, Logical, MAX_PROFILES, ModMap, Mono, OutEvent, OutMod, OutMods, Oversize,
     Physical, Profile, Profiles, Record, RemapInput, RemapOut, Remapper, Role, Roles, RuleAction,
-    Stroke, Trigger, builtin, layout_overrides, resolve, role, within_limits,
+    Sequences, Stroke, Trigger, builtin, layout_overrides, resolve, role, within_limits,
 };

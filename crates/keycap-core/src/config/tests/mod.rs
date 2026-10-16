@@ -1,5 +1,6 @@
 //! Tests of layered configuration, by concept; the helpers here are shared by the files below.
 
+mod confine;
 mod defaults;
 mod dist;
 mod inheritance;

@@ -20,6 +20,10 @@ thiserror.workspace = true
 serde_json.workspace = true
 notify.workspace = true
 rustix.workspace = true
+peephole.workspace = true
+peephole-core.workspace = true
 
 [dev-dependencies]
 keycap-devtest = { path = "../keycap-devtest" }
+# A held process that is only a claim, for tests of who the socket's peer is; never in a shipped build.
+peephole = { workspace = true, features = ["fake"] }

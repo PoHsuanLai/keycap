@@ -5,6 +5,7 @@ use std::fmt;
 
 use keycap_protocol::ProfileName;
 
+use super::confine::Sequences;
 use crate::profile::{ModMap, RuleAction, Trigger};
 use crate::role::OutMod;
 
@@ -35,6 +36,16 @@ impl fmt::Display for ConfigSource {
 pub struct ConfigLayer {
     pub(super) profiles: BTreeMap<ProfileName, ProfileLayer>,
     pub(super) devices: Vec<super::devices::DeviceEntry>,
+    /// `[user_layer] sequences`: only the system file's value is ever consulted.
+    pub(super) sequences: Option<Sequences>,
+}
+
+impl ConfigLayer {
+    /// What this layer, taken as the system file, lets the seat owner's settings do about
+    /// rules that type several keys or none. Unset means [`Sequences::Refuse`].
+    pub fn sequences(&self) -> Sequences {
+        self.sequences.unwrap_or_default()
+    }
 }
 
 /// One profile as one file wrote it.

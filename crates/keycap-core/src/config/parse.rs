@@ -40,7 +40,20 @@ fn read_layer(root: &Table) -> (ConfigLayer, Vec<Warning>) {
         .filter_map(|(name, v)| read_profile(name, v, &mut warn))
         .collect();
     let devices = super::devices::read_devices(root, &mut warn);
-    (ConfigLayer { profiles, devices }, warn)
+    let sequences = field(
+        &section(root, "", "user_layer", &mut warn),
+        "user_layer",
+        "sequences",
+        &mut warn,
+    );
+    (
+        ConfigLayer {
+            profiles,
+            devices,
+            sequences,
+        },
+        warn,
+    )
 }
 
 fn read_profile(

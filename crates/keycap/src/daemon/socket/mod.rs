@@ -6,12 +6,15 @@ mod handle;
 mod inbound;
 mod limits;
 mod peer;
+mod procs;
 mod seat;
 mod server;
 mod shelf;
+mod shell;
 #[cfg(test)]
 mod tests;
 
 pub(crate) use handle::{SocketHandle, ToSocket};
 pub(crate) use seat::{SEAT_FILE, SeatFile};
 pub(crate) use server::{bind, socket_path, spawn};
+pub(crate) use shell::Steering;
