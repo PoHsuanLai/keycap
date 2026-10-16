@@ -1,6 +1,7 @@
 //! What the reader does with each kind of message and each output of the core.
 
 use super::Reader;
+use super::rescan::Lookout;
 use crate::daemon::clock;
 use crate::daemon::devices::{DeviceEffect, Devices, drive};
 use crate::daemon::discover::{Hotplug, Identity, scan};
@@ -42,12 +43,11 @@ impl<E: Emitter> Reader<E> {
                 }
             }
             Message::Hotplug(Hotplug::Appeared(path)) => {
-                let found = scan(&self.roots.sys, &self.roots.dev, &self.roots.allow)
-                    .into_iter()
-                    .find(|c| c.identity.path == path);
-                if let Some(candidate) = found {
-                    self.appear(candidate.identity);
-                }
+                self.looking = std::mem::take(&mut self.looking).appeared(path);
+            }
+            Message::Hotplug(Hotplug::Rescan) => {
+                eprintln!("keycap: device events were missed; looking at every keyboard again");
+                self.looking = std::mem::take(&mut self.looking).everything();
             }
             Message::Hotplug(Hotplug::Gone(path)) => {
                 if let Some(id) = self.devices.id_of(&path) {
@@ -101,6 +101,20 @@ impl<E: Emitter> Reader<E> {
         self.devices = std::mem::take(&mut self.devices).with_overrides(self.layers.overrides());
         self.unknowns = std::mem::take(&mut self.unknowns).reset();
         warnings
+    }
+
+    /// Looks at the nodes the messages of this pass said to: one scan for the whole burst.
+    /// Keyboards already known are left as they are.
+    pub(super) fn look(&mut self) {
+        let looking = std::mem::take(&mut self.looking);
+        if looking == Lookout::Nothing {
+            return;
+        }
+        for candidate in scan(&self.roots.sys, &self.roots.dev, &self.roots.allow) {
+            if looking.wants(&candidate.identity.path) {
+                self.appear(candidate.identity);
+            }
+        }
     }
 
     pub(super) fn appear(&mut self, identity: Identity) {

@@ -1,6 +1,6 @@
 use super::caps::{Bits, Caps};
 use super::classify::{Eligibility, Origin, classify};
-use super::hotplug::{concerns_us, hotplug_of};
+use super::hotplug::{concerns_us, hotplug_of, hotplugs_of};
 use super::*;
 use crate::Key;
 use crate::daemon::events::{EV_ABS, EV_KEY, EV_REL, EV_SYN, REL_X, REL_Y};
@@ -8,7 +8,7 @@ use crate::daemon::pointer::twin_name;
 use crate::daemon::scratch::Scratch;
 use crate::daemon::uinput;
 use notify::EventKind;
-use notify::event::{CreateKind, MetadataKind, ModifyKind, RemoveKind, RenameMode};
+use notify::event::{CreateKind, Flag, MetadataKind, ModifyKind, RemoveKind, RenameMode};
 use std::path::{Path, PathBuf};
 
 /// A sysfs mask with the given bits set, as the kernel prints it: 64-bit hex words, most
@@ -522,4 +522,21 @@ fn the_watch_reports_event_nodes_and_ignores_other_names() {
     let gone =
         std::iter::from_fn(|| rx.recv_timeout(wait).ok()).find(|h| matches!(h, Hotplug::Gone(_)));
     assert_eq!(gone, Some(Hotplug::Gone(node)));
+}
+
+#[test]
+fn a_watch_error_or_a_lost_event_means_look_at_everything() {
+    let node = PathBuf::from("/dev/input/event7");
+    let created = notify::Event::new(EventKind::Create(CreateKind::File)).add_path(node.clone());
+    let overflowed = notify::Event::new(EventKind::Other).set_flag(Flag::Rescan);
+    assert_eq!(
+        hotplugs_of(&Ok(created)),
+        [Hotplug::Appeared(node)],
+        "an ordinary event is just its node"
+    );
+    assert_eq!(hotplugs_of(&Ok(overflowed)), [Hotplug::Rescan]);
+    assert_eq!(
+        hotplugs_of(&Err(notify::Error::generic("queue overflow"))),
+        [Hotplug::Rescan]
+    );
 }

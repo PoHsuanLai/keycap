@@ -10,6 +10,9 @@ use std::sync::mpsc::Sender;
 pub(crate) enum Hotplug {
     Appeared(PathBuf),
     Gone(PathBuf),
+    /// Events were lost (the kernel's queue overflowed, or the watch failed): any node may have
+    /// come or gone, so every one is looked at again.
+    Rescan,
 }
 
 /// Whether a path is an evdev node (`eventN`), the only names that matter in `/dev/input`
@@ -41,21 +44,30 @@ pub(crate) fn hotplug_of(kind: &EventKind, path: &Path) -> Option<Hotplug> {
     }
 }
 
-/// Watches `dir` (not its subdirectories) and sends each device node coming or going to `out`.
-/// Returns the watcher, which must be kept alive.
+/// What a watch callback's result means: the nodes it names, or a rescan when it is an error
+/// or says events were lost.
+pub(crate) fn hotplugs_of(result: &notify::Result<notify::Event>) -> Vec<Hotplug> {
+    match result {
+        Err(_) => vec![Hotplug::Rescan],
+        Ok(ev) if ev.need_rescan() => vec![Hotplug::Rescan],
+        Ok(ev) => ev
+            .paths
+            .iter()
+            .filter_map(|p| hotplug_of(&ev.kind, p))
+            .collect(),
+    }
+}
+
+/// Watches `dir` (not its subdirectories) and sends each device node coming or going to `out`,
+/// and a rescan when events may have been lost. Returns the watcher, which must be kept alive.
 pub(crate) fn spawn(
     dir: &Path,
     out: Sender<Hotplug>,
 ) -> notify::Result<notify::RecommendedWatcher> {
     let mut watcher = notify::recommended_watcher(move |ev: notify::Result<notify::Event>| {
-        if let Ok(ev) = ev {
-            ev.paths
-                .iter()
-                .filter_map(|p| hotplug_of(&ev.kind, p))
-                .for_each(|h| {
-                    let _ = out.send(h);
-                });
-        }
+        hotplugs_of(&ev).into_iter().for_each(|h| {
+            let _ = out.send(h);
+        });
     })?;
     watcher.watch(dir, RecursiveMode::NonRecursive)?;
     Ok(watcher)

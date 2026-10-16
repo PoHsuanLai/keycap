@@ -11,6 +11,7 @@ mod handle;
 mod limit_tests;
 #[cfg(test)]
 mod pointer_tests;
+mod rescan;
 mod run;
 #[cfg(test)]
 mod tests;
@@ -99,6 +100,10 @@ pub(crate) struct Reader<E: Emitter> {
     discarding: BTreeSet<DeviceId>,
     /// The last status the socket thread was told.
     published: Status,
+    /// The nodes to look at once this pass's messages are handled.
+    looking: rescan::Lookout,
+    /// When every node is next looked at although nothing said so.
+    safety: rescan::SafetyLook,
 }
 
 impl<E: Emitter> Reader<E> {
@@ -127,6 +132,8 @@ impl<E: Emitter> Reader<E> {
             caps: CapsFix::default(),
             unknowns: Unknowns::default(),
             discarding: BTreeSet::new(),
+            looking: rescan::Lookout::default(),
+            safety: rescan::SafetyLook::after(super::clock::now()),
         }
     }
 }

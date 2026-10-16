@@ -55,13 +55,23 @@ impl<E: Emitter> Reader<E> {
         if let Err(e) = self.notifier.watchdog() {
             eprintln!("keycap: watchdog ping failed: {e}");
         }
-        let timeout = poll_timeout(self.devices.next_wake(clock::now()), self.watchdog);
+        let now = clock::now();
+        let wake = [self.devices.next_wake(now), Some(self.safety.until(now))]
+            .into_iter()
+            .flatten()
+            .min();
+        let timeout = poll_timeout(wake, self.watchdog);
         let ready = self.wait(timeout)?;
         if ready.mail == Readiness::Readable {
             for message in self.mailbox.drain() {
                 self.handle(message);
             }
         }
+        if self.safety.due(clock::now()) {
+            self.looking = std::mem::take(&mut self.looking).everything();
+            self.safety = self.safety.done(clock::now());
+        }
+        self.look();
         if ready.leds == Readiness::Readable {
             self.forward_leds();
         }
