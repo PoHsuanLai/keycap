@@ -11,7 +11,8 @@ pub const SOCKET_PATH: &str = "/run/keycap/keycap.sock";
 pub const CONFIG_DIR: &str = "/etc/keycap";
 /// The person's keymap file inside the config directory, in chordkit's overrides line format.
 pub const KEYMAP_FILE: &str = "keymap";
-/// The largest keymap file anyone reads, so the served copy always fits one packet.
+/// The largest keymap file anyone reads. With the problem list bounded where the file is
+/// judged (`keymap::settle`), the served copy always fits one packet.
 pub const KEYMAP_MAX_BYTES: u64 = 32 * 1024;
 /// The protocol version carried by `Hello`. Version 2 added the keymap messages
 /// (`WatchKeymap`, `Register`, `ListRegistered`, `Keymap`, `Registered`); every message of

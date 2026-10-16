@@ -7,7 +7,7 @@ use super::limits::{
     ACCEPTS_PER_PASS, AcceptFailure, Admission, Caps, Complaints, Intake,
     MAX_KEYMAP_CLIENTS_PER_UID, MESSAGES_PER_PASS, Pace, Pacing, Voice, accept_failure, admit,
 };
-use super::peer::{Client, Link, Role, send};
+use super::peer::{Client, Link, Owed, Role, Sent, send};
 use super::seat::{Peer, Seat, SeatFile, Tenancy, peer_of, request_of};
 use super::shelf::{Call, Reply, Shelf};
 use crate::daemon::clock;
@@ -145,6 +145,7 @@ impl Server {
                 .into_iter()
                 .for_each(|id| self.receive(id, active));
             self.watch_seat(active);
+            self.settle_debts();
             let live: Vec<ClientId> = self.clients.iter().map(|c| c.id).collect();
             self.shelf.retain(&live);
         }
@@ -230,19 +231,18 @@ impl Server {
                 return self.complain(uid, "refused: too many connections for this user");
             }
         }
-        let client = Client {
-            id: ClientId(self.next_client),
+        let client = Client::new(
+            ClientId(self.next_client),
             fd,
             uid,
-            role: Role::Undecided,
-            pace: Pace::starting(clock::now()),
-        };
+            Pace::starting(clock::now()),
+        );
         self.next_client += 1;
         let hello = ToClient::Hello {
             version: PROTOCOL_VERSION,
             status: self.status.clone(),
         };
-        if send(&client, &hello) == Link::Alive {
+        if send(&client, &hello).link() == Link::Alive {
             self.clients.push(client);
         }
     }
@@ -263,12 +263,12 @@ impl Server {
             match self.rx.try_recv() {
                 Ok(ToSocket::Status(status)) => {
                     self.status = status.clone();
-                    self.broadcast(&ToClient::Status(status));
+                    self.broadcast(&ToClient::Status(status), Owed::Status);
                 }
                 Ok(ToSocket::Warnings { client, warnings }) => {
                     let reply = ToClient::ConfigWarnings(warnings);
                     self.clients
-                        .retain(|c| c.id != client || send(c, &reply) == Link::Alive);
+                        .retain(|c| c.id != client || send(c, &reply).link() == Link::Alive);
                 }
                 Ok(ToSocket::Keymap(reading)) => {
                     if let Some(replies) = self.shelf.read(reading) {
@@ -286,23 +286,44 @@ impl Server {
         }
     }
 
-    /// Sends each reply to its client; one that cannot be reached is dropped.
+    /// Sends each reply to its client; one that cannot be reached is dropped. A client whose
+    /// queue is full still owes the keymap it missed.
     fn deliver(&mut self, replies: Vec<Reply>) {
-        let gone: Vec<ClientId> = replies
-            .iter()
-            .filter(|r| {
-                self.clients
-                    .iter()
-                    .find(|c| c.id == r.to)
-                    .is_some_and(|c| send(c, &r.message) == Link::Gone)
-            })
-            .map(|r| r.to)
-            .collect();
-        self.clients.retain(|c| !gone.contains(&c.id));
+        for reply in replies {
+            let Some(client) = self.clients.iter_mut().find(|c| c.id == reply.to) else {
+                continue;
+            };
+            match send(client, &reply.message) {
+                Sent::Gone => self.clients.retain(|c| c.id != reply.to),
+                Sent::Behind if matches!(reply.message, ToClient::Keymap(_)) => {
+                    client.owed.insert(Owed::Keymap);
+                }
+                Sent::Behind | Sent::TooLarge | Sent::Delivered => {}
+            }
+        }
     }
 
-    fn broadcast(&mut self, message: &ToClient) {
-        self.clients.retain(|c| send(c, message) == Link::Alive);
+    /// Sends `message` to everyone; a client whose queue is full owes it.
+    fn broadcast(&mut self, message: &ToClient, owed: Owed) {
+        self.clients.retain_mut(|c| match send(c, message) {
+            Sent::Gone => false,
+            Sent::Behind => {
+                c.owed.insert(owed);
+                true
+            }
+            Sent::Delivered | Sent::TooLarge => true,
+        });
+    }
+
+    /// Sends the clients what they missed, now that there may be room: the socket thread wakes
+    /// at least every `SEAT_RECHECK`, so a full queue is retried about once a second.
+    fn settle_debts(&mut self) {
+        if self.clients.iter().all(|c| c.owed.is_empty()) {
+            return;
+        }
+        let (status, keymap) = (self.status.clone(), self.shelf.state().clone());
+        self.clients
+            .retain_mut(|c| c.settle(&status, &keymap) == Link::Alive);
     }
 
     /// Reads what client `id` sent, a bounded number of messages per pass. A client that
@@ -326,6 +347,13 @@ impl Server {
                             self.complain(uid, "too many keymap connections; dropped");
                             link = Link::Gone;
                             break;
+                        }
+                        if peer == Peer::Observer && matches!(call, Call::Register(_)) {
+                            self.complain(
+                                uid,
+                                "may not register actions without owning the seat; ignored",
+                            );
+                            continue;
                         }
                         let replies = self.shelf.call(id, call);
                         self.deliver(replies);

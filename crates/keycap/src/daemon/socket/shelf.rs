@@ -11,6 +11,13 @@ use std::collections::{BTreeMap, BTreeSet};
 /// Apps one connection may register at once; the rest are ignored.
 pub(super) const MAX_APPS_PER_CLIENT: usize = 16;
 
+/// Actions one app may register; the rest are ignored. A real app has a few dozen.
+pub(super) const MAX_ACTIONS_PER_APP: usize = 128;
+
+/// The most one `Registered` reply carries, under `MAX_PACKET` with room for the framing: apps
+/// beyond it (in app order) are left out, because a longer reply is one no client could read.
+const REGISTERED_REPLY_BYTES: usize = 48 * 1024;
+
 /// A keymap message a client sent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Call {
@@ -72,7 +79,7 @@ impl Shelf {
             }
             Call::List => vec![Reply {
                 to: client,
-                message: ToClient::Registered(self.everything()),
+                message: ToClient::Registered(within_reply(self.everything())),
             }],
         }
     }
@@ -122,6 +129,17 @@ impl Shelf {
     }
 }
 
+/// The leading apps of `all` whose encoded size fits one reply.
+fn within_reply(all: Vec<Registration>) -> Vec<Registration> {
+    let mut used = 0;
+    all.into_iter()
+        .take_while(|registration| {
+            used += keycap_protocol::encode(registration).len() + 1;
+            used <= REGISTERED_REPLY_BYTES
+        })
+        .collect()
+}
+
 /// The registration with only the actions chordkit would accept, or `None` for a bad app name.
 fn vetted(registration: Registration) -> Option<Registration> {
     let app = AppId::new(&registration.app).ok()?;
@@ -129,6 +147,7 @@ fn vetted(registration: Registration) -> Option<Registration> {
         .actions
         .into_iter()
         .filter(|action| reads(&app, action))
+        .take(MAX_ACTIONS_PER_APP)
         .collect();
     Some(Registration {
         app: registration.app,
@@ -293,5 +312,51 @@ mod tests {
             );
         }
         assert_eq!(listed(&mut shelf, 9).len(), 1 + MAX_APPS_PER_CLIENT);
+    }
+
+    fn app_with_actions(n: usize, actions: usize) -> Registration {
+        Registration {
+            app: format!("app{n}"),
+            actions: (0..actions)
+                .map(|k| RegisteredAction {
+                    id: format!("app{n}.act{k}"),
+                    chord: "Primary+Shift+N".to_owned(),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn an_app_keeps_at_most_so_many_actions() {
+        let mut shelf = shelf();
+        shelf.call(
+            ClientId(1),
+            Call::Register(app_with_actions(0, MAX_ACTIONS_PER_APP + 20)),
+        );
+        assert_eq!(listed(&mut shelf, 9)[0].actions.len(), MAX_ACTIONS_PER_APP);
+    }
+
+    #[test]
+    fn a_reply_with_everything_registered_still_fits_one_packet() {
+        let mut shelf = shelf();
+        for n in 0..MAX_APPS_PER_CLIENT {
+            shelf.call(
+                ClientId(1),
+                Call::Register(app_with_actions(n, MAX_ACTIONS_PER_APP)),
+            );
+        }
+        let held: usize = shelf.registered.values().flatten().count();
+        assert_eq!(held, MAX_APPS_PER_CLIENT, "all of them are held");
+        let reply = ToClient::Registered(listed(&mut shelf, 9));
+        let size = keycap_protocol::encode(&reply).len();
+        assert!(size <= keycap_protocol::MAX_PACKET, "{size} bytes");
+        let ToClient::Registered(apps) = reply else {
+            unreachable!()
+        };
+        assert!(
+            !apps.is_empty() && apps.len() < MAX_APPS_PER_CLIENT,
+            "cut at the budget, not emptied: {} apps",
+            apps.len()
+        );
     }
 }

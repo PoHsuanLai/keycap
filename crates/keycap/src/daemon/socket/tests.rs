@@ -486,14 +486,18 @@ fn a_bad_edit_keeps_what_watchers_hold_and_tells_them_why() {
 }
 
 #[test]
-fn the_keymap_and_the_registrations_are_open_to_observers_who_stay_connected() {
+fn the_keymap_is_open_to_observers_who_stay_connected_but_registering_is_not() {
     let h = Harness::with_keymap(Some(own_uid() + 1), text("undo = none\n"));
     let observer = connect(&h.socket);
     assert_eq!(recv(&observer), Some(hello(running())));
     send(&observer, &ToDaemon::WatchKeymap);
     assert_eq!(recv(&observer), Some(keymap_of("undo = none\n")));
     send(&observer, &ToDaemon::Register(mail()));
-    assert_eq!(registered(&observer), [mail()]);
+    assert_eq!(
+        registered(&observer),
+        [],
+        "an observer's registration is ignored"
+    );
     send(&observer, &focus("terminal"));
     assert_eq!(recv(&observer), None, "a real request is still refused");
 }

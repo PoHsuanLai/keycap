@@ -25,8 +25,40 @@ fn plain(found: &OverrideProblem) -> KeymapProblem {
     problem(found.line, found.what.clone())
 }
 
-/// The state after `reading`, given the state in force before it.
+/// Problems reported at once; the rest are summed in one last line. A file of thousands of bad
+/// lines would otherwise make a reply no client could read.
+const MAX_PROBLEMS: usize = 50;
+
+/// Characters of one problem's text; a bad line can be as long as the file.
+const MAX_PROBLEM_CHARS: usize = 200;
+
+/// The state after `reading`, given the state in force before it, with the problems within
+/// bounds so the state always fits one packet.
 pub fn settle(previous: &KeymapState, reading: Reading) -> KeymapState {
+    let state = settle_unbounded(previous, reading);
+    KeymapState {
+        problems: bounded(state.problems),
+        ..state
+    }
+}
+
+fn bounded(problems: Vec<KeymapProblem>) -> Vec<KeymapProblem> {
+    let more = problems.len().saturating_sub(MAX_PROBLEMS);
+    let mut kept: Vec<KeymapProblem> = problems
+        .into_iter()
+        .take(MAX_PROBLEMS)
+        .map(|p| KeymapProblem {
+            what: p.what.chars().take(MAX_PROBLEM_CHARS).collect(),
+            ..p
+        })
+        .collect();
+    if more > 0 {
+        kept.push(problem(0, format!("{more} more lines have problems.")));
+    }
+    kept
+}
+
+fn settle_unbounded(previous: &KeymapState, reading: Reading) -> KeymapState {
     match reading {
         Reading::Missing => KeymapState::default(),
         Reading::Unusable(why) => keep(
@@ -83,6 +115,34 @@ mod tests {
         let (round, bad) = Overrides::parse(&state.overrides);
         assert_eq!(bad, []);
         assert_eq!(round.entries().len(), 1);
+    }
+
+    #[test]
+    fn thousands_of_bad_lines_are_reported_as_fifty_and_a_count() {
+        let lines: String = (0..3000)
+            .map(|n| format!("bogus{n} = Primary+Q\n"))
+            .collect();
+        let state = settle(&good(), text(&format!("copy = Primary+Alt+C\n{lines}")));
+        assert_eq!(state.problems.len(), MAX_PROBLEMS + 1);
+        let last = state.problems.last().expect("a last line");
+        assert!(last.what.ends_with("more lines have problems."), "{last:?}");
+        let size = keycap_protocol::encode(&keycap_protocol::ToClient::Keymap(state)).len();
+        assert!(size < keycap_protocol::MAX_PACKET, "{size}");
+    }
+
+    #[test]
+    fn one_very_long_bad_line_is_cut_in_its_report() {
+        let long = "x".repeat(10_000);
+        let state = settle(
+            &good(),
+            text(&format!("copy = Primary+Alt+C\n{long} = Primary+Q\n")),
+        );
+        assert!(
+            state
+                .problems
+                .iter()
+                .all(|p| p.what.chars().count() <= MAX_PROBLEM_CHARS)
+        );
     }
 
     #[test]
