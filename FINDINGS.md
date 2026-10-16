@@ -37,6 +37,20 @@ inherited, but one the desktop restates for a chord (sill's Cmd+H to Ctrl+H) mus
 
 ## Open items
 
+**Deferred from the 2026-10-16 production audit (input).**
+- *Caller identity (INPUT-03, INPUT-14).* The socket trusts the seat owner's uid, so any program
+  of the person can send `UserConfig`, `Focus` and `Resume`, and any session-bus peer can call
+  the Plasma focus bridge. Authenticating the shell beyond uid is a later wave with one design for
+  all four same-uid channels (this socket, palmrest's, the focus bridge, uinput).
+- *uinput access (INPUT-02)* is palmrest's rule; the owner chose a small root service that owns
+  `/dev/uinput`, in a later wave. keycap's own `GROUP="input"` rule is unchanged.
+- *Unit hardening (INPUT-15), part.* `PrivateUsers=` may unmap the `input` supplementary group,
+  and who owns `/etc/keycap` under `DynamicUser=` with `ConfigurationDirectory=` is unconfirmed;
+  both wait for a `systemd-analyze security` run and a look at the real directory.
+- *Supply chain (INPUT-16)* is not in this lane; CI still checks licenses only.
+- *chordkit's own readers (INPUT-12).* chordkit-kde and chordkit-gnome still read their files
+  unbounded (interface ask: use a bounded regular-file read like `keycap_client::read_text`).
+
 **The profile mechanism cannot see inside a window.** A terminal embedded in another app (an
 editor's terminal panel) gets the window's profile, not `terminal`: the desktop knows the
 focused window, keycap knows only the name it is sent. The user override (the per-app profile
@@ -186,8 +200,18 @@ the virtual keyboard and writes it to a device when it is grabbed; a lamp the de
 is not written. Later changes are forwarded as before.
 
 **An undefined focused profile is logged once per config generation.** A `Focus` naming a
-profile the config does not define uses `default`, logs one line per name, and logs it again
-after any config reload.
+profile the config does not define uses `default`, logs one line per name (64 names, then one
+line saying there are more), and logs it again after any config reload.
+
+**A configuration has size limits.** At most 64 profiles, 8 `inherits` steps and 512 rules in one
+profile after the layers are folded (`keycap-core` `config/limits.rs`). A system file or a user
+config over them is refused whole with a plain warning and the earlier settings stay. Flattening
+builds each profile once from its parent's.
+
+**Devices are looked at again.** A `notify` error or an overflow flag sends `Hotplug::Rescan`;
+a burst of appearances is one scan; every node is looked at every 30 seconds in case something
+was missed. Only nodes whose udev entry (`/run/udev/data/c<major>:<minor>`) does not name another
+seat than `seat0` are candidates.
 
 **A key held across a `SYN_DROPPED` is re-pressed only on its next press.** When a device's
 queue overflows, keycap discards events up to the next `SYN_REPORT` and treats the device as
@@ -217,7 +241,13 @@ the grab reached the desktop but its release would not, so keycap re-reads `EVIO
 **The socket bounds every client.** 32 clients in all and 8 per uid, 16 messages per client and
 16 accepts per pass, and a pause of one second after `accept` fails for any reason but
 `EAGAIN` (`EMFILE` leaves the connection pending, which would spin). An observer that sends a
-request is disconnected; log lines about clients are limited to one per uid per minute.
+request is disconnected; log lines about clients are limited to one per uid per minute. A client
+that asks the reader for more than 100 things a second, or whose requests fill the reader's inbox
+(256), is disconnected. A reply never exceeds one packet: the keymap's problem list is 50 lines of
+200 characters and a count, an app registers at most 128 actions, and a `Registered` reply is cut
+at 48 KiB. A message too large for a packet, or a full queue, never closes a client: a status or
+keymap a client missed is sent again, in its latest form, as soon as there is room. Only the
+seat owner's apps may register actions.
 
 **The grab is released by the kernel when the fd closes.** A crash, a panic (`panic = "abort"`)
 or `kill -9` closes every fd, so the keyboard returns to the kernel at once; systemd restarts

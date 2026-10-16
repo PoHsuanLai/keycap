@@ -56,14 +56,14 @@ Daemon modules:
 | `daemon/leds.rs` | pure: the lock-LED events the compositor writes to the virtual device, forwarded to every grabbed keyboard, and `LedState`, the last lamps it set, written to a keyboard the moment it is grabbed |
 | `daemon/readiness.rs` | which polled fds are ready, as an enum rather than flags |
 | `daemon/events.rs` | `struct input_event` as bytes, `decode` (what a device sent) and `encode` (what keycap writes), pure |
-| `daemon/discover/` | the /sys scan and `notify` on `/dev/input`; `classify(&Caps, &Identity, Origin, &VirtualAllowance) -> Eligibility` is pure and table-tested (virtual devices are never grabbed unless the allowance names one exactly, which rules out loops with other remappers), sysfs roots injectable |
+| `daemon/discover/` | the /sys scan and `notify` on `/dev/input`; `classify(&Caps, &Identity, Origin, &VirtualAllowance) -> Eligibility` is pure and table-tested (virtual devices are never grabbed unless the allowance names one exactly, which rules out loops with other remappers), sysfs roots injectable; `seat.rs` leaves a node whose udev entry names a seat other than `seat0` alone |
 | `daemon/devices/` | every keyboard as a pure state machine: `{ identity, layout, gate, grab }` plus the conflict `Backoff`; transitions return `(Devices, Vec<DeviceEffect>)`, `drive` carries the effects out through `Nodes`, `status_of` makes the `Status` a desktop sees |
 | `daemon/grabber.rs` | `Grabber` (grab, ungrab) and `Nodes` (open, close, keys down): the real evdev fds, and `FakeGrabber` in tests |
-| `daemon/reader/` | the main thread: one `poll` over the nodes and the inbox's eventfd, timeout from the next gate or backoff deadline and half the watchdog; the reader waits on nothing but `poll`. `grabs.rs` acts on a device just grabbed or let go (LEDs, twin), `twins.rs` holds the twins and the pure `grab_change`, `unknown.rs` the pure `Unknowns` set behind the once-per-generation log of an undefined focused profile |
+| `daemon/reader/` | the main thread: one `poll` over the nodes and the inbox's eventfd, timeout from the next gate or backoff deadline and half the watchdog; the reader waits on nothing but `poll`. `grabs.rs` acts on a device just grabbed or let go (LEDs, twin), `twins.rs` holds the twins and the pure `grab_change`, `unknown.rs` the pure `Unknowns` set behind the once-per-generation log of an undefined focused profile (64 names), `rescan.rs` the pure `Lookout` (which nodes to look at after a pass's hotplug messages: a burst is one scan) and `SafetyLook` (everything again every 30 s) |
 | `daemon/route.rs`, `daemon/evdev.rs` | one read of a node (drained until `EAGAIN`) to `RemapInput`s and pointer frames, pure `route` over the drained events |
-| `daemon/inbox.rs`, `daemon/waker.rs` | what other threads send the reader (`Request`, system config, hotplug) over one channel and one eventfd |
+| `daemon/inbox.rs`, `daemon/waker.rs` | what other threads send the reader (`Request`, system config, hotplug) over one bounded channel (256; the socket thread uses `try_send` and drops a client whose request does not fit) and one eventfd |
 | `daemon/socket/shelf.rs` | pure: the keymap in force, who watches it and what each connection registered (`Shelf::call`, `read`, `retain`); returns replies, the server sends them |
-| `daemon/socket/` | the socket thread; `seat.rs` holds the pure parts (`active_uid`, `peer_of` to `Peer { SeatOwner, Observer }`, `request_of`, `Seat::look` for owner leaving or user switch); `limits.rs` the bounds against hostile clients (32 clients, the seat owner exempt from that cap; 8 per uid; 16 messages per client per pass; listener paused 1 s on EMFILE; complaints logged once a minute per uid); `inbound.rs` the bounded read |
+| `daemon/socket/` | the socket thread; `seat.rs` holds the pure parts (`active_uid`, `peer_of` to `Peer { SeatOwner, Observer }`, `request_of`, `Seat::look` for owner leaving or user switch); `limits.rs` the bounds against hostile clients (32 clients, the seat owner exempt from that cap; 8 per uid; 16 messages per client per pass; 100 requests a second per client; listener paused 1 s on EMFILE; complaints logged once a minute per uid); `peer.rs` a connection (role, pace, what it missed) and `send` (`Sent`: a full queue or an oversize message never closes it); `inbound.rs` the bounded read |
 | `daemon/settings.rs` | the config layers in force (built-in, system, user) and their resolution |
 | `daemon/service.rs` | `run(env)`: the virtual keyboard, socket thread, watchers, then the reader |
 | `daemon/sdnotify.rs` | `READY=1`, `WATCHDOG=1` and `STATUS=` to `$NOTIFY_SOCKET` |
@@ -88,6 +88,8 @@ udev and polkit rules, the `uinput` modules-load file, `keycap.plasma.toml`, and
 | Profile inheritance and lookup | `profile::Profiles` |
 | Every default mapping | `defaults.toml` |
 | Lenient per-key reading, config layers, inheritance flattening | `config::{lenient, ConfigLayer, resolve}` |
+| How large a configuration may be (profiles, inherit steps, rules) | `config::limits` (`within_limits`); the daemon takes a layer only through `Layers::accepted` |
+| A text file read safely (regular file, not blocking, bounded) | `keycap_client::read_text` |
 | What each press emitted, and which written keys are lifted | `held::Held` |
 | The pointer half of a combo device | `daemon::pointer::PointerCaps` |
 | Which lamps the desktop last set | `daemon::leds::LedState` |
