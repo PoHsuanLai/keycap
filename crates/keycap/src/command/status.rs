@@ -53,11 +53,28 @@ pub(super) fn render(status: &Status, caps: impl Fn(&Keyboard) -> Option<Lamp>) 
         };
         lines.push(format!(
             "  {} ({}, {:04x}:{:04x}): {hold}",
-            k.info.name, k.info.path, k.info.vendor, k.info.product
+            printable(&k.info.name),
+            printable(&k.info.path),
+            k.info.vendor,
+            k.info.product
         ));
         lines.extend(caps(k).map(caps_line));
     }
     lines.join("\n")
+}
+
+/// `text` with each control character written out (`\u{1b}`), so a keyboard that calls itself
+/// an escape sequence cannot change what the person's terminal shows.
+fn printable(text: &str) -> String {
+    text.chars()
+        .flat_map(|c| {
+            if c.is_control() {
+                c.escape_default().collect::<Vec<_>>()
+            } else {
+                vec![c]
+            }
+        })
+        .collect()
 }
 
 fn caps_line(lamp: Lamp) -> String {
@@ -123,6 +140,25 @@ mod tests {
         for (name, status, want) in cases {
             assert_eq!(render(&status, |_| None), want, "{name}");
         }
+    }
+
+    #[test]
+    fn a_device_name_cannot_carry_terminal_control_codes() {
+        let status = Status {
+            mode: Mode::Running,
+            keyboards: vec![keyboard("Evil\u{1b}[2J\u{7}\nKB é", Grab::Active)],
+        };
+        let text = render(&status, |_| None);
+        assert!(
+            !text.chars().any(|c| c.is_control() && c != '\n'),
+            "{text:?}"
+        );
+        assert_eq!(
+            text.lines().count(),
+            2,
+            "the newline in the name is written out"
+        );
+        assert!(text.contains("Evil\\u{1b}[2J\\u{7}\\nKB é"), "{text}");
     }
 
     #[test]
