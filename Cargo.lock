@@ -100,7 +100,6 @@ dependencies = [
  "serde_json",
  "thiserror",
  "turnstile-client",
- "turnstile-wire",
 ]
 
 [[package]]
@@ -405,8 +404,8 @@ checksum = "7d56353a2a665ad0f41a421187180aab746c8c325620617ad883a99a1cbe66d2"
 
 [[package]]
 name = "turnstile-client"
-version = "0.1.0"
-source = "git+https://github.com/PoHsuanLai/turnstile?tag=v0.1.0#9d04aa4ec99c22681acb01032927ddb5a896652c"
+version = "0.1.1"
+source = "git+https://github.com/PoHsuanLai/turnstile?tag=v0.1.1#a5301c56a363536f1767ad9943c62e045853895d"
 dependencies = [
  "rustix",
  "thiserror",
@@ -415,8 +414,8 @@ dependencies = [
 
 [[package]]
 name = "turnstile-wire"
-version = "0.1.0"
-source = "git+https://github.com/PoHsuanLai/turnstile?tag=v0.1.0#9d04aa4ec99c22681acb01032927ddb5a896652c"
+version = "0.1.1"
+source = "git+https://github.com/PoHsuanLai/turnstile?tag=v0.1.1#a5301c56a363536f1767ad9943c62e045853895d"
 dependencies = [
  "thiserror",
 ]

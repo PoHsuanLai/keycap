@@ -24,9 +24,9 @@ peephole.workspace = true
 peephole-core.workspace = true
 # The broker that makes the virtual devices, and the device vocabulary its requests are written in.
 turnstile-client.workspace = true
-turnstile-wire.workspace = true
 
 [dev-dependencies]
+turnstile-client = { workspace = true, features = ["fake"] }
 keycap-devtest = { path = "../keycap-devtest" }
 # A held process that is only a claim, for tests of who the socket's peer is; never in a shipped build.
 peephole = { workspace = true, features = ["fake"] }

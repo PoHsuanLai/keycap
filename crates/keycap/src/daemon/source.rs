@@ -7,8 +7,8 @@ use super::twin;
 use super::uinput::{self, OutputError};
 use rustix::fd::OwnedFd;
 use std::path::Path;
+use turnstile_client::{AbsAxis, PointerCaps as ServiceCaps};
 use turnstile_client::{Broker, ClientError, Create, DeviceSource, Made, Session};
-use turnstile_wire::{AbsAxis, PointerCaps as ServiceCaps};
 
 /// Where the service listens when nothing overrides it.
 pub(crate) const DEFAULT_SERVICE_SOCKET: &str = turnstile_client::DEFAULT_SOCKET;
