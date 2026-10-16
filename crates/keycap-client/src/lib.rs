@@ -10,6 +10,7 @@
 //!
 //! No keymap noun is defined here; every action, chord and keymap is chordkit's.
 
+mod bounded;
 mod connection;
 mod fallback;
 mod fetch;
@@ -20,6 +21,7 @@ mod system;
 mod testing;
 mod watch;
 
+pub use bounded::{FileText, read_text};
 pub use connection::{ClientError, Connection, Heard};
 pub use keycap_protocol::{Registration, SOCKET_PATH};
 pub use register::Registered;

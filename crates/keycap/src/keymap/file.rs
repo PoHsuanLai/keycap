@@ -1,6 +1,6 @@
 //! Reading the keymap file from the config directory.
 
-use std::io::{ErrorKind, Read};
+use keycap_client::{FileText, read_text};
 use std::path::Path;
 
 /// The file name, in the config directory next to `keycap.toml`.
@@ -22,22 +22,10 @@ pub enum Reading {
 
 /// Reads `FILE_NAME` in `dir`.
 pub fn read(dir: &Path) -> Reading {
-    let path = dir.join(FILE_NAME);
-    let file = match std::fs::File::open(&path) {
-        Ok(file) => file,
-        Err(e) if e.kind() == ErrorKind::NotFound => return Reading::Missing,
-        Err(e) => return Reading::Unusable(e.to_string()),
-    };
-    let mut text = String::new();
-    match file.take(MAX_BYTES + 1).read_to_string(&mut text) {
-        Ok(n) if u64::try_from(n).is_ok_and(|n| n > MAX_BYTES) => {
-            Reading::Unusable(format!("it is larger than {} KiB", MAX_BYTES / 1024))
-        }
-        Ok(_) => Reading::Text(text),
-        Err(e) if e.kind() == ErrorKind::InvalidData => {
-            Reading::Unusable("it is not plain text".to_owned())
-        }
-        Err(e) => Reading::Unusable(e.to_string()),
+    match read_text(&dir.join(FILE_NAME), MAX_BYTES) {
+        FileText::Missing => Reading::Missing,
+        FileText::Text(text) => Reading::Text(text),
+        FileText::Unusable(why) => Reading::Unusable(why),
     }
 }
 
