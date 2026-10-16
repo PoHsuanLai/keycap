@@ -196,8 +196,8 @@ mod trusted_files {
             }
         }
         let dir = Scratch::new("no-file");
-        let reads: [fn(&Path) -> (ConfigLayer, Vec<keycap_protocol::Warning>); 2] =
-            [super::super::vendor, super::super::system];
+        type Read = fn(&Path) -> (ConfigLayer, Vec<keycap_protocol::Warning>);
+        let reads: [Read; 2] = [super::super::vendor, super::super::system];
         for read in reads {
             assert_eq!(
                 read(&dir.0.join("not-there")),

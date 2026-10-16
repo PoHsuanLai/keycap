@@ -42,9 +42,9 @@ inherited, but one the desktop restates for a chord (sill's Cmd+H to Ctrl+H) mus
 - *uinput access (INPUT-02)* is done: the desktop's root service owns `/dev/uinput` and keycap is handed
   its devices (see "Where the virtual devices come from"). The standalone install keeps `GROUP="input"`.
 - *Unit hardening (INPUT-15), part.* `PrivateUsers=` may unmap the `input` supplementary group,
-  and who owns `/etc/keycap` under `DynamicUser=` with `ConfigurationDirectory=` is unconfirmed (it now matters:
-  the machine file is read only when root-only, see "Vendor layer"); both wait for a `systemd-analyze security`
-  run and a look at the real directory.
+  which waits for a `systemd-analyze security` run. `/etc/keycap` stays root's under `DynamicUser=`:
+  systemd.exec(5) hands the innermost folder to the service's user for `State`/`Cache`/`Logs`/`RuntimeDirectory=`
+  but not for `ConfigurationDirectory=`, so the root-only machine file (see "Vendor layer") is read.
 - *Supply chain (INPUT-16)* is not in this lane; CI still checks licenses only.
 - *chordkit's own readers (INPUT-12).* chordkit-kde and chordkit-gnome still read their files
   unbounded (interface ask: use a bounded regular-file read like `keycap_client::read_text`).
@@ -69,9 +69,8 @@ no warning. Both files are capped at 64 KiB (`LAYER_FILE_CAP`). Consequences:
   scratch folder is the test user's). `keycap-devtest`'s daemon writes none today, so it is unaffected; a test that
   needs a machine layer needs a different seam, not a looser check. `config/tests.rs` proves the refusal on the real
   file system.
-- Unconfirmed: whether `/etc/keycap` is root's under `DynamicUser=` with `ConfigurationDirectory=` (see the unit
-  hardening item above). If systemd makes it the dynamic user's, the machine file is refused until that is settled;
-  the log line names it.
+- `/etc/keycap` is root's under `DynamicUser=` with `ConfigurationDirectory=` (systemd.exec(5): that one folder
+  type is not handed to the service's user), so the shipped unit reads a root-only machine file.
 
 **Who steers (INPUT-03, INPUT-14, wave 2).** The owner decided keycap gets a light identity check and a reduced
 user layer, and no root identity service and no new capability. The shell is the one connection obeyed for
