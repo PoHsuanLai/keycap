@@ -5,6 +5,7 @@ pub(crate) mod client;
 mod handle;
 mod inbound;
 mod limits;
+mod peer;
 mod seat;
 mod server;
 mod shelf;

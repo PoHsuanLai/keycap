@@ -5,9 +5,24 @@ use crate::Profiles;
 use keycap_protocol::ProfileName;
 use std::collections::BTreeSet;
 
+/// Names listed per config generation. A client can focus any name it likes, so what is kept
+/// and logged is bounded; the rest are counted as one line.
+const MAX_LISTED: usize = 64;
+
+/// Whether the "more names" line has been written this generation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum Overflow {
+    #[default]
+    Unsaid,
+    Said,
+}
+
 /// The undefined names already reported since the config last changed.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(super) struct Unknowns(BTreeSet<ProfileName>);
+pub(super) struct Unknowns {
+    listed: BTreeSet<ProfileName>,
+    overflow: Overflow,
+}
 
 /// What focusing a profile calls for.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,17 +31,30 @@ pub(super) enum Notice {
     Silent,
     /// The first focus of a name the config does not define.
     Undefined(ProfileName),
+    /// More undefined names than are listed; said once.
+    TooMany,
 }
 
 impl Unknowns {
     /// `name` was focused under `profiles`: the notice it earns and the names reported now.
     pub(super) fn note(mut self, name: &ProfileName, profiles: &Profiles) -> (Self, Notice) {
-        let notice = if profiles.defines(name) || !self.0.insert(name.clone()) {
-            Notice::Silent
-        } else {
-            Notice::Undefined(name.clone())
-        };
-        (self, notice)
+        if profiles.defines(name) || self.listed.contains(name) {
+            return (self, Notice::Silent);
+        }
+        if self.listed.len() < MAX_LISTED {
+            self.listed.insert(name.clone());
+            return (self, Notice::Undefined(name.clone()));
+        }
+        match self.overflow {
+            Overflow::Unsaid => (
+                Self {
+                    overflow: Overflow::Said,
+                    ..self
+                },
+                Notice::TooMany,
+            ),
+            Overflow::Said => (self, Notice::Silent),
+        }
     }
 
     /// The config changed: every name may be reported again.
@@ -42,6 +70,9 @@ impl Notice {
             Notice::Silent => None,
             Notice::Undefined(name) => Some(format!(
                 "keycap: profile \"{name}\" is not defined; using default"
+            )),
+            Notice::TooMany => Some(format!(
+                "keycap: more than {MAX_LISTED} undefined profile names were focused; not listing the rest"
             )),
         }
     }
@@ -138,5 +169,37 @@ mod tests {
                 assert_eq!(got, want.and_then(line), "{case}, step {i}");
             }
         }
+    }
+
+    #[test]
+    fn names_beyond_the_listing_are_said_once_and_the_set_stays_small() {
+        let profiles = builtin();
+        let (unknowns, notices) = (0..MAX_LISTED + 5).fold(
+            (Unknowns::default(), Vec::new()),
+            |(unknowns, mut notices), i| {
+                let (next, notice) = unknowns.note(&name(&format!("n{i}")), &profiles);
+                notices.push(notice);
+                (next, notices)
+            },
+        );
+        assert_eq!(unknowns.listed.len(), MAX_LISTED);
+        let said: Vec<&Notice> = notices
+            .iter()
+            .filter(|n| matches!(n, Notice::TooMany))
+            .collect();
+        assert_eq!(said.len(), 1, "one overflow line in all");
+        assert_eq!(
+            notices
+                .iter()
+                .filter(|n| matches!(n, Notice::Undefined(_)))
+                .count(),
+            MAX_LISTED
+        );
+        let (again, _) = unknowns.reset().note(&name("n0"), &profiles);
+        assert_eq!(
+            again.listed.len(),
+            1,
+            "a config change starts the count over"
+        );
     }
 }

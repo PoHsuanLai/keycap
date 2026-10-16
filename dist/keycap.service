@@ -19,6 +19,9 @@ TimeoutStartSec=10
 WatchdogSec=2
 Restart=always
 RestartSec=200ms
+# The daemon holds a few megabytes; a client that makes it store more is killed with it, not the
+# machine's memory.
+MemoryMax=128M
 
 DynamicUser=yes
 SupplementaryGroups=input

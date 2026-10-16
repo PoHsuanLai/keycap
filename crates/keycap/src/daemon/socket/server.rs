@@ -5,12 +5,13 @@ use super::handle::{SocketHandle, ToSocket};
 use super::inbound::{Stream, pull};
 use super::limits::{
     ACCEPTS_PER_PASS, AcceptFailure, Admission, Caps, Complaints, Intake,
-    MAX_KEYMAP_CLIENTS_PER_UID, MESSAGES_PER_PASS, Voice, accept_failure, admit,
+    MAX_KEYMAP_CLIENTS_PER_UID, MESSAGES_PER_PASS, Pace, Pacing, Voice, accept_failure, admit,
 };
+use super::peer::{Client, Link, Role, send};
 use super::seat::{Peer, Seat, SeatFile, Tenancy, peer_of, request_of};
 use super::shelf::{Call, Reply, Shelf};
 use crate::daemon::clock;
-use crate::daemon::inbox::{ClientId, Inbox, Message, Request};
+use crate::daemon::inbox::{ClientId, Delivery, Inbox, Message, Request};
 use crate::daemon::readiness::Readiness;
 use crate::daemon::waker::Waker;
 use crate::keymap::Reading;
@@ -18,9 +19,9 @@ use keycap_protocol::{
     self as protocol, PROTOCOL_VERSION, ProfileName, Status, ToClient, ToDaemon,
 };
 use rustix::event::{PollFd, PollFlags, poll};
-use rustix::fd::{AsFd, OwnedFd};
+use rustix::fd::OwnedFd;
 use rustix::io::Errno;
-use rustix::net::{AddressFamily, SendFlags, SocketAddrUnix, SocketFlags, SocketType};
+use rustix::net::{AddressFamily, SocketAddrUnix, SocketFlags, SocketType};
 use rustix::time::Timespec;
 use std::io;
 use std::os::unix::fs::PermissionsExt;
@@ -92,27 +93,6 @@ pub(crate) fn spawn(
     Ok(SocketHandle { tx, waker })
 }
 
-/// What a connection has shown itself to be. The seat owner's connections steer keycap; a
-/// connection that only reads the keymap or registers actions is an observer for the seat even
-/// when it runs as the seat owner's uid, so its coming and going never resets the reader.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Role {
-    /// Nothing sent yet; counted with the owners, as every connection was before.
-    Undecided,
-    /// Has sent a request to the reader.
-    Steering,
-    /// Has used only the keymap messages.
-    KeymapOnly,
-}
-
-struct Client {
-    id: ClientId,
-    fd: OwnedFd,
-    /// The uid the kernel recorded when the client connected.
-    uid: u32,
-    role: Role,
-}
-
 struct Server {
     listener: OwnedFd,
     waker: Waker,
@@ -136,13 +116,6 @@ struct Ready {
     listener: Readiness,
     wake: Readiness,
     clients: Vec<ClientId>,
-}
-
-/// Whether a client is still connected after something was done to it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Link {
-    Alive,
-    Gone,
 }
 
 /// The reader dropped its end of the channel: the daemon is shutting down.
@@ -262,6 +235,7 @@ impl Server {
             fd,
             uid,
             role: Role::Undecided,
+            pace: Pace::starting(clock::now()),
         };
         self.next_client += 1;
         let hello = ToClient::Hello {
@@ -358,8 +332,11 @@ impl Server {
                     }
                     Err(message) => match request_of(peer, id, message) {
                         Ok(request) => {
-                            self.set_role(id, Role::Steering);
-                            self.inbox.send(Message::Request(request));
+                            if let Some(refusal) = self.steer(id, request) {
+                                self.complain(uid, refusal);
+                                link = Link::Gone;
+                                break;
+                            }
                         }
                         Err(refusal) => {
                             self.complain(uid, refusal.what());
@@ -377,6 +354,23 @@ impl Server {
         }
         if link == Link::Gone {
             self.clients.retain(|c| c.id != id);
+        }
+    }
+
+    /// Passes `request` of client `id` to the reader. Why the client is to be dropped, if it
+    /// is: it asks faster than the limit, or the reader's inbox is full of its requests.
+    fn steer(&mut self, id: ClientId, request: Request) -> Option<&'static str> {
+        let now = clock::now();
+        let client = self.clients.iter_mut().find(|c| c.id == id)?;
+        let (pace, pacing) = client.pace.note(now);
+        client.pace = pace;
+        if pacing == Pacing::Over {
+            return Some("sends requests too fast; dropped");
+        }
+        client.role = Role::Steering;
+        match self.inbox.try_send(Message::Request(request)) {
+            Delivery::Queued | Delivery::ReaderGone => None,
+            Delivery::Full => Some("too many requests waiting; dropped"),
         }
     }
 
@@ -427,17 +421,5 @@ impl Server {
             )));
             self.inbox.send(Message::Request(Request::ClearUserConfig));
         }
-    }
-}
-
-/// Sends one message; `Gone` if the client is. A full queue drops the message only.
-fn send(client: &Client, message: &ToClient) -> Link {
-    match rustix::net::send(
-        client.fd.as_fd(),
-        &protocol::encode(message),
-        SendFlags::DONTWAIT | SendFlags::NOSIGNAL,
-    ) {
-        Ok(_) | Err(Errno::AGAIN) => Link::Alive,
-        Err(_) => Link::Gone,
     }
 }

@@ -18,6 +18,9 @@ pub(super) const MAX_CLIENTS_PER_UID: usize = 8;
 pub(super) const MAX_KEYMAP_CLIENTS_PER_UID: usize = 64;
 /// Messages read from one client in one pass over the sockets; the rest wait for the next.
 pub(super) const MESSAGES_PER_PASS: usize = 16;
+/// Requests to the reader (focus, settings, resume) one client may make in a second. A desktop
+/// sends a focus change per window switch, a handful a second at the most.
+pub(super) const STEERING_PER_SECOND: u32 = 100;
 /// Connections accepted in one pass.
 pub(super) const ACCEPTS_PER_PASS: usize = 16;
 /// How long the listener is left alone after `accept` failed for a reason that will not clear
@@ -98,6 +101,45 @@ pub(super) fn accept_failure(e: Errno) -> AcceptFailure {
     }
 }
 
+/// Whether a client is within its request rate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Pacing {
+    Within,
+    Over,
+}
+
+/// The requests a client made in the second since its window opened.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Pace {
+    opened: Mono,
+    count: u32,
+}
+
+impl Pace {
+    pub(super) fn starting(now: Mono) -> Self {
+        Self {
+            opened: now,
+            count: 0,
+        }
+    }
+
+    /// Counts one request at `now`. A second after the window opened, a new one opens.
+    pub(super) fn note(self, now: Mono) -> (Self, Pacing) {
+        let window = if now.since(self.opened) >= Duration::from_secs(1) {
+            Self::starting(now)
+        } else {
+            self
+        };
+        let count = window.count.saturating_add(1);
+        let pacing = if count > STEERING_PER_SECOND {
+            Pacing::Over
+        } else {
+            Pacing::Within
+        };
+        (Self { count, ..window }, pacing)
+    }
+}
+
 /// Whether the listener is polled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Intake {
@@ -167,6 +209,20 @@ mod tests {
         total: 4,
         per_uid: 2,
     };
+
+    #[test]
+    fn a_client_may_make_a_hundred_requests_a_second_and_gets_a_new_second() {
+        let t0 = Mono::default();
+        let (last, pacing) = (0..STEERING_PER_SECOND)
+            .fold((Pace::starting(t0), Pacing::Within), |(pace, _), _| {
+                pace.note(t0.after(Duration::from_millis(10)))
+            });
+        assert_eq!(pacing, Pacing::Within, "the hundredth is still inside");
+        let (over, pacing) = last.note(t0.after(Duration::from_millis(20)));
+        assert_eq!(pacing, Pacing::Over, "the hundred and first is not");
+        let (_, pacing) = over.note(t0.after(Duration::from_secs(1)));
+        assert_eq!(pacing, Pacing::Within, "a new second opens a new window");
+    }
 
     #[test]
     fn admission_table() {

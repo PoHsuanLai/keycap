@@ -7,7 +7,7 @@ use crate::ConfigLayer;
 use keycap_protocol::{ProfileName, Warning};
 use rustix::fd::BorrowedFd;
 use std::io;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 
 /// Which socket client a request came from, so the reply finds it again.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -36,18 +36,46 @@ pub(crate) enum Message {
     Hotplug(Hotplug),
 }
 
+/// Messages the reader may have waiting. It takes them all each pass, so only a reader that is
+/// stuck, or a client asking faster than the socket thread's rate limit allows, fills this.
+const INBOX_MAX: usize = 256;
+
+/// Whether a message was queued for the reader.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Delivery {
+    Queued,
+    /// The inbox is full: the message was not queued.
+    Full,
+    /// The reader has gone: the daemon is ending.
+    ReaderGone,
+}
+
 /// The sending end, cloned into every thread that talks to the reader.
 #[derive(Debug, Clone)]
 pub(crate) struct Inbox {
-    tx: Sender<Message>,
+    tx: SyncSender<Message>,
     waker: Waker,
 }
 
 impl Inbox {
-    /// Queues `message` and wakes the reader. A reader that has gone is the daemon ending.
+    /// Queues `message` and wakes the reader, waiting for room if the inbox is full: for the
+    /// watcher threads, whose messages must not be lost and which have nothing else to do.
     pub(crate) fn send(&self, message: Message) {
         if self.tx.send(message).is_ok() {
             self.waker.wake();
+        }
+    }
+
+    /// Queues `message` and wakes the reader, or says why not without waiting: for the socket
+    /// thread, which must keep serving every other client.
+    pub(crate) fn try_send(&self, message: Message) -> Delivery {
+        match self.tx.try_send(message) {
+            Ok(()) => {
+                self.waker.wake();
+                Delivery::Queued
+            }
+            Err(TrySendError::Full(_)) => Delivery::Full,
+            Err(TrySendError::Disconnected(_)) => Delivery::ReaderGone,
         }
     }
 }
@@ -75,7 +103,7 @@ impl Mailbox {
 /// A connected inbox and mailbox.
 pub(crate) fn mailbox() -> io::Result<(Inbox, Mailbox)> {
     let waker = Waker::new()?;
-    let (tx, rx) = mpsc::channel();
+    let (tx, rx) = mpsc::sync_channel(INBOX_MAX);
     Ok((
         Inbox {
             tx,
@@ -118,6 +146,31 @@ mod tests {
             ]
         );
         assert_eq!(mailbox.drain(), []);
+    }
+
+    #[test]
+    fn a_full_inbox_refuses_without_waiting_and_makes_room_when_drained() {
+        let (inbox, mailbox) = mailbox().unwrap();
+        for _ in 0..INBOX_MAX {
+            assert_eq!(
+                inbox.try_send(Message::Request(Request::Resume)),
+                Delivery::Queued
+            );
+        }
+        assert_eq!(
+            inbox.try_send(Message::Request(Request::Resume)),
+            Delivery::Full
+        );
+        assert_eq!(mailbox.drain().len(), INBOX_MAX);
+        assert_eq!(
+            inbox.try_send(Message::Request(Request::Resume)),
+            Delivery::Queued
+        );
+        drop(mailbox);
+        assert_eq!(
+            inbox.try_send(Message::Request(Request::Resume)),
+            Delivery::ReaderGone
+        );
     }
 
     #[test]
