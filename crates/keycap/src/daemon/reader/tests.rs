@@ -19,7 +19,7 @@ pub(super) struct Rig {
     _dir: Scratch,
     inbox: Inbox,
     pub(super) reader: Reader<RecordingEmitter>,
-    client: OwnedFd,
+    pub(super) client: OwnedFd,
 }
 
 impl Rig {
@@ -97,7 +97,7 @@ impl Rig {
     }
 
     /// The `(code, value)` pairs of the last batch written, sync excluded.
-    fn last_write(&self) -> Vec<(u16, i32)> {
+    pub(super) fn last_write(&self) -> Vec<(u16, i32)> {
         self.reader
             .emitter
             .batches

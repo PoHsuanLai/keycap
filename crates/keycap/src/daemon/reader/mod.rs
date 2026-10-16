@@ -8,6 +8,8 @@ mod caps_tests;
 mod grabs;
 mod handle;
 #[cfg(test)]
+mod limit_tests;
+#[cfg(test)]
 mod pointer_tests;
 mod run;
 #[cfg(test)]

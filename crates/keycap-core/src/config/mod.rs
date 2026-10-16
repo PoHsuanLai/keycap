@@ -6,6 +6,7 @@ mod defaults;
 mod devices;
 mod layer;
 mod lenient;
+mod limits;
 mod parse;
 mod resolve;
 #[cfg(test)]
@@ -14,4 +15,5 @@ mod tests;
 pub use defaults::{DEFAULTS_TOML, builtin};
 pub use devices::{LayoutOverrides, layout_overrides};
 pub use layer::{ConfigLayer, ConfigSource};
+pub use limits::{MAX_INHERIT_STEPS, MAX_PROFILES, MAX_RULES_PER_PROFILE, Oversize, within_limits};
 pub use resolve::resolve;

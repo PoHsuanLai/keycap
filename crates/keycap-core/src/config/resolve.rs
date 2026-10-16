@@ -41,18 +41,18 @@ pub fn resolve(layers: &[ConfigLayer]) -> (Profiles, Vec<Warning>) {
         .map(|name| acyclic_parent(name, &declared, &default_name))
         .unzip();
 
-    let flat = |name: &ProfileName| flatten(name, &merged, &parents);
-    let named = parents.keys().map(|n| (n.clone(), flat(n))).collect();
+    let mut flat = flatten_all(&merged, &parents);
+    let default_profile = flat.remove(&default_name).unwrap_or_else(empty_profile);
     let warnings = default_warning
         .into_iter()
         .chain(unknown.into_iter().flatten())
         .chain(cyclic.into_iter().flatten())
         .collect();
-    (Profiles::new(flat(&default_name), named), warnings)
+    (Profiles::new(default_profile, flat), warnings)
 }
 
 /// `acc` with `layer`'s profiles laid over what it already holds.
-fn merge(
+pub(super) fn merge(
     mut acc: BTreeMap<ProfileName, ProfileLayer>,
     layer: &ConfigLayer,
 ) -> BTreeMap<ProfileName, ProfileLayer> {
@@ -114,23 +114,38 @@ fn acyclic_parent(
     }
 }
 
-/// `name` over its parent over its grandparent, down to `default`.
-fn flatten(
-    name: &ProfileName,
+fn empty_profile() -> Profile {
+    Profile {
+        modmap: ModMap::IDENTITY,
+        rules: BTreeMap::new(),
+    }
+}
+
+/// Every profile flattened: `name` over its parent over its grandparent, down to `default`.
+/// Each profile is built once, from its parent's already flattened profile, so the work is one
+/// copy of the parent's rules per profile rather than one per step of every lineage. Parents
+/// are done before their children by taking the profiles shallowest first.
+fn flatten_all(
     merged: &BTreeMap<ProfileName, ProfileLayer>,
     parents: &BTreeMap<ProfileName, ProfileName>,
-) -> Profile {
-    let lineage: Vec<&ProfileLayer> = successors(Some(name), |n| parents.get(*n))
-        .filter_map(|n| merged.get(n))
-        .collect();
-    lineage.into_iter().rev().fold(
-        Profile {
-            modmap: ModMap::IDENTITY,
-            rules: BTreeMap::new(),
-        },
-        |below, layer| Profile {
-            modmap: layer.modmap.onto(below.modmap),
-            rules: below.rules.into_iter().chain(layer.rules.clone()).collect(),
-        },
-    )
+) -> BTreeMap<ProfileName, Profile> {
+    let depth = |name: &ProfileName| successors(Some(name), |n| parents.get(*n)).count();
+    let mut order: Vec<&ProfileName> = merged.keys().collect();
+    order.sort_by_key(|name| depth(name));
+    order.into_iter().fold(BTreeMap::new(), |mut done, name| {
+        let below = parents
+            .get(name)
+            .and_then(|parent| done.get(parent))
+            .cloned()
+            .unwrap_or_else(empty_profile);
+        let flat = match merged.get(name) {
+            Some(layer) => Profile {
+                modmap: layer.modmap.onto(below.modmap),
+                rules: below.rules.into_iter().chain(layer.rules.clone()).collect(),
+            },
+            None => below,
+        };
+        done.insert(name.clone(), flat);
+        done
+    })
 }

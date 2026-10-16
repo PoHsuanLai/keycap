@@ -23,7 +23,8 @@ mod time;
 
 pub use backoff::Backoff;
 pub use config::{
-    ConfigLayer, ConfigSource, DEFAULTS_TOML, LayoutOverrides, builtin, layout_overrides, resolve,
+    ConfigLayer, ConfigSource, DEFAULTS_TOML, LayoutOverrides, MAX_INHERIT_STEPS, MAX_PROFILES,
+    MAX_RULES_PER_PROFILE, Oversize, builtin, layout_overrides, resolve, within_limits,
 };
 pub use escape::{Escape, EscapeChord};
 pub use event::{DeviceId, Edge, Logical, OutEvent, Physical};

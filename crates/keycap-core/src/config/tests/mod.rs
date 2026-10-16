@@ -5,6 +5,7 @@ mod dist;
 mod inheritance;
 mod layering;
 mod lenient;
+mod limits;
 
 use keycap_protocol::{ProfileName, Warning};
 

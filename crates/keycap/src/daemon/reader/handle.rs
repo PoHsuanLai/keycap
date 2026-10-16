@@ -33,8 +33,13 @@ impl<E: Emitter> Reader<E> {
             Message::Request(request) => self.request(request),
             Message::System(layer, warnings) => {
                 warnings.iter().for_each(log_warning);
-                self.layers = self.layers.with_system(layer);
-                self.reload();
+                match self.layers.with_system(layer).accepted() {
+                    Ok(layers) => {
+                        self.layers = layers;
+                        self.reload();
+                    }
+                    Err(over) => log_warning(&over.warning()),
+                }
             }
             Message::Hotplug(Hotplug::Appeared(path)) => {
                 let found = scan(&self.roots.sys, &self.roots.dev, &self.roots.allow)
@@ -63,8 +68,17 @@ impl<E: Emitter> Reader<E> {
             }
             Request::UserConfig { client, toml } => {
                 let (layer, mut warnings) = parse_user(&toml);
-                self.layers = self.layers.with_user(layer);
-                warnings.extend(self.reload());
+                match self.layers.with_user(layer).accepted() {
+                    Ok(layers) => {
+                        self.layers = layers;
+                        warnings.extend(self.reload());
+                    }
+                    Err(over) => {
+                        let refusal = over.warning();
+                        log_warning(&refusal);
+                        warnings.push(refusal);
+                    }
+                }
                 self.socket.send(ToSocket::Warnings { client, warnings });
             }
             Request::ClearUserConfig => {

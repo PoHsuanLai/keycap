@@ -1,7 +1,8 @@
 //! The config layers in force, and the profiles they resolve to.
 
 use crate::{
-    ConfigLayer, ConfigSource, LayoutOverrides, Profiles, builtin, layout_overrides, resolve,
+    ConfigLayer, ConfigSource, LayoutOverrides, Oversize, Profiles, builtin, layout_overrides,
+    resolve, within_limits,
 };
 use keycap_protocol::Warning;
 
@@ -38,6 +39,14 @@ impl Layers {
             user,
             ..self.clone()
         }
+    }
+
+    /// These layers if they fold into a configuration within the size limits, else why not.
+    /// A layer arriving from outside is taken only through this, so an oversize one leaves the
+    /// settings in force as they were.
+    pub(crate) fn accepted(self) -> Result<Self, Oversize> {
+        within_limits(&[self.builtin.clone(), self.system.clone(), self.user.clone()])?;
+        Ok(self)
     }
 
     /// The seat owner has gone: their settings no longer apply.
@@ -104,6 +113,21 @@ mod tests {
             "user over system"
         );
         assert_eq!(command_of(&with_user.without_user()), crate::OutMod::Alt);
+    }
+
+    #[test]
+    fn an_oversize_layer_is_not_accepted_and_the_layers_in_force_are_untouched() {
+        let in_force = Layers::builtin_only();
+        let huge: String = (0..=crate::MAX_PROFILES)
+            .map(|i| format!("[profile.p{i}]\n"))
+            .collect();
+        let (layer, warnings) = parse_user(&huge);
+        assert_eq!(warnings, []);
+        let refused = in_force.with_user(layer).accepted();
+        assert!(matches!(refused, Err(Oversize::Profiles { .. })));
+        assert_eq!(in_force, Layers::builtin_only());
+        let small = parse_user("[profile.work]\nmodmap = { command = \"alt\" }\n").0;
+        assert!(in_force.with_user(small).accepted().is_ok());
     }
 
     #[test]
