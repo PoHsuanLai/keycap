@@ -190,3 +190,31 @@ fn only_the_system_file_chooses_whether_lists_are_allowed() {
         assert_eq!(keys(&warnings), problems, "{case}");
     }
 }
+
+#[test]
+fn the_machine_files_choice_wins_and_the_vendors_stands_when_it_has_none() {
+    let allow = "[user_layer]\nsequences = \"allow\"\n";
+    let refuse = "[user_layer]\nsequences = \"refuse\"\n";
+    let cases: &[(&str, &str, &str, Sequences)] = &[
+        ("neither says", "", "", Sequences::Refuse),
+        ("only the vendor allows", "", allow, Sequences::Allow),
+        ("the machine allows", allow, "", Sequences::Allow),
+        (
+            "the machine refuses over the vendor",
+            refuse,
+            allow,
+            Sequences::Refuse,
+        ),
+        (
+            "the machine allows over the vendor",
+            allow,
+            refuse,
+            Sequences::Allow,
+        ),
+    ];
+    for &(case, machine, vendor, want) in cases {
+        let (machine, _) = ConfigLayer::parse(machine, ConfigSource::System);
+        let (vendor, _) = ConfigLayer::parse(vendor, ConfigSource::Vendor);
+        assert_eq!(machine.sequences_over(&vendor), want, "{case}");
+    }
+}

@@ -8,6 +8,7 @@ use crate::daemon::discover::{Hotplug, Identity, scan};
 use crate::daemon::events::{InputEvent, encode};
 use crate::daemon::inbox::{Message, Request};
 use crate::daemon::leds;
+use crate::daemon::settings::Layers;
 use crate::daemon::socket::ToSocket;
 use crate::daemon::uinput::Emitter;
 use crate::{DeviceId, RemapInput, RemapOut};
@@ -31,15 +32,15 @@ impl<E: Emitter> Reader<E> {
     pub(super) fn handle(&mut self, message: Message) {
         match message {
             Message::Request(request) => self.request(request),
+            Message::Vendor(layer, warnings) => {
+                warnings.iter().for_each(log_warning);
+                let changed = self.layers.with_vendor(layer);
+                self.take_up(changed);
+            }
             Message::System(layer, warnings) => {
                 warnings.iter().for_each(log_warning);
-                match self.layers.with_system(layer).accepted() {
-                    Ok(layers) => {
-                        self.layers = layers;
-                        self.reload();
-                    }
-                    Err(over) => log_warning(&over.warning()),
-                }
+                let changed = self.layers.with_system(layer);
+                self.take_up(changed);
             }
             Message::Hotplug(Hotplug::Appeared(path)) => {
                 self.looking = std::mem::take(&mut self.looking).appeared(path);
@@ -53,6 +54,18 @@ impl<E: Emitter> Reader<E> {
                     self.lose(id);
                 }
             }
+        }
+    }
+
+    /// Puts `changed` in force if it folds within the limits; otherwise says why not and leaves
+    /// the layers as they were.
+    fn take_up(&mut self, changed: Layers) {
+        match changed.accepted() {
+            Ok(layers) => {
+                self.layers = layers;
+                self.reload();
+            }
+            Err(over) => log_warning(&over.warning()),
         }
     }
 

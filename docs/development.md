@@ -10,7 +10,7 @@ evdev (grabbed) ──► GrabGate ──► Remapper::step ──► Vec<RemapO
    └─ touchpad axes of a combo device ──────────────────────────┴─────────────────► "<name> (keycap pointer)"
 socket ── Focus ───────────────────► Remapper::step (profile)    └─ ReleaseGrabs ─► ungrab, Paused
 socket ── UserConfig ──► config merge ──► Profiles
-/etc/keycap/keycap.toml ── inotify ──► config merge
+/usr/lib/keycap/keycap.toml, /etc/keycap/keycap.toml ── inotify ──► config merge
 ```
 
 Two threads and no async runtime: the **reader** (poll over every grabbed fd, an eventfd and
@@ -159,6 +159,7 @@ The daemon reads its environment once, at start:
 | `NOTIFY_SOCKET`, `WATCHDOG_USEC` | systemd's `sd_notify` socket and watchdog interval | none |
 | `RUNTIME_DIRECTORY` | where `keycap.sock` lives | `/run/keycap` |
 | `KEYCAP_CONFIG_DIR` | where `keycap.toml` is read | `/etc/keycap` |
+| `KEYCAP_VENDOR_DIR` | where the desktop's shipped `keycap.toml` is read, under the one above; tests point it at a folder that is not there | `/usr/lib/keycap` |
 | `KEYCAP_SEAT_FILE` | logind's seat state file, for the active uid | `/run/systemd/seats/seat0` |
 | `KEYCAP_SYS_INPUT`, `KEYCAP_DEV_INPUT` | where nodes are listed and opened | `/sys/class/input`, `/dev/input` |
 | `KEYCAP_UDEV_DATA` | where udev's database says which seat a node is on | `/run/udev/data` |

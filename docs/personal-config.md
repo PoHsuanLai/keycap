@@ -1,6 +1,7 @@
 # Personal configuration
 
-Your own choices go in a TOML file. keycap reads two places, the later overriding the earlier:
+Your own choices go in a TOML file. keycap reads two places you edit, the later overriding the earlier. A third, `/usr/lib/keycap/keycap.toml`, is
+what a desktop ships and lies under both; leave it alone and override it here.
 
 1. `/etc/keycap/keycap.toml`: machine-wide, applies at the login screen too, reloaded when
    saved. **Every session on the machine shares it**, whichever desktop it runs. On Plasma,
@@ -98,7 +99,9 @@ swapped, the layout is wrong.
 ## Caps Lock as the input-method switch
 
 As on macOS: Caps Lock switches input source (fcitx5's trigger is Ctrl+Space), Shift+Caps Lock is
-the real Caps Lock. Put this in the machine file, `/etc/keycap/keycap.toml`: a desktop that forwards
+the real Caps Lock. A desktop that ships keycap's defaults (sill does) already has the first rule below in
+`/usr/lib/keycap/keycap.toml`. To change it, or on a machine without that desktop, put this in the
+machine file, `/etc/keycap/keycap.toml`: a desktop that forwards
 your own file has it cut down on arrival, and a rule on Caps Lock alone, with no modifier held, is
 left out of it (keycap says so). `shift+capslock` is fine in either file.
 

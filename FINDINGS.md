@@ -48,6 +48,21 @@ inherited, but one the desktop restates for a chord (sill's Cmd+H to Ctrl+H) mus
 - *chordkit's own readers (INPUT-12).* chordkit-kde and chordkit-gnome still read their files
   unbounded (interface ask: use a bounded regular-file read like `keycap_client::read_text`).
 
+**Vendor layer (2026-10-17).** The desktop's Caps Lock rule must ship with every install and release, but a release
+must never write the administrator's `/etc/keycap`. So keycap has a fourth layer, `/usr/lib/keycap/keycap.toml`
+(`$KEYCAP_VENDOR_DIR`), between the built-in mapping and the machine file: built-in < vendor < machine < person.
+It has the machine file's trust (lone-key rules allowed; `[user_layer] sequences` counts when the machine file sets
+none). Because a package writes it, it is read only when root-only, through peephole's own check
+(`dirs_trust` + `weaker` over `RealProc`): file and every folder above root's, not group/other-writable, a link
+never passes. Otherwise it is no layer and one warning ("installed defaults: not used, because someone other than
+an administrator could change this file or a folder it is in"). A missing file or folder is no layer and no
+warning; a missing folder is not watched, so a vendor file installed while the daemon runs is read at its next
+start. Tests: `config/tests.rs` (trust
+table, missing), `daemon/settings.rs` (order, bare key, `sequences`). Open: the machine file `/etc/keycap/keycap.toml`
+has no ownership check at all in keycap today (it is read with `read_to_string`); the trust the user-layer boundary
+leans on is only that `/etc` is root's. Giving it the same peephole check is a one-line change in `config::system`
+but would make an administrator's group-writable file stop applying, so it waits for an owner decision.
+
 **Who steers (INPUT-03, INPUT-14, wave 2).** The owner decided keycap gets a light identity check and a reduced
 user layer, and no root identity service and no new capability. The shell is the one connection obeyed for
 `Focus` and `UserConfig`: its process sits in `sill.service` (or, for the Plasma feed,
@@ -56,15 +71,15 @@ pin is `Reopened`, and any pin is accepted). Every other process of the active u
 watches the keymap, registers actions and may `Resume`; any other request drops its connection. This is a speed bump,
 not a boundary: a same-user program can move itself into a control group of that name. The boundary is the
 reduced user layer: no rule on a key with no modifier held (Shift counts as one), no `then` that is a list
-or empty, at most 256 rules (the layer is refused whole), unless the root-owned `/etc/keycap/keycap.toml` says
+or empty, at most 256 rules (the layer is refused whole), unless the root-owned `/etc/keycap/keycap.toml` (or the vendor file, see "Vendor layer") says
 `[user_layer] sequences = "allow"` (that lifts the list ban only; the machine file itself is unrestricted).
 A `Focus` naming a profile nobody defined writes as `default` and is logged once, as before: that is the
 refusal for (d), because a defined profile is the only thing a name can select.
 - *Owner decision: `Resume` is allowed from `Plain`* (the active user's own processes, not `Observer`): it
   only re-grabs and types nothing, and `keycap resume` from a terminal is the escape-chord recovery.
 - *Consequence: user rules on a bare key move to the machine file.* sill's shipped layer has `capslock` ->
-  `ctrl+space`; it is now reported and left out until the desktop's packaging puts it in `/etc/keycap/keycap.toml`
-  (interface ask to sill/desktop). `shift+capslock` stays: Shift counts as a modifier, so `shift+e` -> anything
+  `ctrl+space`; it is reported and left out of the user layer, and the desktop's packaging now ships it in the vendor file
+  `/usr/lib/keycap/keycap.toml` (see "Vendor layer"). `shift+capslock` stays: Shift counts as a modifier, so `shift+e` -> anything
   also stays. Requiring a non-Shift role would close that; it breaks `shift+capslock` too.
 - *The user layer is cut when it arrives.* Changing `[user_layer]` in the machine file later does not re-cut a
   layer already in force; the shell sends its file again on change or restart.

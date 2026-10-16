@@ -66,6 +66,8 @@ impl Daemon {
             )
             .env("KEYCAP_STEERING", "seat-user")
             .env("KEYCAP_CONFIG_DIR", &config_dir)
+            // A folder that is not there is no vendor layer, so a run never reads the machine's.
+            .env("KEYCAP_VENDOR_DIR", spec.scratch.join("no-vendor-config"))
             .env("KEYCAP_SEAT_FILE", &seat_file)
             .env("RUNTIME_DIRECTORY", &runtime_dir)
             .env("NOTIFY_SOCKET", &notify_path)

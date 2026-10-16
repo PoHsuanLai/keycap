@@ -31,6 +31,8 @@ pub(crate) enum Request {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Message {
     Request(Request),
+    /// The vendor config file was re-read.
+    Vendor(ConfigLayer, Vec<Warning>),
     /// The system config file was re-read.
     System(ConfigLayer, Vec<Warning>),
     Hotplug(Hotplug),

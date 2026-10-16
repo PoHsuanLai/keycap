@@ -1,5 +1,5 @@
-//! Live reload: a directory watch with a 30 ms debounce, for the system file and, through
-//! `spawn_reading`, for any other file in the directory (the keymap).
+//! Live reload: a directory watch with a 30 ms debounce, for the system file, the vendor file
+//! and, through `spawn_reading`, for any other file in the directory (the keymap).
 //!
 //! The directory, not the file, is watched: editors and atomic writers replace the inode by
 //! rename, which a file watch would lose.
@@ -12,6 +12,7 @@ use keycap_protocol::Warning;
 use notify::{RecursiveMode, Watcher};
 
 use super::load::{FILE_NAME, system};
+use super::vendor::vendor;
 use keycap_core::ConfigLayer;
 
 /// Quiet time after the last change before the file is re-read.
@@ -29,6 +30,15 @@ pub fn spawn(
     out: Sender<(ConfigLayer, Vec<Warning>)>,
 ) -> notify::Result<notify::RecommendedWatcher> {
     spawn_reading(dir, FILE_NAME, out, system)
+}
+
+/// Like `spawn` for the vendor file in `dir`, which must exist: a folder that is not there has
+/// nothing to watch and is no layer.
+pub fn spawn_vendor(
+    dir: PathBuf,
+    out: Sender<(ConfigLayer, Vec<Warning>)>,
+) -> notify::Result<notify::RecommendedWatcher> {
+    spawn_reading(dir, FILE_NAME, out, vendor)
 }
 
 /// Like `spawn` for the file `name` in `dir`: `read` is called on the directory after each

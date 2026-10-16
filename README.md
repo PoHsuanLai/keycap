@@ -93,12 +93,15 @@ forward a config" below.
 
 ## Configuration
 
-Settings are read in three layers, each overriding the one before:
+Settings are read in four layers, each overriding the one before:
 
 1. The built-in defaults.
-2. `/etc/keycap/keycap.toml`, for the whole machine; changes apply as soon as you save. **It is
-   shared by every session on the machine**, the login screen included.
-3. `~/.config/keycap/keycap.toml`, if your desktop forwards it. This layer is per user and per
+2. `/usr/lib/keycap/keycap.toml`, what a desktop ships (sill ships its Caps Lock rule here). Only
+   root may own it; keycap ignores it, and says so in the log, if anyone else could change it.
+   Leave it alone: put your changes in the next file, which overrides it.
+3. `/etc/keycap/keycap.toml`, for the whole machine; changes apply as soon as you save. **It is
+   shared by every session on the machine**, the login screen included. It is the administrator's.
+4. `~/.config/keycap/keycap.toml`, if your desktop forwards it. This layer is per user and per
    session: only the desktop you are logged into reads the file and sends it to keycap, and keycap
    drops it again when that session ends.
 
@@ -124,7 +127,7 @@ gets Cmd+Space as Super+Space, Cmd+Shift+3/4/5 as Print and Cmd+H as plain Ctrl+
 session on the same machine keeps the Plasma rules. sill ships that layer in its
 `dist/keycap/keycap.toml` and its installer copies it to `~/.config/keycap/keycap.toml` when you
 have none. keycap cuts that layer down when it arrives: a rule on a key with no modifier held (Caps Lock alone, say), and
-a rule that types several keys or none, belong in the machine file; so do more than 256 rules. The machine file can
+a rule that types several keys or none, belong in the machine files (the one in `/usr/lib/keycap` or the one in `/etc/keycap`); so do more than 256 rules. The machine file can
 let the second kind through for the user layer with `[user_layer]` / `sequences = "allow"`. `replay` takes one file, so to see both layers at once, copy the rules of the user file
 after those of the machine file in a scratch file (later rules win). To check without touching a
 keyboard:

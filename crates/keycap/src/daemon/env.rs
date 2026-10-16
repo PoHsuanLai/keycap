@@ -10,6 +10,8 @@ use std::time::Duration;
 
 /// Where the config directory is when nothing overrides it.
 const DEFAULT_CONFIG_DIR: &str = keycap_protocol::CONFIG_DIR;
+/// Where the vendor config directory is when nothing overrides it.
+const DEFAULT_VENDOR_DIR: &str = crate::config::VENDOR_DIR;
 /// Where the socket directory is when systemd does not provide one.
 const DEFAULT_RUNTIME_DIR: &str = "/run/keycap";
 
@@ -24,6 +26,9 @@ pub(crate) struct Env {
     pub notify_socket: Option<String>,
     /// `$KEYCAP_CONFIG_DIR`, else `/etc/keycap`.
     pub config_dir: PathBuf,
+    /// `$KEYCAP_VENDOR_DIR`, else `/usr/lib/keycap`: where the desktop's shipped defaults are
+    /// read from, under the file in the config directory. Injectable so tests need no root.
+    pub vendor_dir: PathBuf,
     /// `$RUNTIME_DIRECTORY` (systemd's), else `/run/keycap`: where the socket lives.
     pub runtime_dir: PathBuf,
     /// `$KEYCAP_SEAT_FILE`, else logind's `seat0` state file: where the active user is read
@@ -60,6 +65,7 @@ impl Env {
         Self {
             notify_socket: non_empty("NOTIFY_SOCKET"),
             config_dir: dir("KEYCAP_CONFIG_DIR", DEFAULT_CONFIG_DIR),
+            vendor_dir: dir("KEYCAP_VENDOR_DIR", DEFAULT_VENDOR_DIR),
             runtime_dir: dir("RUNTIME_DIRECTORY", DEFAULT_RUNTIME_DIR),
             seat_file: dir("KEYCAP_SEAT_FILE", DEFAULT_SEAT_FILE),
             sys_input: dir("KEYCAP_SYS_INPUT", SYS_INPUT),
@@ -97,6 +103,7 @@ mod tests {
         let env = Env::from_lookup(lookup(&[
             ("NOTIFY_SOCKET", "/run/systemd/notify"),
             ("KEYCAP_CONFIG_DIR", "/tmp/cfg"),
+            ("KEYCAP_VENDOR_DIR", "/tmp/vendor"),
             ("RUNTIME_DIRECTORY", "/run/keycap"),
             (PROBE_PERMIT, "1"),
             ("WATCHDOG_USEC", "1000000"),
@@ -110,6 +117,7 @@ mod tests {
         ]));
         assert_eq!(env.notify_socket.as_deref(), Some("/run/systemd/notify"));
         assert_eq!(env.config_dir, PathBuf::from("/tmp/cfg"));
+        assert_eq!(env.vendor_dir, PathBuf::from("/tmp/vendor"));
         assert_eq!(env.runtime_dir, PathBuf::from("/run/keycap"));
         assert_eq!(env.seat_file, PathBuf::from("/tmp/seat0"));
         assert_eq!(env.sys_input, PathBuf::from("/tmp/sys"));
@@ -130,6 +138,7 @@ mod tests {
         let env = Env::from_lookup(lookup(&[]));
         assert_eq!(env.notify_socket, None);
         assert_eq!(env.config_dir, PathBuf::from("/etc/keycap"));
+        assert_eq!(env.vendor_dir, PathBuf::from("/usr/lib/keycap"));
         assert_eq!(env.runtime_dir, PathBuf::from("/run/keycap"));
         assert_eq!(env.seat_file, PathBuf::from("/run/systemd/seats/seat0"));
         assert_eq!(env.sys_input, PathBuf::from("/sys/class/input"));

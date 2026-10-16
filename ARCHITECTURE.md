@@ -33,7 +33,7 @@ never name `daemon` modules.
 |---|---|---|---|
 | L0 vocabulary | `key` (`Key`, `Modifier`, `Side`, `Mods`), `event` (`Edge`, `KeyEvent`, `Physical`, `Logical`), `time` (`Mono`) | newtypes | `pub` |
 | L1 layout | `layout` (`Layout`, `role`) | pure tables | `pub` |
-| L2 profiles | `profile` (`Trigger`, `Stroke`, `RuleAction`, `Profile`, `Profiles`), `config` (`ConfigLayer`, `resolve`, `lenient`, `load`, `watch`) | pure except `load` and `watch` (file reads, inotify) | `pub` |
+| L2 profiles | `profile` (`Trigger`, `Stroke`, `RuleAction`, `Profile`, `Profiles`), `config` (`ConfigLayer`, `resolve`, `lenient`, `load`, `vendor`, `watch`) | pure except `load`, `vendor` and `watch` (file reads, inotify) | `pub` |
 | L2 keymap | `keymap` (`Reading`, `read`, `settle`, `spawn`): the person's keymap file in chordkit's overrides format, judged against the last good copy by the pure `settle`; its watch is `config::watch::spawn_reading` | pure except `read` and `spawn` | `pub(crate)` |
 | L3 state | `held`, `gate`, `escape`, `backoff` | pure state machines | `pub` |
 | L4 remapper | `remap` (`Remapper::step`, `RemapInput`, `RemapOut`) | pure composition: `Remapper::step(self, RemapInput, &Profiles) -> (Self, Vec<RemapOut>)` | `pub` |
@@ -61,13 +61,13 @@ Daemon modules:
 | `daemon/grabber.rs` | `Grabber` (grab, ungrab) and `Nodes` (open, close, keys down): the real evdev fds, and `FakeGrabber` in tests |
 | `daemon/reader/` | the main thread: one `poll` over the nodes and the inbox's eventfd, timeout from the next gate or backoff deadline and half the watchdog; the reader waits on nothing but `poll`. `grabs.rs` acts on a device just grabbed or let go (LEDs, twin), `twins.rs` holds the twins and the pure `grab_change`, `unknown.rs` the pure `Unknowns` set behind the once-per-generation log of an undefined focused profile (64 names), `rescan.rs` the pure `Lookout` (which nodes to look at after a pass's hotplug messages: a burst is one scan) and `SafetyLook` (everything again every 30 s) |
 | `daemon/route.rs`, `daemon/evdev.rs` | one read of a node (drained until `EAGAIN`) to `RemapInput`s and pointer frames, pure `route` over the drained events |
-| `daemon/inbox.rs`, `daemon/waker.rs` | what other threads send the reader (`Request`, system config, hotplug) over one bounded channel (256; the socket thread uses `try_send` and drops a client whose request does not fit) and one eventfd |
+| `daemon/inbox.rs`, `daemon/waker.rs` | what other threads send the reader (`Request`, vendor config, system config, hotplug) over one bounded channel (256; the socket thread uses `try_send` and drops a client whose request does not fit) and one eventfd |
 | `daemon/socket/shelf.rs` | pure: the keymap in force, who watches it and what each connection registered (`Shelf::call`, `read`, `retain`); returns replies, the server sends them |
 | `daemon/socket/` | the socket thread; `seat.rs` holds the pure parts (`active_uid`, `peer_of(uid, active, Claim)` to `Peer { Steering, Plain, Observer }`, `request_of`, `Seat::look` for owner leaving or user switch); `shell.rs` which connection is the shell (below); `limits.rs` the bounds against hostile clients (32 clients, the seat owner exempt from that cap; 8 per uid; 16 messages per client per pass; 100 requests a second per client; listener paused 1 s on EMFILE; complaints logged once a minute per uid); `peer.rs` a connection (role, pace, what it missed) and `send` (`Sent`: a full queue or an oversize message never closes it); `inbound.rs` the bounded read |
-| `daemon/settings.rs` | the config layers in force (built-in, system, user) and their resolution; `Layers::offered` reads the user layer as the socket delivers it and cuts it down (`ConfigLayer::confined`) |
+| `daemon/settings.rs` | the config layers in force (built-in, vendor, system, user, in that order) and their resolution; `Layers::offered` reads the user layer as the socket delivers it and cuts it down (`ConfigLayer::confined`) |
 | `daemon/service.rs` | `run(env)`: the virtual keyboard, socket thread, watchers, then the reader |
 | `daemon/sdnotify.rs` | `READY=1`, `WATCHDOG=1` and `STATUS=` to `$NOTIFY_SOCKET` |
-| `daemon/env.rs` | `Env::from_lookup`: environment, every directory and file the daemon touches (config, runtime, seat file, `/sys/class/input`, `/dev/input`, the device service's socket), the `KEYCAP_GRAB_VIRTUAL` allowance and the `KEYCAP_STEERING` choice (both for tests; only the unit's environment sets them) |
+| `daemon/env.rs` | `Env::from_lookup`: environment, every directory and file the daemon touches (config, vendor config, runtime, seat file, `/sys/class/input`, `/dev/input`, the device service's socket), the `KEYCAP_GRAB_VIRTUAL` allowance and the `KEYCAP_STEERING` choice (both for tests; only the unit's environment sets them) |
 | `daemon/clock.rs` | the one `CLOCK_MONOTONIC` read |
 
 `lib.rs` holds declarations and root re-exports only.
@@ -286,9 +286,21 @@ pub struct Profiles { default: Profile, named: BTreeMap<ProfileName, Profile> }
 
 Inheritance is resolved at load: a `Profile` is always flat, and `Profiles::resolve(&name)`
 returns `default` for an unknown name (the daemon logs `profile "<name>" is not defined; using default` once per name until the config changes). `defaults.toml` is compiled
-in with `include_str!`; `/etc/keycap/keycap.toml` and the seat owner's `UserConfig` have the
-same shape and override per profile, per modmap field and per trigger, except that the user layer is cut down
-as the section "Who steers" says (the machine file has no such limits).
+in with `include_str!`; the vendor file `/usr/lib/keycap/keycap.toml`, the machine file
+`/etc/keycap/keycap.toml` and the seat owner's `UserConfig` have the same shape and override, in that order,
+per profile, per modmap field and per trigger, except that the user layer is cut down as the section
+"Who steers" says (the vendor and machine files have no such limits).
+
+**The vendor file.** A desktop ships its defaults in `/usr/lib/keycap/keycap.toml`, laid over the built-in
+mapping and under `/etc/keycap/keycap.toml`, which stays the administrator's (systemd's `/usr/lib` and `/etc`
+split). The vendor file has the machine file's trust, so it may hold a rule on a key pressed alone (the
+desktop's Caps Lock rule), and its `[user_layer] sequences` counts when the machine file sets none. Because a
+package or release writes it, not an administrator, `config::vendor` reads it only when it is root-only:
+`peephole`'s check, the file and every folder above it root's and not writable by group or others, and a link
+never passes. A file that fails is no layer and one plain-words warning in the log; a missing file or folder is
+no layer and no warning. The folder (`$KEYCAP_VENDOR_DIR`, else `/usr/lib/keycap`) is watched as the config
+folder is, and a missing folder is not watched, so a vendor file installed after the daemon started is read at
+its next start. The machine file gets no such ownership check yet (see FINDINGS, "Vendor layer").
 
 ```toml
 [profile.default]
@@ -315,7 +327,7 @@ and ignored. Shift is the one name both vocabularies share.
 Config is read in layers. `ConfigLayer::parse(text, ConfigSource)` turns one file into a `ConfigLayer` (per profile:
 optional `inherits`, the modmap fields it sets, its rules by trigger) and warnings keyed by dotted
 path (`profile.terminal.rules[2].when`), each problem prefixed with the `ConfigSource` (`Builtin`,
-`System`, `User`). A bad value costs its own key, or its own rule for a bad `when` or `then`;
+`Vendor`, `System`, `User`). A bad value costs its own key, or its own rule for a bad `when` or `then`;
 unknown keys are ignored; text that is not TOML is an empty layer and one warning (key `file`).
 Within one file a trigger given twice keeps the later rule.
 

@@ -10,11 +10,12 @@ use super::settings::Layers;
 use super::socket::{self, SeatFile, SocketHandle, ToSocket, bind, socket_path};
 use super::source::Source;
 use super::uinput::Device;
+use crate::ConfigLayer;
 use crate::CoreStatus;
-use crate::config;
+use crate::config::{self, system, vendor};
 use crate::keymap::{self, Reading};
-use crate::system;
-use std::path::Path;
+use keycap_protocol::Warning;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -136,31 +137,67 @@ fn watch_keymap(dir: &Path, socket: &SocketHandle) -> Option<notify::Recommended
     watcher.map_err(|e| eprintln!("keycap: {e}")).ok()
 }
 
-/// The built-in and system layers, and the watch that re-reads the system file. A config
+/// How a config file is watched: the function that starts the watch and the message its
+/// re-reads arrive as.
+type Watch = fn(PathBuf, mpsc::Sender<Reload>) -> notify::Result<notify::RecommendedWatcher>;
+
+/// A re-read config layer and what was wrong with it.
+type Reload = (ConfigLayer, Vec<Warning>);
+
+/// Watches `dir` with `start` and hands every settled re-read to the reader as `wrap` says. A
 /// directory that cannot be watched costs live reload only: the keyboard still works.
-fn load_config(env: &Env, inbox: &Inbox) -> (Layers, Option<notify::RecommendedWatcher>) {
-    let (layer, warnings) = system(&env.config_dir);
-    warnings
-        .iter()
-        .for_each(|w| eprintln!("keycap: config: {}: {}", w.key, w.problem));
-    let layers = Layers::builtin_only().with_system(layer);
+fn watch_layer(
+    dir: &Path,
+    inbox: &Inbox,
+    start: Watch,
+    wrap: fn(Reload) -> Message,
+) -> Option<notify::RecommendedWatcher> {
     let (tx, rx) = mpsc::channel();
-    let watcher = config::spawn(env.config_dir.clone(), tx)
-        .map_err(|e| format!("not watching {}: {e}", env.config_dir.display()))
+    let watcher = start(dir.to_path_buf(), tx)
+        .map_err(|e| format!("not watching {}: {e}", dir.display()))
         .and_then(|watcher| {
-            forward("config", rx, inbox.clone(), |(layer, warnings)| {
-                Message::System(layer, warnings)
-            })
-            .map(|()| watcher)
-            .map_err(|e| format!("config thread: {e}"))
+            forward("config", rx, inbox.clone(), wrap)
+                .map(|()| watcher)
+                .map_err(|e| format!("config thread: {e}"))
         });
-    match watcher {
-        Ok(watcher) => (layers, Some(watcher)),
-        Err(e) => {
-            eprintln!("keycap: {e}");
-            (layers, None)
-        }
-    }
+    watcher.map_err(|e| eprintln!("keycap: {e}")).ok()
+}
+
+/// The built-in, vendor and system layers, and the watches that re-read the vendor and system
+/// files. A folder that is not there has no layer to watch (the vendor folder on a machine
+/// without the desktop). The watchers must be kept alive.
+fn load_config(env: &Env, inbox: &Inbox) -> (Layers, Vec<notify::RecommendedWatcher>) {
+    let (vendor_layer, vendor_warnings) = vendor(&env.vendor_dir);
+    let (layer, warnings) = system(&env.config_dir);
+    vendor_warnings
+        .iter()
+        .chain(&warnings)
+        .for_each(|w| eprintln!("keycap: config: {}: {}", w.key, w.problem));
+    let layers = Layers::builtin_only()
+        .with_vendor(vendor_layer)
+        .with_system(layer);
+    let vendor_watch = env
+        .vendor_dir
+        .is_dir()
+        .then(|| {
+            watch_layer(
+                &env.vendor_dir,
+                inbox,
+                config::spawn_vendor,
+                |(layer, warnings)| Message::Vendor(layer, warnings),
+            )
+        })
+        .flatten();
+    let system_watch = watch_layer(
+        &env.config_dir,
+        inbox,
+        config::spawn,
+        |(layer, warnings)| Message::System(layer, warnings),
+    );
+    (
+        layers,
+        vendor_watch.into_iter().chain(system_watch).collect(),
+    )
 }
 
 #[cfg(test)]

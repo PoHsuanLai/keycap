@@ -14,6 +14,8 @@ use crate::role::OutMod;
 pub enum ConfigSource {
     /// `defaults.toml`, compiled in.
     Builtin,
+    /// `/usr/lib/keycap/keycap.toml`: what the desktop ships, under the machine file.
+    Vendor,
     /// `/etc/keycap/keycap.toml`.
     System,
     /// The seat owner's settings, sent over the socket.
@@ -24,6 +26,7 @@ impl fmt::Display for ConfigSource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             ConfigSource::Builtin => "built-in defaults",
+            ConfigSource::Vendor => "installed defaults",
             ConfigSource::System => "system config",
             ConfigSource::User => "user config",
         })
@@ -36,7 +39,7 @@ impl fmt::Display for ConfigSource {
 pub struct ConfigLayer {
     pub(super) profiles: BTreeMap<ProfileName, ProfileLayer>,
     pub(super) devices: Vec<super::devices::DeviceEntry>,
-    /// `[user_layer] sequences`: only the system file's value is ever consulted.
+    /// `[user_layer] sequences`: only the machine-wide files' values are ever consulted.
     pub(super) sequences: Option<Sequences>,
 }
 
@@ -45,6 +48,12 @@ impl ConfigLayer {
     /// rules that type several keys or none. Unset means [`Sequences::Refuse`].
     pub fn sequences(&self) -> Sequences {
         self.sequences.unwrap_or_default()
+    }
+
+    /// Like [`ConfigLayer::sequences`] for this layer taken as the machine file laid over the
+    /// vendor file `vendor`: this layer's choice if it has one, else the vendor's.
+    pub fn sequences_over(&self, vendor: &ConfigLayer) -> Sequences {
+        self.sequences.or(vendor.sequences).unwrap_or_default()
     }
 }
 
