@@ -7,10 +7,10 @@ use keycap_protocol::{
 use rustix::fd::OwnedFd;
 use rustix::io::Errno;
 use rustix::net::sockopt::{Timeout, set_socket_timeout};
-use rustix::net::{AddressFamily, RecvFlags, SendFlags, SocketAddrUnix, SocketType};
+use rustix::net::{AddressFamily, RecvFlags, SendFlags, SocketAddrUnix, SocketFlags, SocketType};
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Why talking to keycap failed, in plain words.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,6 +57,34 @@ impl fmt::Display for ClientError {
 
 impl std::error::Error for ClientError {}
 
+/// How long to wait before asking a daemon with a full queue again.
+const CONNECT_RETRY: Duration = Duration::from_millis(5);
+
+/// Connects, asking again while the daemon's queue of waiting connections is full, for at most
+/// `wait`.
+fn connect_by(fd: &OwnedFd, addr: &SocketAddrUnix, wait: Duration) -> Result<(), Errno> {
+    let started = Instant::now();
+    loop {
+        match rustix::net::connect(fd, addr) {
+            Err(Errno::AGAIN | Errno::INTR) if started.elapsed() < wait => {
+                std::thread::sleep(CONNECT_RETRY);
+            }
+            result => return result,
+        }
+    }
+}
+
+/// Makes `fd` block again, with a send timeout of `wait` so a daemon that stops reading cannot
+/// hold a program for ever either.
+fn blocking(fd: &OwnedFd, wait: Duration) -> Result<(), ClientError> {
+    let io = |what: &str, e: Errno| ClientError::Io(format!("{what}: {e}"));
+    let flags = rustix::fs::fcntl_getfl(fd).map_err(|e| io("reading the socket flags", e))?;
+    rustix::fs::fcntl_setfl(fd, flags.difference(rustix::fs::OFlags::NONBLOCK))
+        .map_err(|e| io("making the socket blocking", e))?;
+    set_socket_timeout(fd, Timeout::Send, Some(wait.max(Duration::from_millis(1))))
+        .map_err(|e| io("setting the send timeout", e))
+}
+
 /// What waiting for the next packet came to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Heard {
@@ -78,13 +106,26 @@ pub struct Connection {
 impl Connection {
     /// Connects to the socket at `path` and reads `Hello`, waiting at most `wait` for it.
     pub fn open(path: &Path, wait: Duration) -> Result<Connection, ClientError> {
-        let fd = rustix::net::socket(AddressFamily::UNIX, SocketType::SEQPACKET, None)
-            .map_err(|e| ClientError::Io(format!("creating a socket: {e}")))?;
+        // CLOEXEC: a program that starts shells or other programs must not hand them this
+        // connection, or the daemon would go on counting it after the program has exited.
+        // Non-blocking only while connecting: a daemon whose queue of waiting connections is
+        // full must not hold a program's start-up for ever.
+        let fd = rustix::net::socket_with(
+            AddressFamily::UNIX,
+            SocketType::SEQPACKET,
+            SocketFlags::CLOEXEC | SocketFlags::NONBLOCK,
+            None,
+        )
+        .map_err(|e| ClientError::Io(format!("creating a socket: {e}")))?;
         let addr = SocketAddrUnix::new(path).map_err(|e| ClientError::Io(e.to_string()))?;
-        rustix::net::connect(&fd, &addr).map_err(|e| ClientError::Connect {
+        connect_by(&fd, &addr, wait).map_err(|e| ClientError::Connect {
             path: path.to_path_buf(),
-            reason: e.to_string(),
+            reason: match e {
+                Errno::AGAIN => "it did not answer in time".to_owned(),
+                other => other.to_string(),
+            },
         })?;
+        blocking(&fd, wait)?;
         let connection = Connection {
             fd,
             version: 0,
@@ -207,6 +248,38 @@ mod tests {
         assert!(
             err.to_string().contains("/nonexistent/keycap.sock"),
             "{err}"
+        );
+    }
+
+    #[test]
+    fn the_connection_is_not_inherited_by_programs_the_caller_starts() {
+        let daemon = FakeDaemon::start(PROTOCOL_VERSION, KeymapState::default());
+        let connection = Connection::open(&daemon.socket, Duration::from_secs(2)).expect("opens");
+        let flags = rustix::io::fcntl_getfd(&connection.fd).expect("flags");
+        assert!(flags.contains(rustix::io::FdFlags::CLOEXEC));
+    }
+
+    #[test]
+    fn a_daemon_with_a_full_queue_is_given_up_on_at_the_deadline() {
+        let dir = crate::testing::Scratch::new("full-queue");
+        let path = dir.path().join("keycap.sock");
+        let listener =
+            rustix::net::socket(AddressFamily::UNIX, SocketType::SEQPACKET, None).expect("socket");
+        rustix::net::bind(&listener, &SocketAddrUnix::new(&path).expect("addr")).expect("bind");
+        rustix::net::listen(&listener, 0).expect("listen");
+        // Nobody accepts: the first connection fills the queue, the second has to wait.
+        let first =
+            rustix::net::socket(AddressFamily::UNIX, SocketType::SEQPACKET, None).expect("socket");
+        rustix::net::connect(&first, &SocketAddrUnix::new(&path).expect("addr")).expect("queued");
+
+        let started = std::time::Instant::now();
+        let err = Connection::open(&path, Duration::from_millis(200))
+            .map(|_| ())
+            .expect_err("the queue is full");
+        assert!(matches!(err, ClientError::Connect { .. }), "{err}");
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "it gave up in time"
         );
     }
 }
