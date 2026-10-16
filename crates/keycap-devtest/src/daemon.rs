@@ -58,7 +58,12 @@ impl Daemon {
         let child = Command::new(spec.binary)
             .env_clear()
             .env("KEYCAP_GRAB_VIRTUAL", spec.grab_virtual)
-            // The harness's client is not in the shell's unit, so it steers as the seat's user.
+            // No device service here: the harness makes devices on /dev/uinput itself, and its
+            // client is not in the shell's unit, so it steers as the seat's user.
+            .env(
+                "KEYCAP_DEVICE_SERVICE",
+                spec.scratch.join("no-device-service"),
+            )
             .env("KEYCAP_STEERING", "seat-user")
             .env("KEYCAP_CONFIG_DIR", &config_dir)
             .env("KEYCAP_SEAT_FILE", &seat_file)

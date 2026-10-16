@@ -7,12 +7,14 @@ mod script;
 mod status;
 
 use crate::DEFAULTS_TOML;
+use crate::daemon::source::Source;
 use crate::daemon::uinput::{self, UINPUT};
 use crate::daemon::{self, Env};
 use keycap_protocol::Keyboard;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use turnstile_client::DeviceSource;
 
 const USAGE: &str = "usage:
   keycap                       run the daemon
@@ -103,13 +105,7 @@ fn execute(command: Command, env: Env) -> Result<(), String> {
     match command {
         Command::Daemon => daemon::run(env),
         Command::PrintConfig => print_out(DEFAULTS_TOML),
-        Command::CheckUinput => uinput::probe(env.probe, Path::new(UINPUT))
-            .map_err(|e| e.to_string())
-            .and_then(|()| {
-                print_out(&format!(
-                    "keycap: {UINPUT} can be opened; this user can create devices\n"
-                ))
-            }),
+        Command::CheckUinput => check_devices(&env),
         Command::Status => status::read_status(&env.runtime_dir).and_then(|s| {
             let lamp =
                 |keyboard: &Keyboard| caps_lamp::lamp_of(&env.sys_input, &keyboard.info.path);
@@ -124,6 +120,25 @@ fn execute(command: Command, env: Env) -> Result<(), String> {
             .and_then(|()| print_out("\n")),
         Command::Help => print_out(&format!("{USAGE}\n")),
         Command::Version => print_out(&format!("keycap {}\n", env!("CARGO_PKG_VERSION"))),
+    }
+}
+
+/// Can devices be had: from the device service when its socket is there (connecting creates
+/// nothing), else from the node (opening and closing it creates nothing either).
+fn check_devices(env: &Env) -> Result<(), String> {
+    match Source::detect(&env.device_service) {
+        Source::Service(broker) => broker
+            .open()
+            .map(drop)
+            .map_err(|e| e.to_string())
+            .and_then(|()| print_out("keycap: the device service answers; devices can be made\n")),
+        _ => uinput::probe(env.probe, Path::new(UINPUT))
+            .map_err(|e| e.to_string())
+            .and_then(|()| {
+                print_out(&format!(
+                    "keycap: {UINPUT} can be opened; this user can create devices\n"
+                ))
+            }),
     }
 }
 

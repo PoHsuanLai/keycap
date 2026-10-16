@@ -1,8 +1,9 @@
 //! The one virtual device keycap writes: "keycap keyboard".
 //!
-//! The unit tests use `RecordingEmitter` and never create this device. The events it writes
-//! are the pure `events` functions, which are tested; device creation, recreation and the read
-//! of LED changes run only in the gated device tests (`tests/devices`).
+//! The unit tests use `RecordingEmitter`, or a `Device` over the stand-in for the device service
+//! (`source.rs`); neither touches `/dev/uinput`. The events it writes are the pure `events`
+//! functions, which are tested; creation on the node itself, and the read of LED changes, run
+//! only in the gated device tests (`tests/devices`).
 
 use super::evdev::drain;
 use super::events::{
@@ -11,6 +12,7 @@ use super::events::{
 };
 use super::leds::{LED_CODES, LedEvent, decode as decode_led};
 use super::pointer::PointerCaps;
+use super::source::Source;
 use super::sys::{self, BitSet, InputId, UinputSetup};
 use super::twin::PointerTwin;
 use rustix::fd::{AsFd, BorrowedFd, OwnedFd};
@@ -83,20 +85,29 @@ pub(crate) trait Emitter {
 #[derive(Debug)]
 pub(crate) struct Device {
     fd: OwnedFd,
+    /// Where it came from, so a replacement is asked for the same way.
+    source: Source,
 }
 
 impl Device {
-    /// Creates "keycap keyboard".
-    pub(crate) fn create() -> Result<Self, OutputError> {
-        let unavailable = |e: io::Error| OutputError::Unavailable(e.to_string());
-        let fd = open(Path::new(UINPUT)).map_err(unavailable)?;
-        register(&fd).map_err(unavailable)?;
-        // From here the device exists, so `Drop` destroys it should anything below fail.
-        let device = Self { fd };
-        sys::dev_setup(&device.fd, setup()).map_err(unavailable)?;
-        sys::dev_create(&device.fd).map_err(unavailable)?;
-        Ok(device)
+    /// Gets "keycap keyboard" from `source`.
+    pub(crate) fn create(source: &Source) -> Result<Self, OutputError> {
+        Ok(Self {
+            fd: source.keyboard()?,
+            source: source.clone(),
+        })
     }
+}
+
+/// Opens `/dev/uinput` and makes "keycap keyboard" on it. Closing the descriptor destroys the
+/// device, so a failure part way leaves nothing behind.
+pub(super) fn direct_keyboard() -> Result<OwnedFd, OutputError> {
+    let unavailable = |e: io::Error| OutputError::Unavailable(e.to_string());
+    let fd = open(Path::new(UINPUT)).map_err(unavailable)?;
+    register(&fd).map_err(unavailable)?;
+    sys::dev_setup(&fd, setup()).map_err(unavailable)?;
+    sys::dev_create(&fd).map_err(unavailable)?;
+    Ok(fd)
 }
 
 impl Drop for Device {
@@ -123,7 +134,7 @@ impl Emitter for Device {
     type Twin = PointerTwin;
 
     fn twin(&mut self, caps: &PointerCaps) -> Result<PointerTwin, OutputError> {
-        PointerTwin::create(caps)
+        PointerTwin::create(&self.source, caps)
     }
 
     fn write(&mut self, events: &[InputEvent]) -> Result<(), OutputError> {
@@ -134,7 +145,7 @@ impl Emitter for Device {
         // The old device goes first so the desktop never sees two keycap keyboards. Should the
         // new one fail, the old fd stays, its writes fail, and the caller decides what next.
         let _ = sys::dev_destroy(&self.fd);
-        *self = Device::create()?;
+        *self = Device::create(&self.source.clone())?;
         Ok(())
     }
 

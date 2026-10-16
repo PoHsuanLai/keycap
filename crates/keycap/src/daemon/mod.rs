@@ -23,6 +23,7 @@ pub(crate) mod sdnotify;
 pub(crate) mod service;
 pub(crate) mod settings;
 pub(crate) mod socket;
+pub(crate) mod source;
 pub(crate) mod sys;
 pub(crate) mod twin;
 pub(crate) mod uinput;

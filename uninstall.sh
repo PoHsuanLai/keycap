@@ -54,6 +54,7 @@ fi
 say "2. files"
 remove_file "$BINDIR/keycap"
 remove_file "$UNITDIR/keycap.service"
+remove_file "$UNITDIR/keycap.service.d/10-uinput.conf"
 remove_file "$UDEVDIR/70-keycap.rules"
 remove_file "$POLKITDIR/keycap.polkit.rules"
 remove_file "$MODULESDIR/keycap.conf"

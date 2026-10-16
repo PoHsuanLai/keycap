@@ -8,6 +8,7 @@ use super::reader::{Reader, Roots, Wiring};
 use super::sdnotify::Notifier;
 use super::settings::Layers;
 use super::socket::{self, SeatFile, SocketHandle, ToSocket, bind, socket_path};
+use super::source::Source;
 use super::uinput::Device;
 use crate::CoreStatus;
 use crate::config;
@@ -21,7 +22,9 @@ use std::time::Duration;
 pub(crate) fn run(env: Env) -> Result<(), String> {
     let notifier =
         Notifier::new(env.notify_socket.as_deref()).map_err(|e| format!("notify socket: {e}"))?;
-    let emitter = create_output()?;
+    let source = Source::detect(&env.device_service);
+    eprintln!("keycap: virtual devices from {}", source.describe());
+    let emitter = create_output(&source)?;
     let (inbox, mailbox) = mailbox().map_err(|e| format!("inbox: {e}"))?;
     let path = socket_path(&env.runtime_dir);
     let listener = bind(&path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -78,19 +81,20 @@ fn patience(waited: Duration) -> Patience {
     }
 }
 
-/// Creates the virtual keyboard, retrying for a few seconds while `/dev/uinput` is not yet
-/// accessible (early boot, a udev rule not yet applied). Nothing can be remapped without it,
-/// so past that the daemon exits non-zero and systemd's restart policy takes over.
-fn create_output() -> Result<Device, String> {
+/// Creates the virtual keyboard, retrying for a few seconds while its source is not yet
+/// accessible (early boot, a udev rule not yet applied, the device service not yet started).
+/// Nothing can be remapped without it, so past that the daemon exits non-zero and systemd's
+/// restart policy takes over.
+fn create_output(source: &Source) -> Result<Device, String> {
     let mut waited = Duration::ZERO;
     loop {
-        match Device::create() {
+        match Device::create(source) {
             Ok(device) => return Ok(device),
             Err(e) => match patience(waited) {
                 Patience::GiveUp => {
                     return Err(format!(
-                        "no virtual keyboard after {}s: {e} (is the uinput module loaded and \
-                         /dev/uinput writable by the keycap unit?)",
+                        "no virtual keyboard after {}s: {e} (is the device service running, or \
+                         the uinput module loaded and /dev/uinput writable by the keycap unit?)",
                         waited.as_secs()
                     ));
                 }

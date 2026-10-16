@@ -60,6 +60,9 @@ fn set_bits(mask: &Bits, max: u16) -> Vec<u16> {
 /// cloned from the source device.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PointerCaps {
+    /// The original device's name, which the device service takes and adds the twin's suffix to.
+    pub label: String,
+    /// The twin's own name, for the log and for opening `/dev/uinput` directly.
     pub name: String,
     pub vendor: u16,
     pub product: u16,
@@ -81,6 +84,7 @@ impl PointerCaps {
         abs: Vec<AbsAxis>,
     ) -> Self {
         Self {
+            label: original.to_owned(),
             name: twin_name(original),
             vendor,
             product,

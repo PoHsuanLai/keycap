@@ -86,6 +86,7 @@ ls -l /dev/uinput
 step "install the binary, the unit, the udev rule and the polkit rule, as install.sh prints"
 sudo install -Dm755 "$TARGET/keycap" /usr/local/bin/keycap
 sudo install -Dm644 "$HERE/dist/keycap.service" /etc/systemd/system/keycap.service
+sudo install -Dm644 "$HERE/dist/keycap.uinput.conf" /etc/systemd/system/keycap.service.d/10-uinput.conf
 sudo install -Dm644 "$HERE/dist/70-keycap.rules" /etc/udev/rules.d/70-keycap.rules
 sudo install -Dm644 "$HERE/dist/keycap.polkit.rules" /etc/polkit-1/rules.d/keycap.polkit.rules
 sudo install -d "$DROPIN_DIR"

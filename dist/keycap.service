@@ -4,10 +4,20 @@
 # without keys: the watchdog kills it after two seconds and the kernel drops the grab with the
 # process. After five failures in 30 s the unit stays failed and the desktop says so. It is
 # ordered before the display manager, so startup is bounded: keycap gives up on a missing
-# /dev/uinput after five seconds, well inside TimeoutStartSec.
+# device source after five seconds, well inside TimeoutStartSec.
+#
+# Where the virtual devices come from. On the desktop the root service `turnstile` owns
+# /dev/uinput and hands keycap each finished device over its socket, so this unit has no access
+# to the node: there is no DeviceAllow=/dev/uinput below. A standalone install (any other
+# desktop, no turnstile) has no such service, so keycap opens /dev/uinput itself; install.sh
+# adds that one line as the drop-in keycap.service.d/10-uinput.conf (dist/keycap.uinput.conf)
+# next to this file, together with the udev rule that lets the `input` group write the node.
+# `After=` and `Wants=` of a unit that is not installed are ignored by systemd.
 [Unit]
 Description=keycap: Mac keyboard mapping
 Documentation=https://github.com/PoHsuanLai/keycap
+Wants=turnstile.socket
+After=turnstile.socket
 Before=display-manager.service systemd-user-sessions.service
 StartLimitIntervalSec=30
 StartLimitBurst=5
@@ -49,15 +59,17 @@ ProtectKernelLogs=yes
 ProtectControlGroups=yes
 ProtectClock=yes
 ProtectHostname=yes
-# keycap reads nothing in /proc: hide other processes and everything but the pid entries.
-ProtectProc=invisible
+# keycap reads one thing of another process: which control group a client of its socket runs in
+# (/proc/<pid>/cgroup), to tell the desktop's shell from any other program of the person. That
+# needs the other users' processes visible, so not `invisible`; `pid` still hides everything in
+# /proc that is not a process entry.
+ProtectProc=default
 ProcSubset=pid
 RestrictSUIDSGID=yes
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 DevicePolicy=closed
 DeviceAllow=char-input rw
-DeviceAllow=/dev/uinput rw
 
 [Install]
 WantedBy=multi-user.target

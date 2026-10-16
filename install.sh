@@ -86,6 +86,9 @@ install_file 755 "$BIN" "$BINDIR/keycap"
 BIN_CHANGED=$CHANGED; CHANGED=no
 install_file 644 "$RENDERED/keycap.service" "$UNITDIR/keycap.service"
 UNIT_CHANGED=$CHANGED; CHANGED=no
+install_file 644 "$HERE/dist/keycap.uinput.conf" "$UNITDIR/keycap.service.d/10-uinput.conf"
+if [[ "$CHANGED" == yes ]]; then UNIT_CHANGED=yes; fi
+CHANGED=no
 install_file 644 "$HERE/dist/70-keycap.rules" "$UDEVDIR/70-keycap.rules"
 UDEV_CHANGED=$CHANGED; CHANGED=no
 install_file 644 "$HERE/dist/keycap.polkit.rules" "$POLKITDIR/keycap.polkit.rules"
@@ -128,7 +131,8 @@ if [[ "$BIN_CHANGED$UNIT_CHANGED$UDEV_CHANGED$MODULES_CHANGED" == *yes* ]] || ! 
   # Only labelled systems have restorecon; the installed files are named, not the staged ones.
   if command -v restorecon >/dev/null 2>&1; then
     system_step "give the installed files their default SELinux labels" \
-      restorecon -F "$BINDIR/keycap" "$UNITDIR/keycap.service" "$UDEVDIR/70-keycap.rules" \
+      restorecon -F "$BINDIR/keycap" "$UNITDIR/keycap.service" \
+        "$UNITDIR/keycap.service.d/10-uinput.conf" "$UDEVDIR/70-keycap.rules" \
         "$POLKITDIR/keycap.polkit.rules" "$MODULESDIR/keycap.conf"
   fi
   system_step "reload systemd" systemctl daemon-reload

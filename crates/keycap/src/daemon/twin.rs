@@ -1,12 +1,13 @@
 //! The "keycap pointer" virtual device: the pointer half of one combo device, created when the
 //! device is grabbed and destroyed when it is let go.
 //!
-//! Compiled and reviewed but deliberately unexercised by the test suite, like the keyboard
-//! device: every test uses `RecordingEmitter`'s twins. What it registers is the pure
-//! `PointerCaps`, which is tested.
+//! The unit tests reach it through the stand-in for the device service (`source.rs`) and
+//! `RecordingEmitter`'s twins; only `direct_pointer`, which opens `/dev/uinput`, is left to the
+//! gated device tests. What it registers is the pure `PointerCaps`, which is tested.
 
 use super::events::{EV_ABS, EV_KEY, EV_REL, EV_SYN, InputEvent};
 use super::pointer::PointerCaps;
+use super::source::Source;
 use super::sys::{self, BitSet, InputId, UinputSetup};
 use super::uinput::{BUS_VIRTUAL, OutputError, PointerSink, UINPUT, open, write_batch};
 use rustix::fd::OwnedFd;
@@ -20,17 +21,23 @@ pub(crate) struct PointerTwin {
 }
 
 impl PointerTwin {
-    /// Creates a device with `caps`.
-    pub(crate) fn create(caps: &PointerCaps) -> Result<Self, OutputError> {
-        let unavailable = |e: io::Error| OutputError::Unavailable(e.to_string());
-        let fd = open(Path::new(UINPUT)).map_err(unavailable)?;
-        // From here the device may exist, so `Drop` destroys it should anything below fail.
-        let twin = Self { fd };
-        register(&twin.fd, caps).map_err(unavailable)?;
-        sys::dev_setup(&twin.fd, setup(caps)).map_err(unavailable)?;
-        sys::dev_create(&twin.fd).map_err(unavailable)?;
-        Ok(twin)
+    /// Gets a device with `caps` from `source`.
+    pub(crate) fn create(source: &Source, caps: &PointerCaps) -> Result<Self, OutputError> {
+        Ok(Self {
+            fd: source.pointer(caps)?,
+        })
     }
+}
+
+/// Opens `/dev/uinput` and makes the pointer `caps` describe on it. Closing the descriptor
+/// destroys the device, so a failure part way leaves nothing behind.
+pub(super) fn direct_pointer(caps: &PointerCaps) -> Result<OwnedFd, OutputError> {
+    let unavailable = |e: io::Error| OutputError::Unavailable(e.to_string());
+    let fd = open(Path::new(UINPUT)).map_err(unavailable)?;
+    register(&fd, caps).map_err(unavailable)?;
+    sys::dev_setup(&fd, setup(caps)).map_err(unavailable)?;
+    sys::dev_create(&fd).map_err(unavailable)?;
+    Ok(fd)
 }
 
 impl Drop for PointerTwin {

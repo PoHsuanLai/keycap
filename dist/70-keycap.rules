@@ -1,4 +1,8 @@
-# keycap: the `input` group may write /dev/uinput, so the daemon (DynamicUser with
-# SupplementaryGroups=input) can create its virtual keyboard. Install to /etc/udev/rules.d.
-# `static_node` gives the node its mode before the uinput module is loaded.
+# keycap, standalone install: the `input` group may write /dev/uinput, so the daemon
+# (DynamicUser with SupplementaryGroups=input) can create its virtual keyboard. Install to
+# /etc/udev/rules.d. `static_node` gives the node its mode before the uinput module is loaded.
+#
+# The desktop's copy of this file has no uinput line: there the root service `turnstile` owns the
+# node (root only) and hands keycap each device, and the desktop's packaging places the rule for
+# it. Only a machine without that service needs the line below.
 KERNEL=="uinput", SUBSYSTEM=="misc", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"
