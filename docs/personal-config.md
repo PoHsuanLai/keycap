@@ -11,6 +11,19 @@ Your own choices go in a TOML file. keycap reads two places, the later overridin
    exists only while that desktop's session runs. The Plasma focus feed does not forward it, so
    on Plasma use the machine file. sill does forward it.
 
+## What your own file may say
+
+When a desktop forwards `~/.config/keycap/keycap.toml`, keycap keeps from it only rules that need a
+modifier held (Command, Option, Control or Shift) and write one stroke, and at most 256 of them; the rest
+are reported and left out. A rule on a key pressed alone, a rule whose `then` is a list of strokes or
+`[]`, and a long list all belong in `/etc/keycap/keycap.toml`, which is not cut down. An administrator who
+wants lists in your file too sets this in the machine file:
+
+```toml
+[user_layer]
+sequences = "allow"
+```
+
 ## Which file, when you use more than one desktop
 
 Put a rule in the machine file when every session should have it: a keyboard's `[[device]]`
@@ -85,7 +98,9 @@ swapped, the layout is wrong.
 ## Caps Lock as the input-method switch
 
 As on macOS: Caps Lock switches input source (fcitx5's trigger is Ctrl+Space), Shift+Caps Lock is
-the real Caps Lock.
+the real Caps Lock. Put this in the machine file, `/etc/keycap/keycap.toml`: a desktop that forwards
+your own file has it cut down on arrival, and a rule on Caps Lock alone, with no modifier held, is
+left out of it (keycap says so). `shift+capslock` is fine in either file.
 
 ```toml
 [profile.default]

@@ -12,15 +12,14 @@ how to add the next thing. keycap depends on no desktop crate and runs on any Li
 |---|---|---|---|
 | `keycap-protocol` | `crates/keycap-protocol` | the socket contract: `ToDaemon`, `ToClient`, `Status`, `ProfileName`, `KeymapState`, `Registration`, `PROTOCOL_VERSION`, `MIN_PROTOCOL_VERSION`, `MAX_PACKET`, `encode`, `decode`, `compat` | `serde`, `serde_json`, `thiserror` |
 | `keycap-client` | `crates/keycap-client` | a program's end of the socket (`Connection`) and `KeycapSource`, this desktop's `chordkit::KeymapSource`: chordkit's conventions for our desktop, `system_bindings`, the machine's keymap from the daemon or its file, then the person's own file; `register` | `keycap-protocol`, `chordkit`, `rustix` (std has no `SOCK_SEQPACKET`) |
-| `keycap` | `crates/keycap` | the pure core and the daemon; library plus the `keycap` binary | `keycap-core`, `keycap-protocol`, `keycap-client`, `chordkit`, `serde`, `serde_json`, `thiserror`, `notify`, `rustix` |
+| `keycap` | `crates/keycap` | the pure core and the daemon; library plus the `keycap` binary | `keycap-core`, `keycap-protocol`, `keycap-client`, `chordkit`, `serde`, `serde_json`, `thiserror`, `notify`, `rustix`, `peephole`, `peephole-core` (who is on the socket), `turnstile-client`, `turnstile-wire` (the root device service's client and vocabulary); the four are git deps by tag, `peephole` with its `fake` feature only as a dev dependency |
 | `keycap-devtest` | `crates/keycap-devtest` | test-only (`publish = false`): fake keyboards on `/dev/uinput`, the daemon as a child process, the output device reader, a socket client | `keycap-protocol`, `rustix` |
 
 Edges: `keycap` -> `keycap-protocol` and `keycap-client` (the `status` verb's socket client), and `keycap-client` -> `keycap-protocol` and `chordkit`, never `keycap`; `keycap` also takes `chordkit` for the keymap file's judgement. keycap defines no action, chord or keymap type: those are chordkit's. And `keycap` dev-depends on `keycap-devtest`, which
 depends on `keycap-protocol` and never on `keycap`. `keycap-protocol` depends on no other workspace
 crate, and has no `toml`, `notify` or `rustix`, so a desktop takes it without pulling the
-daemon. sill imports it as a path dependency. There is no boundary script;
-`cargo tree -p keycap-protocol` showing only serde, serde_json and thiserror is the check, run
-in review.
+daemon. sill imports it as a path dependency. `scripts/check-boundary.sh` holds the edges
+(including the four above for `keycap`); `cargo tree -p keycap-protocol` shows only serde, serde_json and thiserror.
 
 The library surface of `keycap` is the pure core. The daemon, `sys` and the CLI verbs are
 `pub(crate)`; the one public entry to them is `command::run`.
@@ -47,9 +46,10 @@ Daemon modules:
 |---|---|
 | `daemon/sys.rs` | the only `unsafe`: typed ioctls (`EVIOCGRAB`, `EVIOCGKEY`, `EVIOCGBIT`, `EVIOCGPROP`, `EVIOCGABS`, uinput incl. `UI_ABS_SETUP`), each with a `SAFETY` comment, and a test pinning every opcode's number |
 | `command/status.rs` | `keycap status` and `keycap resume`: a plain socket client (`Hello` read, `Resume` sent), `render` and `is_remapping` pure and table-tested |
-| `daemon/uinput.rs` | the one "keycap keyboard" virtual device, opened read-write, destroyed on `Drop`; passes the pointer events of plain combo devices through and carries the lock LEDs back; the `Emitter` and `PointerSink` traits and their recording fakes |
-| `daemon/twin.rs` | the "<name> (keycap pointer)" virtual device of a combo device whose pointer the keyboard cannot carry (absolute axes): registered from a `PointerCaps`, destroyed on `Drop` |
-| `daemon/pointer.rs` | pure: `PointerCaps`, the pointer half of a device as a value (axes with their `absinfo`, relative axes, buttons, input properties, the twin's name), built from the kernel's masks; `needs_twin` |
+| `daemon/uinput.rs` | the one "keycap keyboard" virtual device, a descriptor from a `Source`, destroyed on `Drop`; `direct_keyboard` makes it on `/dev/uinput` itself; passes the pointer events of plain combo devices through and carries the lock LEDs back; the `Emitter` and `PointerSink` traits and their recording fakes. Everything below device creation (writes, `led_fd`, `leds`) is the same whichever source made the descriptor |
+| `daemon/source.rs` | where a virtual device comes from: `Source::Service` asks the root device service (`turnstile-client`'s `Broker`, socket `/run/turnstile/input.sock`, `KEYCAP_DEVICE_SERVICE`) for a `KeycapKeyboard` or `KeycapPointer` and receives the finished device's descriptor; `Source::Direct` (the default when the socket is absent, and the standalone install) opens `/dev/uinput`. A service that stops answering falls back to `Direct` with a log line; a refusal does not. `recreate` drops the old descriptor and asks again. The test source is `turnstile-client`'s `FakeSource` |
+| `daemon/twin.rs` | the "<name> (keycap pointer)" virtual device of a combo device whose pointer the keyboard cannot carry (absolute axes): its descriptor from a `Source` (the service is asked with the original's name as the label and adds the suffix), destroyed on `Drop`; `direct_pointer` registers it on `/dev/uinput` from a `PointerCaps` |
+| `daemon/pointer.rs` | pure: `PointerCaps`, the pointer half of a device as a value (axes with their `absinfo`, relative axes, buttons, input properties, the original's name as `label` and the twin's name), built from the kernel's masks; `needs_twin` |
 | `daemon/buttons.rs` | pure: the mouse buttons each combo device holds, released on unplug, overflow and pause; the keyboard's record and each twin's are separate values |
 | `daemon/caps.rs`, `daemon/reader/caps.rs` | a Caps Lock nobody asked for: the pure `CapsFix` (whose word on the lock, the lock, the lock the user asked for through keycap's own Caps Lock presses) and `CapsKey` (does a rule take the bare Caps Lock key); the reader feeds it the desktop's Caps Lock LED reports, the lamp read (`EVIOCGLED`) at a grab until the desktop has reported, and the batches it writes, and writes one Caps Lock tap before the next non-modifier, non-Caps-Lock key while the lock is stray |
 | `command/caps_lamp.rs` | the Caps Lock lamp of a keyboard for `keycap status`, from the LED class in sysfs |
@@ -63,11 +63,11 @@ Daemon modules:
 | `daemon/route.rs`, `daemon/evdev.rs` | one read of a node (drained until `EAGAIN`) to `RemapInput`s and pointer frames, pure `route` over the drained events |
 | `daemon/inbox.rs`, `daemon/waker.rs` | what other threads send the reader (`Request`, system config, hotplug) over one bounded channel (256; the socket thread uses `try_send` and drops a client whose request does not fit) and one eventfd |
 | `daemon/socket/shelf.rs` | pure: the keymap in force, who watches it and what each connection registered (`Shelf::call`, `read`, `retain`); returns replies, the server sends them |
-| `daemon/socket/` | the socket thread; `seat.rs` holds the pure parts (`active_uid`, `peer_of` to `Peer { SeatOwner, Observer }`, `request_of`, `Seat::look` for owner leaving or user switch); `limits.rs` the bounds against hostile clients (32 clients, the seat owner exempt from that cap; 8 per uid; 16 messages per client per pass; 100 requests a second per client; listener paused 1 s on EMFILE; complaints logged once a minute per uid); `peer.rs` a connection (role, pace, what it missed) and `send` (`Sent`: a full queue or an oversize message never closes it); `inbound.rs` the bounded read |
-| `daemon/settings.rs` | the config layers in force (built-in, system, user) and their resolution |
+| `daemon/socket/` | the socket thread; `seat.rs` holds the pure parts (`active_uid`, `peer_of(uid, active, Claim)` to `Peer { Steering, Plain, Observer }`, `request_of`, `Seat::look` for owner leaving or user switch); `shell.rs` which connection is the shell (below); `limits.rs` the bounds against hostile clients (32 clients, the seat owner exempt from that cap; 8 per uid; 16 messages per client per pass; 100 requests a second per client; listener paused 1 s on EMFILE; complaints logged once a minute per uid); `peer.rs` a connection (role, pace, what it missed) and `send` (`Sent`: a full queue or an oversize message never closes it); `inbound.rs` the bounded read |
+| `daemon/settings.rs` | the config layers in force (built-in, system, user) and their resolution; `Layers::offered` reads the user layer as the socket delivers it and cuts it down (`ConfigLayer::confined`) |
 | `daemon/service.rs` | `run(env)`: the virtual keyboard, socket thread, watchers, then the reader |
 | `daemon/sdnotify.rs` | `READY=1`, `WATCHDOG=1` and `STATUS=` to `$NOTIFY_SOCKET` |
-| `daemon/env.rs` | `Env::from_lookup`: environment, every directory and file the daemon touches (config, runtime, seat file, `/sys/class/input`, `/dev/input`), the `KEYCAP_GRAB_VIRTUAL` allowance |
+| `daemon/env.rs` | `Env::from_lookup`: environment, every directory and file the daemon touches (config, runtime, seat file, `/sys/class/input`, `/dev/input`, the device service's socket), the `KEYCAP_GRAB_VIRTUAL` allowance and the `KEYCAP_STEERING` choice (both for tests; only the unit's environment sets them) |
 | `daemon/clock.rs` | the one `CLOCK_MONOTONIC` read |
 
 `lib.rs` holds declarations and root re-exports only.
@@ -76,6 +76,30 @@ Outside `crates/`: `install.sh`, `uninstall.sh` and `scripts/lib.sh` (every chan
 `step`, so `--dry-run` prints and `--destdir` stages under `--prefix`; idempotent by `cmp`), `dist/` (the unit, the
 udev and polkit rules, the `uinput` modules-load file, `keycap.plasma.toml`, and `dist/plasma/`: the KWin script and the
 `keycap-focus` D-Bus-to-socket helper with its unit and tests), `docs/switch-from-toshy.md`.
+
+### Who steers, and where devices come from
+
+Two outside parties decide what keycap trusts, and both are in the unit's reach only:
+
+- **Devices.** The desktop's `turnstile` service owns `/dev/uinput` (root only) and hands keycap finished
+  devices; the unit has no `DeviceAllow=/dev/uinput`. The standalone install has no such service and gets the
+  one line back as the drop-in `keycap.service.d/10-uinput.conf` (`dist/keycap.uinput.conf`, placed by
+  `install.sh`) next to the udev rule that lets the `input` group write the node. `SupplementaryGroups=input`
+  stays: it is for reading the keyboards. The unit is ordered `After=` and `Wants=` `turnstile.socket`; both are
+  ignored where that unit does not exist.
+- **Steering.** The socket is 0666, so a connection is told apart three ways: `Steering` (the shell: the kernel
+  puts its process in `sill.service` or `keycap-focus.service` under `user@<active uid>.service`, held by pidfd
+  and still alive; judged by peephole at `Proof::Cgroup` or better, any pin), `Plain` (any other process of
+  the active uid: it hears status, watches the keymap and registers actions, and a request of any kind ends its
+  connection) and `Observer` (another user). Only `Steering` is obeyed for `Focus`, `UserConfig` and `Resume`.
+  `ProtectProc=default` (with `ProcSubset=pid`) lets keycap read `/proc/<pid>/cgroup` of the shell's process;
+  it still cannot read another user's image or sandbox metadata, which is why `Procs` in `shell.rs` reads a
+  refused `<pid>/root` as "no sandbox".
+  This is a speed bump: a program of the same user can put itself in a control group of that name. What it
+  gets is bounded by what the user layer may say, which is the part that holds: `ConfigLayer::confined`
+  drops a rule whose trigger has no modifier held (Shift counts), drops a `then` that is a list or empty
+  (`Sequence`, `Swallow`) unless the machine file says `[user_layer] sequences = "allow"`, and refuses a layer
+  of more than 256 rules whole. A `Focus` naming no defined profile writes as `default`.
 
 ## 3. One home
 
@@ -161,7 +185,10 @@ that stay enums:** `RemapInput`, `RemapOut`, `RuleAction`, `Edge`, `Layout`, `To
 | Key names, layout, classify, opcodes, protocol | table tests beside the code |
 | Whole-core behaviour | scripts of `RemapInput`s through `Remapper::step`, asserting `RemapOut`s, in `tests/` |
 | Stuck keys | a property test: every emitted press has exactly one release |
-| Socket | a private socket in a temp dir and a fake seat file, in `daemon/socket/tests.rs`; the keymap's serving in the pure `shelf` tests plus the same file |
+| Socket | a private socket in a temp dir and a fake seat file, in `daemon/socket/tests.rs` (the harness treats every program of the seat's user as the shell, or none of them); the keymap's serving in the pure `shelf` tests plus the same file |
+| Who is the shell | `daemon/socket/shell.rs`: the real check over peephole's fixture `/proc` (a held process that is only a claim), as a table of control groups and images |
+| Devices from the service | `daemon/source.rs`: `turnstile-client`'s `FakeSource` (handed descriptor, `recreate`, twin, refusal, absent) |
+| The user layer's limits | `keycap-core` `config/tests/confine.rs`, `Layers::offered` in `daemon/settings.rs`, and the reader's `UserConfig` handling |
 | `KeycapSource` | `keycap-client`'s own tests against a fake daemon on a private socket (`testing.rs`): with the daemon, with an old one, with the file only, with nothing; watch; register; and `crates/keycap/tests/devices/keymap.rs` against the real binary |
 | Grab conflicts, pause and resume | `daemon/devices` tests: the state machine driven through `FakeGrabber` |
 | The reader's decisions | `daemon/reader/tests.rs` and `pointer_tests.rs`: a recording `Emitter` whose twins log what they are told and whether they were dropped, a private socket, no node opened |
@@ -260,7 +287,8 @@ pub struct Profiles { default: Profile, named: BTreeMap<ProfileName, Profile> }
 Inheritance is resolved at load: a `Profile` is always flat, and `Profiles::resolve(&name)`
 returns `default` for an unknown name (the daemon logs `profile "<name>" is not defined; using default` once per name until the config changes). `defaults.toml` is compiled
 in with `include_str!`; `/etc/keycap/keycap.toml` and the seat owner's `UserConfig` have the
-same shape and override per profile, per modmap field and per trigger.
+same shape and override per profile, per modmap field and per trigger, except that the user layer is cut down
+as the section "Who steers" says (the machine file has no such limits).
 
 ```toml
 [profile.default]
@@ -281,7 +309,7 @@ rules = [{ when = "command+c", then = "ctrl+shift+c" }]
 (`ctrl`, `alt`, `super`, `shift`); the parser rejects the other vocabulary on each side. A string
 `then` is `Map`, a list is `Sequence`; `hold` defaults to `restore`.
 `then = []` is `Swallow`: the chord is consumed and nothing is written, which is also how a
-profile removes a rule it inherits. `hold` belongs to a single stroke; on a list it is reported
+profile removes a rule it inherits (in the machine file; the user layer may not, see "Who steers"). `hold` belongs to a single stroke; on a list it is reported
 and ignored. Shift is the one name both vocabularies share.
 
 Config is read in layers. `ConfigLayer::parse(text, ConfigSource)` turns one file into a `ConfigLayer` (per profile:

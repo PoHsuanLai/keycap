@@ -38,18 +38,55 @@ inherited, but one the desktop restates for a chord (sill's Cmd+H to Ctrl+H) mus
 ## Open items
 
 **Deferred from the 2026-10-16 production audit (input).**
-- *Caller identity (INPUT-03, INPUT-14).* The socket trusts the seat owner's uid, so any program
-  of the person can send `UserConfig`, `Focus` and `Resume`, and any session-bus peer can call
-  the Plasma focus bridge. Authenticating the shell beyond uid is a later wave with one design for
-  all four same-uid channels (this socket, palmrest's, the focus bridge, uinput).
-- *uinput access (INPUT-02)* is palmrest's rule; the owner chose a small root service that owns
-  `/dev/uinput`, in a later wave. keycap's own `GROUP="input"` rule is unchanged.
+- *Caller identity (INPUT-03, INPUT-14)* is done in the second wave, see "Who steers" below.
+- *uinput access (INPUT-02)* is done: the desktop's root service owns `/dev/uinput` and keycap is handed
+  its devices (see "Where the virtual devices come from"). The standalone install keeps `GROUP="input"`.
 - *Unit hardening (INPUT-15), part.* `PrivateUsers=` may unmap the `input` supplementary group,
   and who owns `/etc/keycap` under `DynamicUser=` with `ConfigurationDirectory=` is unconfirmed;
   both wait for a `systemd-analyze security` run and a look at the real directory.
 - *Supply chain (INPUT-16)* is not in this lane; CI still checks licenses only.
 - *chordkit's own readers (INPUT-12).* chordkit-kde and chordkit-gnome still read their files
   unbounded (interface ask: use a bounded regular-file read like `keycap_client::read_text`).
+
+**Who steers (INPUT-03, INPUT-14, wave 2).** The owner decided keycap gets a light identity check and a reduced
+user layer, and no root identity service and no new capability. The shell is the one connection obeyed for
+`Focus`, `UserConfig` and `Resume`: its process sits in `sill.service` (or, for the Plasma feed,
+`keycap-focus.service`) under `user@<active uid>.service`, held by pidfd (`Proof::Cgroup`; peephole's socket
+pin is `Reopened`, and any pin is accepted). Every other process of the active uid is `Plain`: it hears status,
+watches the keymap and registers actions, and a request of any kind drops its connection. This is a speed bump,
+not a boundary: a same-user program can move itself into a control group of that name. The boundary is the
+reduced user layer: no rule on a key with no modifier held (Shift counts as one), no `then` that is a list
+or empty, at most 256 rules (the layer is refused whole), unless the root-owned `/etc/keycap/keycap.toml` says
+`[user_layer] sequences = "allow"` (that lifts the list ban only; the machine file itself is unrestricted).
+A `Focus` naming a profile nobody defined writes as `default` and is logged once, as before: that is the
+refusal for (d), because a defined profile is the only thing a name can select.
+- *Consequence: `keycap resume` from a terminal is refused* (the terminal is `Plain`). Resuming after the
+  escape chord is the shell's job; without it, `sudo systemctl restart keycap` regrabs. Decision for the
+  owner: allow `Resume` from `Plain` (it types nothing)? The design said Steering only, so it is not.
+- *Consequence: user rules on a bare key move to the machine file.* sill's shipped layer has `capslock` ->
+  `ctrl+space`; it is now reported and left out until the desktop's packaging puts it in `/etc/keycap/keycap.toml`
+  (interface ask to sill/desktop). `shift+capslock` stays: Shift counts as a modifier, so `shift+e` -> anything
+  also stays. Requiring a non-Shift role would close that; it breaks `shift+capslock` too.
+- *The user layer is cut when it arrives.* Changing `[user_layer]` in the machine file later does not re-cut a
+  layer already in force; the shell sends its file again on change or restart.
+- *Probing needs `ProtectProc=default`.* A process without privileges cannot read another user's
+  `/proc/<pid>/root` (peephole reads it for sandbox metadata) or image path. `Procs` in `socket/shell.rs`
+  turns the refused `root` read into "not found" so the probe reaches the control group. Interface ask to
+  peephole: treat a refused `<pid>/root/.flatpak-info` as hidden, as `exe` already is, then delete `Procs`.
+- *INPUT-14.* The Plasma `keycap-focus` helper (Python under Gio, not JavaScript) answers `Focus` only to
+  the connection that owns `org.kde.KWin` now (`GetNameOwner` per call) and owns its own name with
+  `DO_NOT_QUEUE`, exiting if it is taken.
+
+**Where the virtual devices come from (INPUT-02, wave 2).** With `/run/turnstile/input.sock` present, keycap
+asks the root service for a `KeycapKeyboard` and, per combo device, a `KeycapPointer` (the original's name
+as the label; the service adds the suffix), and uses the handed descriptor exactly as it used its own:
+writes, `led_fd` and `leds` are unchanged. Without the socket, or if nothing answers on it, keycap opens
+`/dev/uinput` as before (the standalone install, and a developer's machine). A refusal is the answer.
+`dist/keycap.service` therefore has no `DeviceAllow=/dev/uinput`; `install.sh` adds it as the drop-in
+`keycap.service.d/10-uinput.conf` for the standalone install, with `70-keycap.rules` as before. The desktop's
+packaging ships neither the drop-in nor the udev line. `--check-uinput` connects to the service when the socket
+is there (it creates nothing) and otherwise opens the node as before. Unverified: the service's behaviour
+against a real keycap (needs the desktop gate), and `After=turnstile.socket` ordering on a real boot.
 
 **The profile mechanism cannot see inside a window.** A terminal embedded in another app (an
 editor's terminal panel) gets the window's profile, not `terminal`: the desktop knows the
@@ -241,13 +278,13 @@ the grab reached the desktop but its release would not, so keycap re-reads `EVIO
 **The socket bounds every client.** 32 clients in all and 8 per uid, 16 messages per client and
 16 accepts per pass, and a pause of one second after `accept` fails for any reason but
 `EAGAIN` (`EMFILE` leaves the connection pending, which would spin). An observer that sends a
-request is disconnected; log lines about clients are limited to one per uid per minute. A client
+request is disconnected (so is a program of the seat owner's that is not the shell); log lines about clients are limited to one per uid per minute. A client
 that asks the reader for more than 100 things a second, or whose requests fill the reader's inbox
 (256), is disconnected. A reply never exceeds one packet: the keymap's problem list is 50 lines of
 200 characters and a count, an app registers at most 128 actions, and a `Registered` reply is cut
 at 48 KiB. A message too large for a packet, or a full queue, never closes a client: a status or
 keymap a client missed is sent again, in its latest form, as soon as there is room. Only the
-seat owner's apps may register actions.
+seat owner's programs, the shell or not, may register actions.
 
 **The grab is released by the kernel when the fd closes.** A crash, a panic (`panic = "abort"`)
 or `kill -9` closes every fd, so the keyboard returns to the kernel at once; systemd restarts

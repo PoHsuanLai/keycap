@@ -28,7 +28,9 @@ so terminals get terminal-safe shortcuts. It works on any Linux with systemd.
 
 `install.sh` builds a release binary and installs it as root (through `$SUDO`, sudo, doas or
 pkexec; with none it prints the commands), along with a systemd unit, the udev and polkit rules it
-needs, and `modules-load.d/keycap.conf` so `uinput` loads at boot. `--prefix P` installs under P
+needs, and `modules-load.d/keycap.conf` so `uinput` loads at boot. The unit has no access to `/dev/uinput`
+of its own on the desktop, where a root service hands it the virtual keyboards; `install.sh` is the standalone
+install and adds the one line (`keycap.service.d/10-uinput.conf`) and the udev rule that let the unit open the node. `--prefix P` installs under P
 (default `/usr/local`; any other prefix uses the vendor directories under it) and `--destdir D`
 stages everything under D without root, for packages. Running it again changes only what differs. Requires a Rust
 toolchain; the Plasma focus feed also needs `python3-gobject`. To switch from Toshy, see
@@ -38,14 +40,15 @@ toolchain; the Plasma focus feed also needs `python3-gobject`. To switch from To
 
 ```
 keycap status         what keycap is doing; exits 0 only if a keyboard is grabbed
-keycap resume         remap the keyboards again after the emergency chord
+keycap resume         remap the keyboards again after the emergency chord (only the desktop's shell is obeyed)
 keycap --print-config print the built-in defaults, to copy from
 keycap replay FILE    try a key script against the mapping without touching any device
 ```
 
 **Emergency chord:** hold both Shift keys and press Esc. keycap gives every keyboard back to the
-kernel immediately; `keycap resume` takes them again. `sudo systemctl stop keycap` does the same
-until the next start.
+kernel immediately; the desktop's shell takes them again, and so does `sudo systemctl restart keycap`
+(`keycap resume` from a terminal is refused: keycap obeys only the shell). `sudo systemctl stop keycap`
+gives them back until the next start.
 
 Only one program can hold a keyboard at a time. If another remapper (keyd, Toshy, ...) has it,
 `keycap status` says `held by another remapper` and keycap waits.
@@ -121,7 +124,9 @@ user layer, and Plasma never does. The layer wins over the machine file, so a si
 gets Cmd+Space as Super+Space, Cmd+Shift+3/4/5 as Print and Cmd+H as plain Ctrl+H, while a Plasma
 session on the same machine keeps the Plasma rules. sill ships that layer in its
 `dist/keycap/keycap.toml` and its installer copies it to `~/.config/keycap/keycap.toml` when you
-have none. `replay` takes one file, so to see both layers at once, copy the rules of the user file
+have none. keycap cuts that layer down when it arrives: a rule on a key with no modifier held (Caps Lock alone, say), and
+a rule that types several keys or none, belong in the machine file; so do more than 256 rules. The machine file can
+let the second kind through for the user layer with `[user_layer]` / `sequences = "allow"`. `replay` takes one file, so to see both layers at once, copy the rules of the user file
 after those of the machine file in a scratch file (later rules win). To check without touching a
 keyboard:
 
