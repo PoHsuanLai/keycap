@@ -135,7 +135,7 @@ fn non_toml_text_is_all_defaults_and_one_warning() {
     assert!(
         warnings[0]
             .problem
-            .starts_with("system config: is not valid TOML")
+            .starts_with("machine settings: is not valid TOML")
     );
 
     let (builtin_layer, _) = builtin();

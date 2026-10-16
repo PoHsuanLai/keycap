@@ -1,28 +1,26 @@
-//! Reading the system file: `keycap.toml` in the config directory.
+//! Reading the machine file: `keycap.toml` in the config directory.
 
-use std::io::ErrorKind;
 use std::path::Path;
 
 use keycap_core::{ConfigLayer, ConfigSource};
 use keycap_protocol::Warning;
+use peephole::{ProcFs, RealProc};
 
-/// The file name the system layer is read from, in the system config directory.
+use super::trusted::read_layer;
+
+/// The file name the machine and vendor layers are read from, in their directories.
 pub const FILE_NAME: &str = "keycap.toml";
 
-/// The system layer from `dir`. A missing file is an empty layer and no warning; an unreadable
-/// or non-TOML one is an empty layer and one warning, because the keyboard must keep working
+/// The machine layer from `dir`, judged on the real file system. It is read only when it is
+/// root-only, by the check in `trusted.rs` that the vendor file shares. A missing file is an
+/// empty layer and no warning; a file anyone but root could change, or one that is unreadable
+/// or not TOML, is an empty layer and one warning, because the keyboard must keep working
 /// whatever the file says.
 pub fn system(dir: &Path) -> (ConfigLayer, Vec<Warning>) {
-    let path = dir.join(FILE_NAME);
-    match std::fs::read_to_string(&path) {
-        Ok(text) => ConfigLayer::parse(&text, ConfigSource::System),
-        Err(e) if e.kind() == ErrorKind::NotFound => (ConfigLayer::default(), Vec::new()),
-        Err(e) => (
-            ConfigLayer::default(),
-            vec![Warning {
-                key: path.display().to_string(),
-                problem: format!("{}: cannot be read: {e}", ConfigSource::System),
-            }],
-        ),
-    }
+    system_through(&RealProc::system(), dir)
+}
+
+/// [`system`] over any file-system view, so a test can stand a file with an owner in a tree.
+pub(super) fn system_through<P: ProcFs>(fs: &P, dir: &Path) -> (ConfigLayer, Vec<Warning>) {
+    read_layer(fs, dir, ConfigSource::System)
 }

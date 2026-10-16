@@ -65,6 +65,8 @@ impl Daemon {
                 spec.scratch.join("no-device-service"),
             )
             .env("KEYCAP_STEERING", "seat-user")
+            // The scratch folder is the test user's, so a machine file written here is refused
+            // (the daemon reads that file only when root-only); a run has no machine layer.
             .env("KEYCAP_CONFIG_DIR", &config_dir)
             // A folder that is not there is no vendor layer, so a run never reads the machine's.
             .env("KEYCAP_VENDOR_DIR", spec.scratch.join("no-vendor-config"))

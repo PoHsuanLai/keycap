@@ -1,10 +1,11 @@
-//! The system side of configuration: the system file, the vendor file under it, and their
+//! The system side of configuration: the machine file, the vendor file under it, and their
 //! watchers. The layers, their parsing and their folding into `Profiles` are `keycap-core`'s,
 //! over strings.
 
 mod load;
 #[cfg(test)]
 mod tests;
+mod trusted;
 mod vendor;
 mod watch;
 

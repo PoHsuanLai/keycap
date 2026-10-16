@@ -27,7 +27,7 @@ impl fmt::Display for ConfigSource {
         f.write_str(match self {
             ConfigSource::Builtin => "built-in defaults",
             ConfigSource::Vendor => "installed defaults",
-            ConfigSource::System => "system config",
+            ConfigSource::System => "machine settings",
             ConfigSource::User => "user config",
         })
     }
