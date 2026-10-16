@@ -40,15 +40,14 @@ toolchain; the Plasma focus feed also needs `python3-gobject`. To switch from To
 
 ```
 keycap status         what keycap is doing; exits 0 only if a keyboard is grabbed
-keycap resume         remap the keyboards again after the emergency chord (only the desktop's shell is obeyed)
+keycap resume         remap the keyboards again after the emergency chord
 keycap --print-config print the built-in defaults, to copy from
 keycap replay FILE    try a key script against the mapping without touching any device
 ```
 
 **Emergency chord:** hold both Shift keys and press Esc. keycap gives every keyboard back to the
-kernel immediately; the desktop's shell takes them again, and so does `sudo systemctl restart keycap`
-(`keycap resume` from a terminal is refused: keycap obeys only the shell). `sudo systemctl stop keycap`
-gives them back until the next start.
+kernel immediately; `keycap resume` takes them again. `sudo systemctl stop keycap` does the same
+until the next start.
 
 Only one program can hold a keyboard at a time. If another remapper (keyd, Toshy, ...) has it,
 `keycap status` says `held by another remapper` and keycap waits.

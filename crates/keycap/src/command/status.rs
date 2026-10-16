@@ -17,8 +17,8 @@ pub(super) fn read_status(runtime_dir: &Path) -> Result<Status, String> {
     connect(runtime_dir).map(|connection| connection.status().clone())
 }
 
-/// Asks the daemon to grab the keyboards again after the escape chord. Only the desktop's shell
-/// is obeyed, so from a terminal or another account this is refused and the connection closed.
+/// Asks the daemon to grab the keyboards again after the escape chord. Only the seat owner's
+/// programs are obeyed, so from another account this is refused and the connection closed.
 pub(super) fn send_resume(runtime_dir: &Path) -> Result<(), String> {
     connect(runtime_dir)?
         .send(&ToDaemon::Resume)
@@ -39,9 +39,7 @@ fn connect(runtime_dir: &Path) -> Result<Connection, String> {
 pub(super) fn render(status: &Status, caps: impl Fn(&Keyboard) -> Option<Lamp>) -> String {
     let mode = match status.mode {
         Mode::Running => "running",
-        Mode::Paused => {
-            "paused by the escape chord; the desktop's shell resumes it, or restart the keycap service"
-        }
+        Mode::Paused => "paused by the escape chord; run `keycap resume` to grab again",
     };
     let mut lines = vec![format!("keycap: {mode}")];
     if status.keyboards.is_empty() {

@@ -239,30 +239,48 @@ fn an_observer_that_sends_a_request_is_dropped_and_nothing_is_relayed() {
 }
 
 #[test]
-fn every_kind_of_request_from_anyone_but_the_shell_ends_its_connection() {
-    let requests = [
-        focus("terminal"),
-        ToDaemon::UserConfig {
-            toml: String::new(),
-        },
-        ToDaemon::Resume,
-    ];
-    let harnesses = [
-        ("another user", Harness::new(Some(own_uid() + 1))),
-        (
-            "a program that is not the shell",
-            Harness::without_a_shell(Some(own_uid())),
-        ),
-    ];
-    for (who, h) in harnesses {
-        for request in &requests {
-            let client = connect(&h.socket);
-            assert_eq!(recv(&client), Some(hello(running())));
-            send(&client, request);
-            assert_eq!(recv(&client), None, "{who}: {request:?}");
-        }
-        assert!(h.nothing_queued(), "{who}");
+fn only_the_shell_may_focus_or_send_settings_and_only_the_users_own_programs_may_resume() {
+    let settings = || ToDaemon::UserConfig {
+        toml: String::new(),
+    };
+    for request in [focus("terminal"), settings(), ToDaemon::Resume] {
+        let h = Harness::new(Some(own_uid() + 1));
+        let client = connect(&h.socket);
+        assert_eq!(recv(&client), Some(hello(running())));
+        send(&client, &request);
+        assert_eq!(recv(&client), None, "another user: {request:?}");
+        assert!(h.nothing_queued(), "another user: {request:?}");
     }
+    for request in [focus("terminal"), settings()] {
+        let h = Harness::without_a_shell(Some(own_uid()));
+        let client = connect(&h.socket);
+        assert_eq!(recv(&client), Some(hello(running())));
+        send(&client, &request);
+        assert_eq!(
+            recv(&client),
+            None,
+            "a program that is not the shell: {request:?}"
+        );
+        assert!(
+            h.nothing_queued(),
+            "a program that is not the shell: {request:?}"
+        );
+    }
+    let h = Harness::without_a_shell(Some(own_uid()));
+    let client = connect(&h.socket);
+    assert_eq!(recv(&client), Some(hello(running())));
+    send(&client, &ToDaemon::Resume);
+    assert_eq!(
+        h.requests(1),
+        [Request::Resume],
+        "a program that is not the shell may resume"
+    );
+    h.handle.send(ToSocket::Status(paused()));
+    assert_eq!(
+        recv(&client),
+        Some(ToClient::Status(paused())),
+        "and stays connected"
+    );
 }
 
 #[test]

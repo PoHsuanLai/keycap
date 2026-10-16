@@ -90,8 +90,8 @@ Two outside parties decide what keycap trusts, and both are in the unit's reach 
 - **Steering.** The socket is 0666, so a connection is told apart three ways: `Steering` (the shell: the kernel
   puts its process in `sill.service` or `keycap-focus.service` under `user@<active uid>.service`, held by pidfd
   and still alive; judged by peephole at `Proof::Cgroup` or better, any pin), `Plain` (any other process of
-  the active uid: it hears status, watches the keymap and registers actions, and a request of any kind ends its
-  connection) and `Observer` (another user). Only `Steering` is obeyed for `Focus`, `UserConfig` and `Resume`.
+  the active uid: it hears status, watches the keymap and registers actions and may `Resume`; any other request ends its
+  connection) and `Observer` (another user). Only `Steering` is obeyed for `Focus` and `UserConfig`.
   `ProtectProc=default` (with `ProcSubset=pid`) lets keycap read `/proc/<pid>/cgroup` of the shell's process;
   it still cannot read another user's image or sandbox metadata, which is why `Procs` in `shell.rs` reads a
   refused `<pid>/root` as "no sandbox".

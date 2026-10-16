@@ -23,8 +23,7 @@ const USAGE: &str = "usage:
                                KEYCAP_ALLOW_UINPUT_PROBE=1; opens and closes only)
   keycap status                what the running daemon is doing (exit 0 only when a keyboard
                                is grabbed)
-  keycap resume                grab the keyboards again after the escape chord (only the
-                               desktop's shell is obeyed; from a terminal restart the service)
+  keycap resume                grab the keyboards again after the escape chord
   keycap replay FILE [--config FILE]
                                replay a script of inputs through the remapper and print
                                what it writes; --config adds a user config layer

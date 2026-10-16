@@ -15,8 +15,8 @@ pub(crate) const SEAT_FILE: &str = "/run/systemd/seats/seat0";
 pub(crate) enum Peer {
     /// The shell of the user at the seat: `Focus`, `UserConfig` and `Resume` are honoured.
     Steering,
-    /// Another program of the user at the seat: hears status and may register actions, but is
-    /// never obeyed.
+    /// Another program of the user at the seat: hears status, may register actions and may
+    /// `Resume`, but is not obeyed for `Focus` or `UserConfig`.
     Plain,
     /// Anyone else: hears status, is never obeyed.
     Observer,
@@ -59,17 +59,18 @@ impl Refusal {
     }
 }
 
-/// What `peer` asking for `message` becomes: only the shell's messages are acted on.
+/// What `peer` asking for `message` becomes: `Focus` and `UserConfig` only from the shell;
+/// `Resume` also from another program of the seat's user, since it only re-grabs.
 pub(crate) fn request_of(
     peer: Peer,
     client: ClientId,
     message: ToDaemon,
 ) -> Result<Request, Refusal> {
     match (peer, message) {
+        (Peer::Steering | Peer::Plain, ToDaemon::Resume) => Ok(Request::Resume),
         (Peer::Plain | Peer::Observer, _) => Err(Refusal::NotSteering),
         (Peer::Steering, ToDaemon::Focus { profile }) => Ok(Request::Focus(profile)),
         (Peer::Steering, ToDaemon::UserConfig { toml }) => Ok(Request::UserConfig { client, toml }),
-        (Peer::Steering, ToDaemon::Resume) => Ok(Request::Resume),
         (
             Peer::Steering,
             ToDaemon::WatchKeymap | ToDaemon::Register(_) | ToDaemon::ListRegistered,
@@ -299,7 +300,7 @@ mod tests {
                 "plain resume",
                 Peer::Plain,
                 ToDaemon::Resume,
-                Err(Refusal::NotSteering),
+                Ok(Request::Resume),
             ),
             (
                 "shell keymap message",

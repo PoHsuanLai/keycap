@@ -50,19 +50,18 @@ inherited, but one the desktop restates for a chord (sill's Cmd+H to Ctrl+H) mus
 
 **Who steers (INPUT-03, INPUT-14, wave 2).** The owner decided keycap gets a light identity check and a reduced
 user layer, and no root identity service and no new capability. The shell is the one connection obeyed for
-`Focus`, `UserConfig` and `Resume`: its process sits in `sill.service` (or, for the Plasma feed,
+`Focus` and `UserConfig`: its process sits in `sill.service` (or, for the Plasma feed,
 `keycap-focus.service`) under `user@<active uid>.service`, held by pidfd (`Proof::Cgroup`; peephole's socket
 pin is `Reopened`, and any pin is accepted). Every other process of the active uid is `Plain`: it hears status,
-watches the keymap and registers actions, and a request of any kind drops its connection. This is a speed bump,
+watches the keymap, registers actions and may `Resume`; any other request drops its connection. This is a speed bump,
 not a boundary: a same-user program can move itself into a control group of that name. The boundary is the
 reduced user layer: no rule on a key with no modifier held (Shift counts as one), no `then` that is a list
 or empty, at most 256 rules (the layer is refused whole), unless the root-owned `/etc/keycap/keycap.toml` says
 `[user_layer] sequences = "allow"` (that lifts the list ban only; the machine file itself is unrestricted).
 A `Focus` naming a profile nobody defined writes as `default` and is logged once, as before: that is the
 refusal for (d), because a defined profile is the only thing a name can select.
-- *Consequence: `keycap resume` from a terminal is refused* (the terminal is `Plain`). Resuming after the
-  escape chord is the shell's job; without it, `sudo systemctl restart keycap` regrabs. Decision for the
-  owner: allow `Resume` from `Plain` (it types nothing)? The design said Steering only, so it is not.
+- *Owner decision: `Resume` is allowed from `Plain`* (the active user's own processes, not `Observer`): it
+  only re-grabs and types nothing, and `keycap resume` from a terminal is the escape-chord recovery.
 - *Consequence: user rules on a bare key move to the machine file.* sill's shipped layer has `capslock` ->
   `ctrl+space`; it is now reported and left out until the desktop's packaging puts it in `/etc/keycap/keycap.toml`
   (interface ask to sill/desktop). `shift+capslock` stays: Shift counts as a modifier, so `shift+e` -> anything

@@ -77,7 +77,7 @@ pub enum Grab {
 `SO_PEERCRED` and the process's control group sort each client into `Peer { Steering, Plain, Observer }`,
 using `ACTIVE_UID` from `/run/systemd/seats/seat0`: `Steering` is the shell (a process in `sill.service`, or
 for the Plasma feed `keycap-focus.service`, under `user@<active uid>.service`), `Plain` any other process of
-that user, `Observer` anyone else. Only `Steering`'s `Focus`, `UserConfig` and `Resume` are honoured (a request
+that user, `Observer` anyone else. Only `Steering`'s `Focus` and `UserConfig` are honoured, and `Resume` also from `Plain` (any other request
 from the others ends their connection); every client receives `Status`. The user layer the shell sends is
 cut down on arrival: no rule on a key with no modifier held, no list or empty `then`, at most 256 rules. The
 machine file lifts the list ban with `[user_layer] sequences = "allow"`. The keymap messages are open to every client (they
@@ -140,8 +140,8 @@ keycap grabs the user's only keyboard, so:
   scripts are synthesised by hand; `keycap replay FILE` feeds one through the core.
 - `keycap --check-uinput` opens and closes `/dev/uinput` without `UI_DEV_CREATE`, and only when
   `KEYCAP_ALLOW_UINPUT_PROBE=1` is set; when the device service's socket is there it only connects to it.
-- The emergency chord (both Shifts + Esc) releases every grab at once; `Resume` grabs again (the shell sends
-  it; from a terminal, `sudo systemctl restart keycap` does the same).
+- The emergency chord (both Shifts + Esc) releases every grab at once; `Resume` grabs again (the shell
+  or any program of the seat's user may send it).
 - keycap never changes kernel module parameters or `/etc` files; `install.sh` does, with sudo,
   and only when asked (`--dry-run` prints the same commands and runs none).
 - The device tests make "keycap keyboard" write real key events to the desktop session. Run them

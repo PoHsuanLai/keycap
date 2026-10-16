@@ -5,7 +5,7 @@ keyboard is held by one program at a time, so keycap goes in first and waits, To
 and keycap takes over.
 
 **Emergency chord: hold both Shift keys and press Esc.** keycap gives the keyboards back to the
-kernel at once; `sudo systemctl restart keycap` takes them again. `sudo systemctl stop keycap` does the same
+kernel at once; `keycap resume` takes them again. `sudo systemctl stop keycap` does the same
 until the next start. Keep a terminal open throughout, and remember that Cmd is Ctrl and Ctrl is
 Super while keycap runs.
 
@@ -90,7 +90,7 @@ Nothing here edits Toshy's own files.
 6. Dolphin: Cmd+Backspace trashes the selection.
 7. If you set up Caps Lock as the input switch: it switches input, Shift+Caps Lock toggles the
    real lock.
-8. Shift+Shift+Esc pauses keycap (`keycap status` says paused); `sudo systemctl restart keycap` restores it.
+8. Shift+Shift+Esc pauses keycap (`keycap status` says paused); `keycap resume` restores it.
 9. Reconnect or sleep the keyboard: it is grabbed again a few seconds later.
 10. Reboot: the keyboard is mapped at the login screen.
 
@@ -124,5 +124,5 @@ systemctl --user enable --now toshy-config.service toshy-kwin-dbus.service toshy
 | Cmd and Option swapped | Add the `[[device]]` layout entry, with the keyboard's switch on Mac |
 | `cannot connect` | `systemctl status keycap`, `journalctl -u keycap -b` |
 | No keyboard listed | A Bluetooth keyboard is asleep; wake it |
-| Nothing mapped after the chord | `sudo systemctl restart keycap` |
+| Nothing mapped after the chord | `keycap resume` |
 | Capital letters, Caps Lock stuck | Press Shift+Caps Lock once |
