@@ -97,7 +97,7 @@ Two outside parties decide what keycap trusts, and both are in the unit's reach 
   as "no sandbox".
   This is a speed bump: a program of the same user can put itself in a control group of that name. What it
   gets is bounded by what the user layer may say, which is the part that holds: `ConfigLayer::confined`
-  drops a rule whose trigger has no modifier held (Shift counts), drops a `then` that is a list or empty
+  drops a rule whose trigger has no Command, Option or Control held (Shift alone is typing), drops a `then` that is a list or empty
   (`Sequence`, `Swallow`) unless the machine file says `[user_layer] sequences = "allow"`, and refuses a layer
   of more than 256 rules whole. A `Focus` naming no defined profile writes as `default`.
 
