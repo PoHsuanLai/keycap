@@ -335,3 +335,12 @@ a SAFETY comment; ioctl opcodes are checked by a test in each.
   packaging ships neither. Closes when no supported standalone target remains.
 - *INPUT-03, steering identity.* Owner decision: no root identity check for keycap's own socket; the bound is the
   user layer's confinement, now including Shift (NEW-PI-5).
+- *INPUT-20, traced by reading, not run.* When keycap dies, the kernel destroys "keycap keyboard". In casement the
+  keyboard reaches the seat only through libinput (`casement-backend/src/input/libinput_real.rs`): libinput's evdev
+  backend releases every key a device holds before it reports the device removed, those releases arrive as ordinary key
+  events from a device `convert` still knows, and `DeviceRemoved` then only drops the device from the roster
+  (`FedInput::Gone` reaches `present.gone`, `tty/mod.rs`), with nothing else keyed on it. So a Command or Control held
+  at a `kill -9` is released by libinput's own events. The only place keys are released "silently" is the test double
+  `VirtualInput::unplug`, which is not the real path. What remains unproven is libinput's behaviour on this kernel and
+  version: the device test (hold a modifier, `kill -9` keycap, read the seat's pressed set) belongs to casement's
+  suite and stays on the manual queue.
