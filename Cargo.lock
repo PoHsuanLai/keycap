@@ -405,7 +405,7 @@ checksum = "7d56353a2a665ad0f41a421187180aab746c8c325620617ad883a99a1cbe66d2"
 [[package]]
 name = "turnstile-client"
 version = "0.1.1"
-source = "git+https://github.com/PoHsuanLai/turnstile?tag=v0.1.2#78b472dcad11a4348f31dce39b55ac53516bb69a"
+source = "git+https://github.com/PoHsuanLai/turnstile?tag=v0.1.3#5f20c3860e55ccdf78a6006ca875838b2d74bb0c"
 dependencies = [
  "rustix",
  "thiserror",
@@ -415,7 +415,7 @@ dependencies = [
 [[package]]
 name = "turnstile-wire"
 version = "0.1.1"
-source = "git+https://github.com/PoHsuanLai/turnstile?tag=v0.1.2#78b472dcad11a4348f31dce39b55ac53516bb69a"
+source = "git+https://github.com/PoHsuanLai/turnstile?tag=v0.1.3#5f20c3860e55ccdf78a6006ca875838b2d74bb0c"
 dependencies = [
  "thiserror",
 ]

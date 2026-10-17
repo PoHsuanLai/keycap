@@ -29,7 +29,7 @@ chordkit = { git = "https://github.com/PoHsuanLai/chordkit.git", rev = "934a2d71
 # virtual devices, by git tag, never by path.
 peephole = { git = "https://github.com/PoHsuanLai/peephole", tag = "v0.1.4" }
 peephole-core = { git = "https://github.com/PoHsuanLai/peephole", tag = "v0.1.4", features = ["desktop"] }
-turnstile-client = { git = "https://github.com/PoHsuanLai/turnstile", tag = "v0.1.2" }
+turnstile-client = { git = "https://github.com/PoHsuanLai/turnstile", tag = "v0.1.3" }
 
 # A panic must kill the process, so the kernel releases the keyboard grab and systemd restarts
 # it. Only release: tests need unwinding.
