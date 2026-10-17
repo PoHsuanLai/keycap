@@ -149,13 +149,14 @@ fn a_dropped_rule_is_reported_under_its_profile_with_its_chord_in_plain_words() 
     }
 }
 
-/// `count` distinct chords, each a modifier combination over a letter, digit or function key.
+/// `count` distinct chords, each a modifier combination over a letter, digit or function key
+/// (never Shift alone: a user layer may not set those).
 fn distinct_rules(count: usize) -> String {
     const ROLES: &[&str] = &[
         "command+",
         "option+",
         "control+",
-        "shift+",
+        "control+shift+",
         "command+shift+",
         "option+shift+",
     ];
