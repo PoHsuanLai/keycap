@@ -25,6 +25,9 @@ StartLimitBurst=5
 [Service]
 Type=notify
 ExecStart=/usr/local/bin/keycap
+# Every loader variable the manager may carry is dropped, so the unit proves its full standing to
+# turnstile (peephole's loader list; keep in step with peephole-core LOADER_VARIABLES).
+UnsetEnvironment=LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT GCONV_PATH GIO_EXTRA_MODULES GTK_MODULES GTK_PATH GST_PLUGIN_PATH GST_PLUGIN_SYSTEM_PATH LIBGL_DRIVERS_PATH MESA_LOADER_DRIVER_OVERRIDE __EGL_VENDOR_LIBRARY_DIRS __EGL_VENDOR_LIBRARY_FILENAMES GBM_BACKENDS_PATH LIBVA_DRIVERS_PATH VK_ICD_FILENAMES VK_DRIVER_FILES VK_ADD_DRIVER_FILES VK_LAYER_PATH VK_ADD_LAYER_PATH VK_INSTANCE_LAYERS VK_LOADER_LAYERS_ENABLE
 TimeoutStartSec=10
 WatchdogSec=2
 Restart=always
