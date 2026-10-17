@@ -321,3 +321,17 @@ chord repeats its output.
 
 **`unsafe` lives in `daemon/sys.rs` and, test-only, `keycap-devtest/src/sys.rs`.** Each block has
 a SAFETY comment; ioctl opcodes are checked by a test in each.
+
+## Re-audit rows (2026-10-17)
+
+- *INPUT-15, `PrivateUsers=` assessed and not set.* The daemon compares the uid in `SO_PEERCRED` with the
+  seat's active user (`socket/seat.rs`). With `PrivateUsers=yes` every process outside the unit's user namespace
+  reads as the overflow uid, so no client would ever match the seat owner and the shell could not steer. The other
+  deferred half, `ProtectProc=invisible`, stays dropped for the steering check (WAVE2-DESIGN 4.8). The unit now also
+  unsets the 22 loader variables so that turnstile can prove it `Full`. Closes if steering moves to a mechanism that
+  does not read uids.
+- *INPUT-02, the standalone install keeps its `input` group rule.* `install.sh` and `70-keycap.rules` (a node open
+  to the `input` group) are for a machine with no turnstile, where keycap opens `/dev/uinput` itself. The desktop's
+  packaging ships neither. Closes when no supported standalone target remains.
+- *INPUT-03, steering identity.* Owner decision: no root identity check for keycap's own socket; the bound is the
+  user layer's confinement, now including Shift (NEW-PI-5).
