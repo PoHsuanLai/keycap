@@ -105,7 +105,7 @@ the real Caps Lock. A desktop that ships keycap's defaults (sill does) already h
 `/usr/lib/keycap/keycap.toml`. To change it, or on a machine without that desktop, put this in the
 machine file, `/etc/keycap/keycap.toml`: a desktop that forwards
 your own file has it cut down on arrival, and a rule on Caps Lock alone, with no modifier held, is
-left out of it (keycap says so). `shift+capslock` is fine in either file.
+left out of it (keycap says so), and so is a rule on Shift and a key, such as `shift+capslock`: Shift is held for every capital letter, so only Command, Option and Control make a shortcut in a file a desktop forwards. Both rules below belong in the machine file.
 
 ```toml
 [profile.default]

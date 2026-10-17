@@ -1,6 +1,6 @@
 //! What the seat owner's own settings may say. They arrive over a socket that a program of the
 //! person's can reach, so they are cut down to what a person's shortcuts need: a rule is a
-//! chord held with a modifier, and it writes one stroke. Anything that types by itself, on a key
+//! chord held with Command, Option or Control (Shift alone is typing), and it writes one stroke. Anything that types by itself, on a key
 //! pressed alone, belongs to the machine settings, which only an administrator can write.
 
 use keycap_protocol::Warning;
@@ -9,6 +9,7 @@ use super::layer::{ConfigLayer, ProfileLayer};
 use super::lenient::{dotted, warning};
 use super::limits::Oversize;
 use crate::profile::{RuleAction, Trigger};
+use crate::role::{Role, Roles};
 
 /// Rules a user layer may hold across all its profiles. The shipped session layer has about
 /// twenty; a person with a long personal list has a few dozen.
@@ -41,7 +42,7 @@ impl Sequences {
 /// Why a rule of the user layer is left out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Reason {
-    /// The trigger is a key pressed with no modifier held: ordinary typing.
+    /// The trigger is a key pressed with no modifier held, or with only Shift: ordinary typing.
     KeyAlone,
     /// The rule writes a list of strokes, or none.
     StrokeList,
@@ -50,17 +51,27 @@ enum Reason {
 impl Reason {
     fn text(self) -> String {
         let what = match self {
-            Reason::KeyAlone => "a key pressed on its own",
+            Reason::KeyAlone => "a key pressed on its own, or with only Shift,",
             Reason::StrokeList => "a shortcut that types several keys, or none",
         };
         format!("{what} can only be set in {MACHINE_FILE}; this rule is left out")
     }
 }
 
+/// Whether `trigger` is a key typed with nothing but Shift, or nothing: ordinary typing. Shift is
+/// held for every capital letter and every shifted symbol, so a rule on `shift+a` would rewrite
+/// the text the person types; only Command, Option and Control make a key a shortcut.
+fn is_typing(trigger: &Trigger) -> bool {
+    trigger
+        .roles
+        .difference(Roles::EMPTY.with(Role::Shift))
+        .is_empty()
+}
+
 /// Why `action` on `trigger` may not stay in the user layer, if it may not.
 fn objection(trigger: &Trigger, action: &RuleAction, sequences: Sequences) -> Option<Reason> {
     match (action, sequences) {
-        _ if trigger.roles.is_empty() => Some(Reason::KeyAlone),
+        _ if is_typing(trigger) => Some(Reason::KeyAlone),
         (RuleAction::Sequence(_) | RuleAction::Swallow, Sequences::Refuse) => {
             Some(Reason::StrokeList)
         }

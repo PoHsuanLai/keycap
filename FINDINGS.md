@@ -88,8 +88,7 @@ refusal for (d), because a defined profile is the only thing a name can select.
   only re-grabs and types nothing, and `keycap resume` from a terminal is the escape-chord recovery.
 - *Consequence: user rules on a bare key move to the machine file.* sill's shipped layer has `capslock` ->
   `ctrl+space`; it is reported and left out of the user layer, and the desktop's packaging now ships it in the vendor file
-  `/usr/lib/keycap/keycap.toml` (see "Vendor layer"). `shift+capslock` stays: Shift counts as a modifier, so `shift+e` -> anything
-  also stays. Requiring a non-Shift role would close that; it breaks `shift+capslock` too.
+  `/usr/lib/keycap/keycap.toml` (see "Vendor layer"). `shift+capslock` moves with it (NEW-PI-5, 2026-10-17): Shift is held for every capital letter and every shifted symbol, so it is not a role that makes a key a shortcut. A user rule needs Command, Option or Control; `shift+a`, `shift+7`, `shift+;` and `shift+capslock` are left out of the user layer with a warning. The machine and vendor files may hold them.
 - *The user layer is cut when it arrives.* Changing `[user_layer]` in the machine file later does not re-cut a
   layer already in force; the shell sends its file again on change or restart.
 - *Probing needs `ProtectProc=default`.* A process without privileges cannot read another user's

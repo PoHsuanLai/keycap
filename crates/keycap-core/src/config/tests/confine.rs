@@ -31,10 +31,53 @@ fn a_user_rule_needs_a_modifier_and_writes_one_stroke_unless_the_system_file_say
             KEEP,
         ),
         (
-            "shift is a modifier",
+            "command with shift",
+            r#"{ when = "command+shift+z", then = "ctrl+y" }"#,
+            KEEP,
+            KEEP,
+        ),
+        (
+            "option alone",
+            r#"{ when = "option+a", then = "ctrl+a" }"#,
+            KEEP,
+            KEEP,
+        ),
+        (
+            "control with shift",
+            r#"{ when = "control+shift+a", then = "ctrl+b" }"#,
+            KEEP,
+            KEEP,
+        ),
+        // Shift is held for every capital and every shifted symbol: not a role of a shortcut.
+        (
+            "shift and a letter",
+            r#"{ when = "shift+a", then = "b" }"#,
+            DROP,
+            DROP,
+        ),
+        (
+            "shift and a digit",
+            r#"{ when = "shift+7", then = "ctrl+alt+t" }"#,
+            DROP,
+            DROP,
+        ),
+        (
+            "shift and a symbol",
+            r#"{ when = "shift+semicolon", then = "ctrl+alt+t" }"#,
+            DROP,
+            DROP,
+        ),
+        (
+            "shift and capslock",
             r#"{ when = "shift+capslock", then = "capslock" }"#,
-            KEEP,
-            KEEP,
+            DROP,
+            DROP,
+        ),
+        (
+            "shift and a list, even where lists are allowed",
+            r#"{ when = "shift+a", then = ["a", "b"] }"#,
+            DROP,
+            DROP,
         ),
         (
             "a key alone",
