@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/PoHsuanLai/keycap"
 
 [workspace.lints.rust]
-unsafe_code = "deny"
+unsafe_code = "forbid"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -18,9 +18,10 @@ thiserror = "2"
 serde_json = "1"
 toml = "1"
 notify = "8.2"
-# Poll, SOCK_SEQPACKET, eventfd, CLOCK_MONOTONIC and the ioctl plumbing without libc's unsafe
-# surface.
+# Poll, SOCK_SEQPACKET, eventfd, CLOCK_MONOTONIC and file opens without libc's unsafe surface.
 rustix = { version = "1", features = ["event", "fs", "net", "time", "process"] }
+# The evdev and uinput ioctls behind safe handles, so no crate here needs `unsafe`.
+input-linux = { version = "0.7", default-features = false }
 # The portable keymap core: actions, chords, overrides, the resolver. keycap is only this
 # desktop's source and remapper; it defines no keymap nouns of its own.
 chordkit = { git = "https://github.com/PoHsuanLai/chordkit.git", rev = "934a2d71f6516bee5919ee29278003702a4ea5e1" }

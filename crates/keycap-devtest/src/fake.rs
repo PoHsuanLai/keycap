@@ -110,9 +110,9 @@ impl FakeKeyboard {
         .map_err(errno(format!(
             "opening {UINPUT} (is the uinput module loaded and is it writable by this user?)"
         )))?;
-        register(&fd, spec).map_err(io("registering the fake keyboard's capabilities"))?;
-        sys::dev_setup(&fd, setup(spec)).map_err(io("UI_DEV_SETUP"))?;
-        sys::dev_create(&fd).map_err(io("UI_DEV_CREATE"))?;
+        let abs =
+            register(&fd, spec).map_err(io("registering the fake keyboard's capabilities"))?;
+        sys::dev_create(&fd, setup(spec), &abs).map_err(io("UI_DEV_SETUP, UI_DEV_CREATE"))?;
         let sysname = sys::sysname(&fd).map_err(io("UI_GET_SYSNAME"))?;
         let node = wait_for(NODE_WAIT, || node_of_sysname(&sysname)).ok_or_else(|| {
             Failure::new(format!(
@@ -241,8 +241,8 @@ fn setup(spec: &FakeSpec) -> UinputSetup {
 }
 
 /// Declares what the fake can send: every key in the harness's table, the LEDs and the pointer
-/// the spec asks for.
-fn register(fd: &OwnedFd, spec: &FakeSpec) -> std::io::Result<()> {
+/// the spec asks for. Returns the absolute axes with their ranges, which go in at creation.
+fn register(fd: &OwnedFd, spec: &FakeSpec) -> std::io::Result<Vec<UinputAbsSetup>> {
     let bit = |set, code| sys::set_bit(fd, set, code);
     bit(BitSet::Ev, EV_SYN)?;
     bit(BitSet::Ev, EV_KEY)?;
@@ -255,8 +255,8 @@ fn register(fd: &OwnedFd, spec: &FakeSpec) -> std::io::Result<()> {
             .try_for_each(|led| bit(BitSet::Led, led))?;
     }
     match spec.pointer {
-        Pointer::None => Ok(()),
-        Pointer::Mouse => relative_half(fd),
+        Pointer::None => Ok(Vec::new()),
+        Pointer::Mouse => relative_half(fd).map(|()| Vec::new()),
         Pointer::Touchpad => relative_half(fd).and_then(|()| touchpad_half(fd)),
     }
 }
@@ -268,7 +268,7 @@ fn relative_half(fd: &OwnedFd) -> std::io::Result<()> {
     sys::set_bit(fd, BitSet::Key, BTN_LEFT)
 }
 
-fn touchpad_half(fd: &OwnedFd) -> std::io::Result<()> {
+fn touchpad_half(fd: &OwnedFd) -> std::io::Result<Vec<UinputAbsSetup>> {
     sys::set_bit(fd, BitSet::Ev, EV_ABS)?;
     [BTN_TOUCH, BTN_TOOL_FINGER, BTN_TOOL_DOUBLETAP]
         .into_iter()
@@ -281,25 +281,22 @@ fn touchpad_half(fd: &OwnedFd) -> std::io::Result<()> {
         (ABS_MT_POSITION_Y, 0, 800),
         (ABS_MT_TRACKING_ID, 0, 65535),
     ];
-    for (code, minimum, maximum) in axes {
-        sys::set_bit(fd, BitSet::Abs, code)?;
-        sys::abs_setup(
-            fd,
-            UinputAbsSetup {
-                code,
-                absinfo: AbsInfo {
-                    value: 0,
-                    minimum,
-                    maximum,
-                    fuzz: 0,
-                    flat: 0,
-                    resolution: 12,
-                },
-            },
-        )?;
-    }
+    let setups = axes.map(|(code, minimum, maximum)| UinputAbsSetup {
+        code,
+        absinfo: AbsInfo {
+            value: 0,
+            minimum,
+            maximum,
+            fuzz: 0,
+            flat: 0,
+            resolution: 12,
+        },
+    });
+    axes.iter()
+        .try_for_each(|&(code, _, _)| sys::set_bit(fd, BitSet::Abs, code))?;
     sys::set_bit(fd, BitSet::Prop, INPUT_PROP_POINTER)?;
-    sys::set_bit(fd, BitSet::Prop, INPUT_PROP_BUTTONPAD)
+    sys::set_bit(fd, BitSet::Prop, INPUT_PROP_BUTTONPAD)?;
+    Ok(setups.to_vec())
 }
 
 #[cfg(test)]

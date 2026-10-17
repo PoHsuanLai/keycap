@@ -8,7 +8,7 @@
 use super::events::{EV_ABS, EV_KEY, EV_REL, EV_SYN, InputEvent};
 use super::pointer::PointerCaps;
 use super::source::Source;
-use super::sys::{self, BitSet, InputId, UinputSetup};
+use super::sys::{self, AbsSetup, BitSet, InputId, UinputSetup};
 use super::uinput::{BUS_VIRTUAL, OutputError, PointerSink, UINPUT, open, write_batch};
 use rustix::fd::OwnedFd;
 use std::io;
@@ -35,8 +35,7 @@ pub(super) fn direct_pointer(caps: &PointerCaps) -> Result<OwnedFd, OutputError>
     let unavailable = |e: io::Error| OutputError::Unavailable(e.to_string());
     let fd = open(Path::new(UINPUT)).map_err(unavailable)?;
     register(&fd, caps).map_err(unavailable)?;
-    sys::dev_setup(&fd, setup(caps)).map_err(unavailable)?;
-    sys::dev_create(&fd).map_err(unavailable)?;
+    sys::dev_create(&fd, setup(caps), &abs_setups(caps)).map_err(unavailable)?;
     Ok(fd)
 }
 
@@ -52,7 +51,18 @@ impl PointerSink for PointerTwin {
     }
 }
 
-/// Declares the event types, buttons, axes with their ranges and properties of the twin.
+/// The axes with their ranges, declared together with the identity when the device is created.
+fn abs_setups(caps: &PointerCaps) -> Vec<AbsSetup> {
+    caps.abs
+        .iter()
+        .map(|axis| AbsSetup {
+            code: axis.code,
+            info: axis.info,
+        })
+        .collect()
+}
+
+/// Declares the event types, buttons, axis numbers and properties of the twin.
 fn register(fd: &OwnedFd, caps: &PointerCaps) -> io::Result<()> {
     let kinds = [
         Some(EV_SYN),
@@ -70,10 +80,9 @@ fn register(fd: &OwnedFd, caps: &PointerCaps) -> io::Result<()> {
     caps.rel
         .iter()
         .try_for_each(|&axis| sys::set_bit(fd, BitSet::Rel, axis))?;
-    caps.abs.iter().try_for_each(|axis| {
-        sys::set_bit(fd, BitSet::Abs, axis.code)?;
-        sys::abs_setup(fd, axis.code, axis.info)
-    })?;
+    caps.abs
+        .iter()
+        .try_for_each(|axis| sys::set_bit(fd, BitSet::Abs, axis.code))?;
     caps.props
         .iter()
         .try_for_each(|&prop| sys::set_bit(fd, BitSet::Prop, prop))

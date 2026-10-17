@@ -14,3 +14,4 @@ workspace = true
 [dependencies]
 keycap-protocol = { path = "../keycap-protocol" }
 rustix = { workspace = true, features = ["pipe"] }
+input-linux.workspace = true

@@ -317,10 +317,19 @@ releases; the compositor generates repeat from the held virtual key, so a repeat
 chord repeats its output.
 
 **`rustix` is outside the pinned block**, as in palmrest: poll, eventfd, `SOCK_SEQPACKET`,
-`CLOCK_MONOTONIC` and the ioctl plumbing without libc's unsafe surface.
+`CLOCK_MONOTONIC` and file opens without libc's unsafe surface.
 
-**`unsafe` lives in `daemon/sys.rs` and, test-only, `keycap-devtest/src/sys.rs`.** Each block has
-a SAFETY comment; ioctl opcodes are checked by a test in each.
+**No `unsafe` anywhere; the workspace lint is `forbid` (2026-10-17).** The ioctls in `daemon/sys.rs` and,
+test-only, `keycap-devtest/src/sys.rs` used to be rustix `Ioctl` blocks (including a hand-written
+`unsafe impl Ioctl` for `EVIOCGABS`). They now go through `input-linux` 0.7 (MIT, `default-features = false`,
+the same line as turnstile): `EvdevHandle` for `EVIOCGRAB`, `EVIOCGKEY`, `EVIOCGLED`, `EVIOCGBIT`, `EVIOCGPROP`,
+`EVIOCGABS` and `UInputHandle` for the `UI_SET_*BIT` calls, `UI_DEV_SETUP`, `UI_ABS_SETUP`, `UI_DEV_CREATE`,
+`UI_DEV_DESTROY`, `UI_GET_SYSNAME`. No site stays unsafe. What changed in behaviour: a raw code is now checked
+against its kind's range before the ioctl (`InvalidInput`); `UInputHandle::create` does setup, the axis setups and
+create in one call, so the axes are passed at creation, not as the bits are set; on `EINVAL` from `UI_DEV_SETUP`
+(a kernel before 4.5) it falls back to the legacy `uinput_user_dev` write. The crate brings `nix` 0.29 beside
+the `nix` 0.31 that `notify` uses. The opcode and struct-size tests are gone with the opcodes; the manual check is
+that keycap grabs the keyboard and remaps, and releases on exit (the gated device tests cover it).
 
 ## Re-audit rows (2026-10-17)
 

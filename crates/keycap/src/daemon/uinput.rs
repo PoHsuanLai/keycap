@@ -105,8 +105,7 @@ pub(super) fn direct_keyboard() -> Result<OwnedFd, OutputError> {
     let unavailable = |e: io::Error| OutputError::Unavailable(e.to_string());
     let fd = open(Path::new(UINPUT)).map_err(unavailable)?;
     register(&fd).map_err(unavailable)?;
-    sys::dev_setup(&fd, setup()).map_err(unavailable)?;
-    sys::dev_create(&fd).map_err(unavailable)?;
+    sys::dev_create(&fd, setup(), &[]).map_err(unavailable)?;
     Ok(fd)
 }
 

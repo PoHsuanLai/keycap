@@ -44,7 +44,7 @@ Daemon modules:
 
 | Module | Role |
 |---|---|
-| `daemon/sys.rs` | the only `unsafe`: typed ioctls (`EVIOCGRAB`, `EVIOCGKEY`, `EVIOCGBIT`, `EVIOCGPROP`, `EVIOCGABS`, uinput incl. `UI_ABS_SETUP`), each with a `SAFETY` comment, and a test pinning every opcode's number |
+| `daemon/sys.rs` | the ioctls (`EVIOCGRAB`, `EVIOCGKEY`, `EVIOCGLED`, `EVIOCGBIT`, `EVIOCGPROP`, `EVIOCGABS`, uinput incl. `UI_ABS_SETUP`) through `input-linux`'s safe `EvdevHandle` and `UInputHandle`; it only converts raw codes to the crate's typed ones and errors to `io::Error`. No `unsafe` |
 | `command/status.rs` | `keycap status` and `keycap resume`: a plain socket client (`Hello` read, `Resume` sent), `render` and `is_remapping` pure and table-tested |
 | `daemon/uinput.rs` | the one "keycap keyboard" virtual device, a descriptor from a `Source`, destroyed on `Drop`; `direct_keyboard` makes it on `/dev/uinput` itself; passes the pointer events of plain combo devices through and carries the lock LEDs back; the `Emitter` and `PointerSink` traits and their recording fakes. Everything below device creation (writes, `led_fd`, `leds`) is the same whichever source made the descriptor |
 | `daemon/source.rs` | where a virtual device comes from: `Source::Service` asks the root device service (`turnstile-client`'s `Broker`, socket `/run/turnstile/input.sock`, `KEYCAP_DEVICE_SERVICE`) for a `KeycapKeyboard` or `KeycapPointer` and receives the finished device's descriptor; `Source::Direct` (the default when the socket is absent, and the standalone install) opens `/dev/uinput`. A service that stops answering falls back to `Direct` with a log line; a refusal does not. `recreate` drops the old descriptor and asks again. The test source is `turnstile-client`'s `FakeSource` |
@@ -129,7 +129,7 @@ Two outside parties decide what keycap trusts, and both are in the unit's reach 
 | The desktop's own bindings beyond chordkit's conventions | `keycap_client::system_bindings` |
 | A program's socket client | `keycap_client::Connection` |
 | Threads, sockets, devices, clocks | `daemon` |
-| ioctls and all `unsafe` | `daemon::sys` |
+| ioctls | `daemon::sys` |
 | Environment, clock, directories | `daemon::Env`, built once in `command::run` |
 | Command-line verbs | `command` |
 
@@ -208,15 +208,15 @@ The `keycap-devtest` modules:
 | `daemon`, `notify` | `Daemon`: the binary as a child with scratch paths, stderr to a file, `READY=1` and `WATCHDOG=1` recorded with times |
 | `client` | `Client`: `Hello`, `Focus`, `Resume`, `wait_status` |
 | `grab` | `ExternalGrab`: another program's `EVIOCGRAB` |
-| `sys` | the harness's ioctls, the second module allowed `unsafe` |
+| `sys` | the harness's ioctls, through `input-linux` |
 | `keys`, `event`, `sysfs`, `scratch`, `failure` | key names, `struct input_event`, finding nodes by name, the scratch directory, the error type |
 
 ## 7. Repo rules
 
 - **Only `daemon` owns threads, sockets, devices, clocks and the environment.** When the core
   seems to need an effect, it returns an `RemapOut` for the daemon to carry out.
-- **`unsafe` lives only in `daemon/sys.rs`** and, test-only, in `keycap-devtest/src/sys.rs`,
-  each block with a `SAFETY` comment.
+- **No `unsafe`:** the workspace lint is `forbid`. The ioctls in `daemon/sys.rs` and, test-only,
+  `keycap-devtest/src/sys.rs` go through `input-linux`'s safe handles.
 - **The layering rule:** core modules never name daemon modules.
 - **Units and ids are newtypes:** `Key`, `Physical`, `Logical`, `ProfileName`, `Mono`. `Key` is
   the one bare generic root export, kept deliberately: it is the evdev code vocabulary and every
