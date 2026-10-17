@@ -36,6 +36,8 @@ jobs:
         with:
           tool: cargo-deny
       - run: cargo deny check licenses
+      - name: advisories, bans and sources
+        run: cargo deny check advisories bans sources
       - name: The scripts parse and the dry runs change nothing
         run: |
           bash -n install.sh uninstall.sh scripts/lib.sh

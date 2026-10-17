@@ -45,7 +45,7 @@ inherited, but one the desktop restates for a chord (sill's Cmd+H to Ctrl+H) mus
   which waits for a `systemd-analyze security` run. `/etc/keycap` stays root's under `DynamicUser=`:
   systemd.exec(5) hands the innermost folder to the service's user for `State`/`Cache`/`Logs`/`RuntimeDirectory=`
   but not for `ConfigurationDirectory=`, so the root-only machine file (see "Vendor layer") is read.
-- *Supply chain (INPUT-16)* is not in this lane; CI still checks licenses only.
+- *Supply chain (INPUT-16)* closed 2026-10-17: CI runs `cargo deny check licenses` and `advisories bans sources` (deny.toml allows crates.io and the three git sources of Cargo.lock); advisories read a live database, so a new one can fail an unchanged tree.
 - *chordkit's own readers (INPUT-12).* chordkit-kde and chordkit-gnome still read their files
   unbounded (interface ask: use a bounded regular-file read like `keycap_client::read_text`).
 

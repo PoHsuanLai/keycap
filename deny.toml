@@ -38,3 +38,20 @@ confidence-threshold = 0.9
 #
 # What stays out of that list is strong copyleft: GPL, AGPL, EUPL. Those would change what this
 # project may be distributed as, and a dependency arriving under one should stop the build.
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# The sibling path crates have no version; a path dependency is not a wildcard.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = [
+    "https://github.com/PoHsuanLai/chordkit",
+    "https://github.com/PoHsuanLai/chordkit.git",
+    "https://github.com/PoHsuanLai/peephole",
+    "https://github.com/PoHsuanLai/turnstile",
+]
