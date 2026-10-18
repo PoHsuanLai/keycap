@@ -1,11 +1,10 @@
 //! Telling keycap what an app handles, so Settings can list it.
 
-use crate::connection::{ClientError, Connection, Heard};
+use crate::connection::{ClientError, Connection};
 use crate::fetch::WAIT;
 use crate::source::KeycapSource;
 use chordkit::{AppAction, AppId, DefaultChord};
 use keycap_protocol::{RegisteredAction, Registration, ToClient, ToDaemon};
-use std::time::Instant;
 
 /// An app's registration. It lasts as long as this value: keycap forgets the actions when the
 /// connection closes, so an app that exits leaves nothing behind.
@@ -41,15 +40,9 @@ impl KeycapSource {
     pub fn registered(&self) -> Result<Vec<Registration>, ClientError> {
         let link = Connection::open(self.socket(), WAIT)?.require_keymap()?;
         link.send(&ToDaemon::ListRegistered)?;
-        let deadline = Instant::now() + WAIT;
-        loop {
-            let left = deadline.saturating_duration_since(Instant::now());
-            match link.recv(left)? {
-                Heard::Message(ToClient::Registered(all)) => return Ok(all),
-                Heard::Message(_) => {}
-                Heard::Silence => return Err(ClientError::Silent),
-                Heard::Closed => return Err(ClientError::Closed),
-            }
-        }
+        link.await_message(WAIT, |message| match message {
+            ToClient::Registered(all) => Some(all),
+            _ => None,
+        })
     }
 }

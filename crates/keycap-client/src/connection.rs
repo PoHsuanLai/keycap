@@ -202,6 +202,31 @@ impl Connection {
             Err(e) => Err(ClientError::Io(format!("receiving: {e}"))),
         }
     }
+
+    /// Receives until `pick` takes a message, within `within` in all; other messages are
+    /// skipped. Silence is `ClientError::Silent` and a closed connection `ClientError::Closed`.
+    pub(crate) fn await_message<T>(
+        &self,
+        within: Duration,
+        mut pick: impl FnMut(ToClient) -> Option<T>,
+    ) -> Result<T, ClientError> {
+        let deadline = Instant::now() + within;
+        loop {
+            let left = deadline.saturating_duration_since(Instant::now());
+            match self.recv(left)? {
+                Heard::Message(message) => {
+                    if let Some(found) = pick(message) {
+                        return Ok(found);
+                    }
+                }
+                Heard::Silence => return Err(ClientError::Silent),
+                Heard::Closed => return Err(ClientError::Closed),
+            }
+            if left.is_zero() {
+                return Err(ClientError::Silent);
+            }
+        }
+    }
 }
 
 #[cfg(test)]

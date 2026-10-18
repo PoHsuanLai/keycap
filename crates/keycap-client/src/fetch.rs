@@ -1,9 +1,9 @@
 //! Asking the daemon for the person's keymap, and listening for it to change.
 
-use crate::connection::{ClientError, Connection, Heard};
+use crate::connection::{ClientError, Connection};
 use keycap_protocol::{KeymapState, ToClient, ToDaemon};
 use std::path::Path;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// How long the daemon has to answer. It answers from memory, so this is generous.
 pub(crate) const WAIT: Duration = Duration::from_secs(2);
@@ -18,17 +18,8 @@ pub(crate) fn subscribe(socket: &Path) -> Result<Connection, ClientError> {
 /// The keymap as the daemon holds it now.
 pub(crate) fn keymap(socket: &Path) -> Result<KeymapState, ClientError> {
     let connection = subscribe(socket)?;
-    let deadline = Instant::now() + WAIT;
-    loop {
-        let left = deadline.saturating_duration_since(Instant::now());
-        match connection.recv(left)? {
-            Heard::Message(ToClient::Keymap(state)) => return Ok(state),
-            Heard::Message(_) => {}
-            Heard::Silence => return Err(ClientError::Silent),
-            Heard::Closed => return Err(ClientError::Closed),
-        }
-        if left.is_zero() {
-            return Err(ClientError::Silent);
-        }
-    }
+    connection.await_message(WAIT, |message| match message {
+        ToClient::Keymap(state) => Some(state),
+        _ => None,
+    })
 }
