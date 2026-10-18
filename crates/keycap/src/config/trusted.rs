@@ -11,7 +11,7 @@ use std::path::Path;
 
 use keycap_core::{ConfigLayer, ConfigSource};
 use keycap_protocol::Warning;
-use peephole::{ProcFs, dirs_trust, weaker};
+use peephole::{ProcFs, path_trust};
 use peephole_core::FileTrust;
 
 use super::load::FILE_NAME;
@@ -78,19 +78,15 @@ enum Layer {
 
 /// The text of the file at `path` when it exists and is root-only.
 fn read_trusted<P: ProcFs>(fs: &P, path: &Path) -> Layer {
-    let file = match fs.trust_of(path) {
+    let trust = match path_trust(fs, path) {
         Ok(trust) => trust,
         Err(e) if e.kind() == ErrorKind::NotFound => return Layer::Absent,
         Err(e) => return Layer::Refused(Refusal::Unreadable(e)),
     };
-    let dirs = match dirs_trust(fs, path) {
-        Ok(dirs) => dirs,
-        Err(e) => return Layer::Refused(Refusal::Unreadable(e)),
-    };
-    if weaker(dirs, file) != FileTrust::RootOnly {
+    if trust != FileTrust::RootOnly {
         return Layer::Refused(Refusal::NotRootOnly);
     }
-    let bytes = match fs.read_file_capped(path, LAYER_FILE_CAP) {
+    let bytes = match fs.read_capped(path, LAYER_FILE_CAP) {
         Ok(bytes) => bytes,
         Err(e) => return Layer::Refused(Refusal::Unreadable(e)),
     };
