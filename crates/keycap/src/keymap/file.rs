@@ -37,7 +37,7 @@ mod tests {
         std::fs::write(&path, vec![b'#'; usize::try_from(MAX_BYTES).unwrap() + 1]).unwrap();
         assert!(matches!(read(dir.path()), FileText::Unusable(why) if why.contains("larger")));
         std::fs::write(&path, [0xff, 0xfe, 0x00]).unwrap();
-        assert!(matches!(read(dir.path()), FileText::Unusable(why) if why.contains("plain text")));
+        assert!(matches!(read(dir.path()), FileText::Unusable(why) if why.contains("valid text")));
         std::fs::write(&path, vec![b'#'; usize::try_from(MAX_BYTES).unwrap()]).unwrap();
         assert!(
             matches!(read(dir.path()), FileText::Text(_)),

@@ -113,7 +113,7 @@ Two outside parties decide what keycap trusts, and both are in the unit's reach 
 | Every default mapping | `defaults.toml` |
 | Lenient per-key reading, config layers, inheritance flattening | `config::{lenient, ConfigLayer, resolve}` |
 | How large a configuration may be (profiles, inherit steps, rules) | `config::limits` (`within_limits`); the daemon takes a layer only through `Layers::accepted` |
-| A text file read safely (regular file, not blocking, bounded) | `keycap_client::read_text` |
+| A text file read safely (regular file, not blocking, bounded) | `keycap_client::read_text`, which is `chordkit_file::read_text` mapped to `FileText` |
 | What each press emitted, and which written keys are lifted | `held::Held` |
 | The pointer half of a combo device | `daemon::pointer::PointerCaps` |
 | Which lamps the desktop last set | `daemon::leds::LedState` |

@@ -26,6 +26,10 @@ input-linux = { version = "0.7", default-features = false }
 # desktop's source and remapper; it defines no keymap nouns of its own.
 chordkit = { git = "https://github.com/PoHsuanLai/chordkit.git", rev = "934a2d71f6516bee5919ee29278003702a4ea5e1" }
 
+# The bounded reader for a settings file, at the chordkit revision that first had it (c217ae6);
+# Whopper moves it with the chordkit pin above.
+chordkit-file = { git = "https://github.com/PoHsuanLai/chordkit.git", rev = "c217ae63f911e9b1ed4ff68d5b989dab88b3b61c" }
+
 # Caller identity (who is on the other end of the socket) and the root service that makes the
 # virtual devices, by git tag, never by path.
 peephole = { git = "https://github.com/PoHsuanLai/peephole", tag = "v0.1.6" }

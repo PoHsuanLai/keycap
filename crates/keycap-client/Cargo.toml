@@ -13,5 +13,6 @@ workspace = true
 [dependencies]
 keycap-protocol = { path = "../keycap-protocol" }
 chordkit.workspace = true
+chordkit-file.workspace = true
 # std has no SOCK_SEQPACKET sockets, which the protocol uses; rustix has them without unsafe.
 rustix.workspace = true

@@ -194,10 +194,10 @@ mod tests {
     #[test]
     fn an_unusable_file_keeps_the_last_good_copy_and_says_why() {
         let before = good();
-        let after = settle(&before, FileText::Unusable("it is not plain text".into()));
+        let after = settle(&before, FileText::Unusable("it is not valid text".into()));
         assert_eq!(after.overrides, before.overrides);
         assert_eq!(after.problems.len(), 1);
-        assert!(after.problems[0].what.contains("not plain text"));
+        assert!(after.problems[0].what.contains("not valid text"));
     }
 
     #[test]
