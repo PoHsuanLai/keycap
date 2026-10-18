@@ -135,8 +135,6 @@ dependencies = [
  "peephole",
  "peephole-core",
  "rustix",
- "serde",
- "serde_json",
  "thiserror",
  "turnstile-client",
 ]
