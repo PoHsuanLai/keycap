@@ -54,9 +54,9 @@ pub(super) fn read_layer<P: ProcFs>(
 ) -> (ConfigLayer, Vec<Warning>) {
     let path = dir.join(FILE_NAME);
     match read_trusted(fs, &path) {
-        Ok(Some(text)) => ConfigLayer::parse(&text, source),
-        Ok(None) => (ConfigLayer::default(), Vec::new()),
-        Err(refusal) => (
+        Layer::Text(text) => ConfigLayer::parse(&text, source),
+        Layer::Absent => (ConfigLayer::default(), Vec::new()),
+        Layer::Refused(refusal) => (
             ConfigLayer::default(),
             vec![Warning {
                 key: path.display().to_string(),
@@ -66,21 +66,36 @@ pub(super) fn read_layer<P: ProcFs>(
     }
 }
 
-/// The text of the file at `path` when it exists and is root-only; `None` when it does not exist.
-fn read_trusted<P: ProcFs>(fs: &P, path: &Path) -> Result<Option<String>, Refusal> {
+/// What the file of one layer came to: not there, its text, or a refusal to use it.
+enum Layer {
+    /// There is no such file or folder.
+    Absent,
+    /// The text of a file that is root-only.
+    Text(String),
+    /// The file exists and is not used.
+    Refused(Refusal),
+}
+
+/// The text of the file at `path` when it exists and is root-only.
+fn read_trusted<P: ProcFs>(fs: &P, path: &Path) -> Layer {
     let file = match fs.trust_of(path) {
         Ok(trust) => trust,
-        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(Refusal::Unreadable(e)),
+        Err(e) if e.kind() == ErrorKind::NotFound => return Layer::Absent,
+        Err(e) => return Layer::Refused(Refusal::Unreadable(e)),
     };
-    let dirs = dirs_trust(fs, path).map_err(Refusal::Unreadable)?;
+    let dirs = match dirs_trust(fs, path) {
+        Ok(dirs) => dirs,
+        Err(e) => return Layer::Refused(Refusal::Unreadable(e)),
+    };
     if weaker(dirs, file) != FileTrust::RootOnly {
-        return Err(Refusal::NotRootOnly);
+        return Layer::Refused(Refusal::NotRootOnly);
     }
-    let bytes = fs
-        .read_file_capped(path, LAYER_FILE_CAP)
-        .map_err(Refusal::Unreadable)?;
-    String::from_utf8(bytes)
-        .map(Some)
-        .map_err(|_| Refusal::NotText)
+    let bytes = match fs.read_file_capped(path, LAYER_FILE_CAP) {
+        Ok(bytes) => bytes,
+        Err(e) => return Layer::Refused(Refusal::Unreadable(e)),
+    };
+    match String::from_utf8(bytes) {
+        Ok(text) => Layer::Text(text),
+        Err(_) => Layer::Refused(Refusal::NotText),
+    }
 }
