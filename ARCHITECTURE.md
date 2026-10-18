@@ -34,7 +34,7 @@ never name `daemon` modules.
 | L0 vocabulary | `key` (`Key`, `Modifier`, `Side`, `Mods`), `event` (`Edge`, `KeyEvent`, `Physical`, `Logical`), `time` (`Mono`) | newtypes | `pub` |
 | L1 layout | `layout` (`Layout`, `role`) | pure tables | `pub` |
 | L2 profiles | `profile` (`Trigger`, `Stroke`, `RuleAction`, `Profile`, `Profiles`), `config` (`ConfigLayer`, `resolve`, `lenient`, `load`, `vendor`, `watch`) | pure except `load`, `vendor` and `watch` (file reads, inotify; `load` and `vendor` share the root-only reader `trusted`) | `pub` |
-| L2 keymap | `keymap` (`Reading`, `read`, `settle`, `spawn`): the person's keymap file in chordkit's overrides format, judged against the last good copy by the pure `settle`; its watch is `config::watch::spawn_reading` | pure except `read` and `spawn` | `pub(crate)` |
+| L2 keymap | `keymap` (`read`, `settle`, `spawn`): the person's keymap file in chordkit's overrides format, judged against the last good copy by the pure `settle`; its watch is `config::watch::spawn_reading` | pure except `read` and `spawn` | `pub(crate)` |
 | L3 state | `held`, `gate`, `escape`, `backoff` | pure state machines | `pub` |
 | L4 remapper | `remap` (`Remapper::step`, `RemapInput`, `RemapOut`) | pure composition: `Remapper::step(self, RemapInput, &Profiles) -> (Self, Vec<RemapOut>)` | `pub` |
 | L5 effects | `daemon` (`reader`, `socket`, `discover`, `uinput`, `sdnotify`, `env`, `sys`) | threads, sockets, devices, clocks, ioctls | `pub(crate)` |
