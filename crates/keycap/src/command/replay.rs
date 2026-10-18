@@ -109,16 +109,16 @@ pub(super) fn replay_file(file: &Path, config: Option<&Path>) -> Result<Vec<Stri
             let toml =
                 std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
             let (layer, warnings) = parse_user(&toml);
-            warnings
-                .iter()
-                .for_each(|w| eprintln!("keycap: config: {}: {}", w.key, w.problem));
+            for w in &warnings {
+                eprintln!("keycap: config: {}: {}", w.key, w.problem);
+            }
             Layers::builtin_only().with_user(layer)
         }
     };
     let (profiles, warnings) = layers.resolve();
-    warnings
-        .iter()
-        .for_each(|w| eprintln!("keycap: config: {}: {}", w.key, w.problem));
+    for w in &warnings {
+        eprintln!("keycap: config: {}: {}", w.key, w.problem);
+    }
     Ok(run(steps, &profiles))
 }
 

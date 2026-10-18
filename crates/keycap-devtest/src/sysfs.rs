@@ -24,7 +24,7 @@ fn nodes_in(class_dir: &Path, dev_dir: &Path, name: &str) -> Vec<(u32, PathBuf)>
     let mut found: Vec<(u32, PathBuf)> = std::fs::read_dir(class_dir)
         .into_iter()
         .flatten()
-        .filter_map(|e| e.ok())
+        .filter_map(Result::ok)
         .filter_map(|e| {
             let file = e.file_name().into_string().ok()?;
             let n = event_number(&file)?;

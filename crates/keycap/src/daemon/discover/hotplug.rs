@@ -65,9 +65,9 @@ pub(crate) fn spawn(
     out: Sender<Hotplug>,
 ) -> notify::Result<notify::RecommendedWatcher> {
     let mut watcher = notify::recommended_watcher(move |ev: notify::Result<notify::Event>| {
-        hotplugs_of(&ev).into_iter().for_each(|h| {
+        for h in hotplugs_of(&ev) {
             let _ = out.send(h);
-        });
+        }
     })?;
     watcher.watch(dir, RecursiveMode::NonRecursive)?;
     Ok(watcher)

@@ -113,12 +113,11 @@ fn read_rule(v: &Value, path: &str, warn: &mut Vec<Warning>) -> Option<(Trigger,
     };
     let when = required(table, path, "when", warn);
     let hold = field::<Hold>(table, path, "hold", warn);
-    let then = match table.get("then") {
-        Some(v) => read_then(v, &dotted(path, "then"), hold, warn),
-        None => {
-            warn.push(warning(&dotted(path, "then"), "is missing"));
-            None
-        }
+    let then = if let Some(v) = table.get("then") {
+        read_then(v, &dotted(path, "then"), hold, warn)
+    } else {
+        warn.push(warning(&dotted(path, "then"), "is missing"));
+        None
     };
     if hold.is_some() && !matches!(then, Some(RuleAction::Map(..)) | None) {
         warn.push(warning(
@@ -130,12 +129,11 @@ fn read_rule(v: &Value, path: &str, warn: &mut Vec<Warning>) -> Option<(Trigger,
 }
 
 fn required(table: &Table, path: &str, key: &str, warn: &mut Vec<Warning>) -> Option<Trigger> {
-    match table.get(key) {
-        Some(v) => Trigger::read(v, &dotted(path, key), warn),
-        None => {
-            warn.push(warning(&dotted(path, key), "is missing"));
-            None
-        }
+    if let Some(v) = table.get(key) {
+        Trigger::read(v, &dotted(path, key), warn)
+    } else {
+        warn.push(warning(&dotted(path, key), "is missing"));
+        None
     }
 }
 

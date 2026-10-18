@@ -37,8 +37,7 @@ impl fmt::Display for ClientError {
             ClientError::Connect { path, reason } => {
                 write!(f, "cannot connect to {}: {reason}", path.display())
             }
-            ClientError::Io(what) => write!(f, "{what}"),
-            ClientError::Protocol(what) => write!(f, "{what}"),
+            ClientError::Io(what) | ClientError::Protocol(what) => write!(f, "{what}"),
             ClientError::Incompatible { version } => write!(
                 f,
                 "the daemon speaks protocol version {version}; this program speaks \

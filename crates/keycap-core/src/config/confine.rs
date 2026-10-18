@@ -84,7 +84,7 @@ fn chord_text(trigger: &Trigger) -> String {
     trigger
         .roles
         .iter()
-        .map(|role| role.name())
+        .map(Role::name)
         .chain([trigger.key.name()])
         .collect::<Vec<_>>()
         .join("+")
