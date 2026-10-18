@@ -79,7 +79,7 @@ def from_kwin(sender, owner):
 
 def focus_message(profile):
     """The packet keycap reads: adjacently tagged JSON."""
-    return json.dumps({"kind": "focus", "v": {"profile": profile}}, separators=(",", ":")).encode()
+    return json.dumps({"kind": "steer", "v": {"kind": "focus", "v": {"profile": profile}}}, separators=(",", ":")).encode()
 
 
 class Keycap:

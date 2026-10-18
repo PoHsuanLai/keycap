@@ -40,7 +40,7 @@ class ProfileChoice(unittest.TestCase):
             self.assertEqual(keycap_focus.profile_for(name), "default", name)
 
     def test_the_packet_is_adjacently_tagged_json(self):
-        self.assertEqual(keycap_focus.focus_message("terminal"), b'{"kind":"focus","v":{"profile":"terminal"}}')
+        self.assertEqual(keycap_focus.focus_message("terminal"), b'{"kind":"steer","v":{"kind":"focus","v":{"profile":"terminal"}}}')
 
 
 class OnlyKWinMayReport(unittest.TestCase):
