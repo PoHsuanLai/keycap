@@ -46,8 +46,8 @@ inherited, but one the desktop restates for a chord (sill's Cmd+H to Ctrl+H) mus
   systemd.exec(5) hands the innermost folder to the service's user for `State`/`Cache`/`Logs`/`RuntimeDirectory=`
   but not for `ConfigurationDirectory=`, so the root-only machine file (see "Vendor layer") is read.
 - *Supply chain (INPUT-16)* closed 2026-10-17: CI runs `cargo deny check licenses` and `advisories bans sources` (deny.toml allows crates.io and the three git sources of Cargo.lock); advisories read a live database, so a new one can fail an unchanged tree.
-- *chordkit's own readers (INPUT-12).* chordkit-kde and chordkit-gnome still read their files
-  unbounded (interface ask: use a bounded regular-file read like `keycap_client::read_text`).
+- *chordkit's own readers (INPUT-12)* closed: chordkit-kde and chordkit-gnome read their files through
+  `chordkit-file`'s bounded regular-file read.
 
 **Vendor layer (2026-10-17).** The desktop's Caps Lock rule must ship with every install and release, but a release
 must never write the administrator's `/etc/keycap`. So keycap has a fourth layer, `/usr/lib/keycap/keycap.toml`
