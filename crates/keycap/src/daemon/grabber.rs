@@ -1,5 +1,5 @@
-//! `Grabber`: take and release the exclusive grab on one device, by id; `Nodes`: and open it,
-//! close it and ask which keys it holds down.
+//! `Nodes`: open a device node, take and release the exclusive grab on it, close it and ask
+//! which keys it holds down, all by id.
 
 use super::discover::{Bits, Identity};
 use super::events::InputEvent;
@@ -13,16 +13,9 @@ use std::collections::BTreeMap;
 use std::io;
 use std::path::Path;
 
-/// Grabs and releases devices; the real one issues `EVIOCGRAB`, tests use `FakeGrabber`.
-pub(crate) trait Grabber {
-    /// Takes the grab; `GrabError::Busy` means another program holds the device.
-    fn grab(&mut self, id: DeviceId) -> Result<(), GrabError>;
-    /// Releases the grab. A device that is gone or was never grabbed is ignored.
-    fn ungrab(&mut self, id: DeviceId);
-}
-
-/// The device nodes keycap holds open, on top of the grab.
-pub(crate) trait Nodes: Grabber {
+/// The device nodes keycap holds open, and the grab on them; the real one issues `EVIOCGRAB`,
+/// tests use `FakeGrabber`.
+pub(crate) trait Nodes {
     /// Opens the node for reading and for injecting LED events, and starts managing it under
     /// `id`.
     fn open(&mut self, id: DeviceId, path: &Path) -> io::Result<()>;
@@ -30,6 +23,10 @@ pub(crate) trait Nodes: Grabber {
     fn close(&mut self, id: DeviceId);
     /// The keys the kernel says are down on the device.
     fn keys_down(&self, id: DeviceId) -> io::Result<KeysDown>;
+    /// Takes the grab; `GrabError::Busy` means another program holds the device.
+    fn grab(&mut self, id: DeviceId) -> Result<(), GrabError>;
+    /// Releases the grab. A device that is gone or was never grabbed is ignored.
+    fn ungrab(&mut self, id: DeviceId);
 }
 
 /// The open evdev fds, by id.
@@ -123,9 +120,7 @@ impl Nodes for EvdevGrabber {
             .ok_or_else(not_open)
             .and_then(sys::keys_down)
     }
-}
 
-impl Grabber for EvdevGrabber {
     fn grab(&mut self, id: DeviceId) -> Result<(), GrabError> {
         match self.fds.get(&id) {
             Some(fd) => sys::grab(fd, Grab::On),
@@ -209,23 +204,6 @@ mod fake {
         }
     }
 
-    impl Grabber for FakeGrabber {
-        fn grab(&mut self, id: DeviceId) -> Result<(), GrabError> {
-            if self.busy.contains(&id) {
-                return Err(GrabError::Busy);
-            }
-            self.held.insert(id);
-            if self.pressed_by_grab.remove(&id) {
-                self.keys.insert(id);
-            }
-            Ok(())
-        }
-
-        fn ungrab(&mut self, id: DeviceId) {
-            self.held.remove(&id);
-        }
-    }
-
     impl Nodes for FakeGrabber {
         fn open(&mut self, id: DeviceId, _path: &Path) -> io::Result<()> {
             if self.unopenable.contains(&id) {
@@ -244,6 +222,21 @@ mod fake {
             let mut bytes = [0u8; crate::KEYS_DOWN_BYTES];
             bytes[0] = u8::from(self.keys.contains(&id));
             Ok(KeysDown::from_bytes(bytes))
+        }
+
+        fn grab(&mut self, id: DeviceId) -> Result<(), GrabError> {
+            if self.busy.contains(&id) {
+                return Err(GrabError::Busy);
+            }
+            self.held.insert(id);
+            if self.pressed_by_grab.remove(&id) {
+                self.keys.insert(id);
+            }
+            Ok(())
+        }
+
+        fn ungrab(&mut self, id: DeviceId) {
+            self.held.remove(&id);
         }
     }
 }

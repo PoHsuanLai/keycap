@@ -137,8 +137,7 @@ Two outside parties decide what keycap trusts, and both are in the unit's reach 
 
 | Trait | Signature | Implementors |
 |---|---|---|
-| `Grabber` (`daemon::grabber`) | grab and ungrab one device, returning a typed error | the real evdev grab, a fake in tests |
-| `Nodes: Grabber` (`daemon::grabber`) | open, close and read the keys down of a device by id | the open evdev fds, a fake in tests |
+| `Nodes` (`daemon::grabber`) | open, close, grab, ungrab and read the keys down of a device by id | the open evdev fds, a fake in tests |
 | `Emitter` (`daemon::uinput`) | `write` one batch of events to the virtual keyboard, `recreate` it after a failed write, expose `led_fd` / `leds` for LED forwarding, and `twin` a `PointerSink` for a combo device | the uinput device, a recording sink in tests |
 | `PointerSink` (`daemon::uinput`) | `write` one batch to a pointer twin; the device is destroyed when dropped | the uinput `PointerTwin`, a recording twin in tests |
 | `Setting` (`config::lenient`) | `fn read(v: &toml::Value, key: &str, warn: &mut Vec<Warning>) -> Option<Self>` | every unit newtype and enum |
