@@ -5,9 +5,10 @@
 //! borrows the descriptor for one call; the harness keeps ownership.
 
 use input_linux::{
-    AbsoluteAxis, AbsoluteInfo, AbsoluteInfoSetup, EvdevHandle, EventKind, InputProperty, Key,
-    LedKind, RelativeAxis, UInputHandle,
+    AbsoluteAxis, AbsoluteInfoSetup, EvdevHandle, EventKind, InputProperty, Key, LedKind,
+    RelativeAxis, UInputHandle,
 };
+pub(crate) use input_linux::{AbsoluteInfo as AbsInfo, InputId};
 use rustix::fd::{AsFd, BorrowedFd};
 use std::io;
 
@@ -29,26 +30,6 @@ fn out_of_range<E>(_: E) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, "code out of range")
 }
 
-/// `struct input_id`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct InputId {
-    pub bustype: u16,
-    pub vendor: u16,
-    pub product: u16,
-    pub version: u16,
-}
-
-impl From<InputId> for input_linux::InputId {
-    fn from(id: InputId) -> Self {
-        Self {
-            bustype: id.bustype,
-            vendor: id.vendor,
-            product: id.product,
-            version: id.version,
-        }
-    }
-}
-
 /// `struct uinput_setup`: the identity a fake device is created under. The name is NUL padded;
 /// it ends at the first NUL.
 #[derive(Debug, Clone, Copy)]
@@ -66,30 +47,6 @@ impl UinputSetup {
     }
 }
 
-/// `struct input_absinfo`.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct AbsInfo {
-    pub value: i32,
-    pub minimum: i32,
-    pub maximum: i32,
-    pub fuzz: i32,
-    pub flat: i32,
-    pub resolution: i32,
-}
-
-impl From<AbsInfo> for AbsoluteInfo {
-    fn from(info: AbsInfo) -> Self {
-        Self {
-            value: info.value,
-            minimum: info.minimum,
-            maximum: info.maximum,
-            fuzz: info.fuzz,
-            flat: info.flat,
-            resolution: info.resolution,
-        }
-    }
-}
-
 /// `struct uinput_abs_setup`: one absolute axis and its range.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct UinputAbsSetup {
@@ -101,7 +58,7 @@ impl UinputAbsSetup {
     fn typed(self) -> io::Result<AbsoluteInfoSetup> {
         Ok(AbsoluteInfoSetup {
             axis: AbsoluteAxis::from_code(self.code).map_err(out_of_range)?,
-            info: self.absinfo.into(),
+            info: self.absinfo,
         })
     }
 }
@@ -155,12 +112,7 @@ pub(crate) fn dev_create(
         .iter()
         .map(|axis| axis.typed())
         .collect::<io::Result<Vec<_>>>()?;
-    uinput(&fd).create(
-        &setup.id.into(),
-        setup.name_bytes(),
-        setup.ff_effects_max,
-        &abs,
-    )
+    uinput(&fd).create(&setup.id, setup.name_bytes(), setup.ff_effects_max, &abs)
 }
 
 /// Destroys the device.

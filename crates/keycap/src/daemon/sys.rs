@@ -7,9 +7,10 @@
 
 use crate::KeysDown;
 use input_linux::{
-    AbsoluteAxis, AbsoluteInfo, AbsoluteInfoSetup, EvdevHandle, EventKind, InputProperty, Key,
-    LedKind, RelativeAxis, UInputHandle,
+    AbsoluteAxis, AbsoluteInfoSetup, EvdevHandle, EventKind, InputProperty, Key, LedKind,
+    RelativeAxis, UInputHandle,
 };
+pub(crate) use input_linux::{AbsoluteInfo as AbsInfo, InputId};
 use rustix::fd::{AsFd, BorrowedFd};
 use std::io;
 
@@ -40,26 +41,6 @@ fn out_of_range<E>(_: E) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, "code out of range")
 }
 
-/// `struct input_id`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct InputId {
-    pub bustype: u16,
-    pub vendor: u16,
-    pub product: u16,
-    pub version: u16,
-}
-
-impl From<InputId> for input_linux::InputId {
-    fn from(id: InputId) -> Self {
-        Self {
-            bustype: id.bustype,
-            vendor: id.vendor,
-            product: id.product,
-            version: id.version,
-        }
-    }
-}
-
 /// `struct uinput_setup`: the identity a virtual device is created under. The name is NUL
 /// padded; it ends at the first NUL.
 #[derive(Debug, Clone, Copy)]
@@ -77,43 +58,6 @@ impl UinputSetup {
     }
 }
 
-/// `struct input_absinfo`: the range and resolution of one absolute axis.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) struct AbsInfo {
-    pub value: i32,
-    pub minimum: i32,
-    pub maximum: i32,
-    pub fuzz: i32,
-    pub flat: i32,
-    pub resolution: i32,
-}
-
-impl From<AbsoluteInfo> for AbsInfo {
-    fn from(info: AbsoluteInfo) -> Self {
-        Self {
-            value: info.value,
-            minimum: info.minimum,
-            maximum: info.maximum,
-            fuzz: info.fuzz,
-            flat: info.flat,
-            resolution: info.resolution,
-        }
-    }
-}
-
-impl From<AbsInfo> for AbsoluteInfo {
-    fn from(info: AbsInfo) -> Self {
-        Self {
-            value: info.value,
-            minimum: info.minimum,
-            maximum: info.maximum,
-            fuzz: info.fuzz,
-            flat: info.flat,
-            resolution: info.resolution,
-        }
-    }
-}
-
 /// One absolute axis a virtual device declares, with its range.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct AbsSetup {
@@ -125,7 +69,7 @@ impl AbsSetup {
     fn typed(self) -> io::Result<AbsoluteInfoSetup> {
         Ok(AbsoluteInfoSetup {
             axis: AbsoluteAxis::from_code(self.code).map_err(out_of_range)?,
-            info: self.info.into(),
+            info: self.info,
         })
     }
 }
@@ -178,7 +122,7 @@ pub(crate) fn leds_lit(fd: impl AsFd) -> io::Result<[u8; LED_STATE_BYTES]> {
 /// The range and resolution of absolute axis `axis` (`EVIOCGABS`).
 pub(crate) fn abs_info(fd: impl AsFd, axis: u16) -> io::Result<AbsInfo> {
     let axis = AbsoluteAxis::from_code(axis).map_err(out_of_range)?;
-    evdev(&fd).absolute_info(axis).map(AbsInfo::from)
+    evdev(&fd).absolute_info(axis)
 }
 
 /// Which capability bitmap `capability_bits` reads from an evdev fd.
@@ -241,12 +185,7 @@ pub(crate) fn dev_create(fd: impl AsFd, setup: UinputSetup, abs: &[AbsSetup]) ->
         .iter()
         .map(|axis| axis.typed())
         .collect::<io::Result<Vec<_>>>()?;
-    uinput(&fd).create(
-        &setup.id.into(),
-        setup.name_bytes(),
-        setup.ff_effects_max,
-        &abs,
-    )
+    uinput(&fd).create(&setup.id, setup.name_bytes(), setup.ff_effects_max, &abs)
 }
 
 /// Destroys the device.
@@ -298,18 +237,5 @@ mod tests {
         assert!(Key::from_code(0x300).is_err());
         assert!(LedKind::from_code(0x0f).is_ok());
         assert!(LedKind::from_code(0x10).is_err());
-    }
-
-    #[test]
-    fn abs_info_round_trips_through_the_crate_type() {
-        let info = AbsInfo {
-            value: 1,
-            minimum: -2,
-            maximum: 3,
-            fuzz: 4,
-            flat: 5,
-            resolution: 6,
-        };
-        assert_eq!(AbsInfo::from(AbsoluteInfo::from(info)), info);
     }
 }
