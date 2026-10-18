@@ -1,6 +1,7 @@
 //! The socket thread: accepts clients, tells each its `Hello`, relays the shell's requests to
 //! the reader and the reader's status to everyone.
 
+use super::SeatFile;
 use super::handle::{SocketHandle, ToSocket};
 use super::inbound::{Stream, pull};
 use super::limits::{
@@ -8,7 +9,7 @@ use super::limits::{
     MESSAGES_PER_PASS, Pace, Pacing, admit,
 };
 use super::peer::{Client, Link, Owed, Role, Sent, send};
-use super::seat::{Peer, Seat, SeatFile, Tenancy, request_of};
+use super::seat::{Peer, Seat, Tenancy, request_of};
 use super::shelf::{Reply, Shelf};
 use crate::daemon::clock;
 use crate::daemon::inbox::{ClientId, Delivery, Inbox, Message, Request};

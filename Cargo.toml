@@ -24,20 +24,20 @@ rustix = { version = "1", features = ["event", "fs", "net", "time", "process"] }
 input-linux = { version = "0.7", default-features = false }
 # The portable keymap core: actions, chords, overrides, the resolver. keycap is only this
 # desktop's source and remapper; it defines no keymap nouns of its own.
-chordkit = { git = "https://github.com/PoHsuanLai/chordkit.git", rev = "934a2d71f6516bee5919ee29278003702a4ea5e1" }
+chordkit = { git = "https://github.com/PoHsuanLai/chordkit.git", rev = "7b80eddb86559909eeb63b882d5563d36f5bad37" }
 
-# The bounded reader for a settings file, at the chordkit revision that first had it (c217ae6);
+# The bounded reader for a settings file, at the same chordkit revision as `chordkit`;
 # Whopper moves it with the chordkit pin above.
-chordkit-file = { git = "https://github.com/PoHsuanLai/chordkit.git", rev = "c217ae63f911e9b1ed4ff68d5b989dab88b3b61c" }
+chordkit-file = { git = "https://github.com/PoHsuanLai/chordkit.git", rev = "7b80eddb86559909eeb63b882d5563d36f5bad37" }
 
 # Caller identity (who is on the other end of the socket) and the root service that makes the
 # virtual devices, by git tag, never by path.
-peephole = { git = "https://github.com/PoHsuanLai/peephole", tag = "v0.1.6" }
-peephole-core = { git = "https://github.com/PoHsuanLai/peephole", tag = "v0.1.6", features = ["desktop"] }
-turnstile-client = { git = "https://github.com/PoHsuanLai/turnstile", tag = "v0.1.4" }
+peephole = { git = "https://github.com/PoHsuanLai/peephole", tag = "v0.1.7" }
+peephole-core = { git = "https://github.com/PoHsuanLai/peephole", tag = "v0.1.7", features = ["desktop"] }
+turnstile-client = { git = "https://github.com/PoHsuanLai/turnstile", tag = "v0.1.5" }
 
 # The socket guards (who is the shell, who has the seat), shared with palmrest, by git rev.
-latchkey = { git = "https://github.com/PoHsuanLai/latchkey", rev = "9cda5890377259b80987fa5e31c2c8575ac420f1", features = ["guard"] }
+latchkey = { git = "https://github.com/PoHsuanLai/latchkey", rev = "b10ae1b8c49c55cce2c5affde8f5db76edb66ab4", features = ["guard"] }
 
 # A panic must kill the process, so the kernel releases the keyboard grab and systemd restarts
 # it. Only release: tests need unwinding.
