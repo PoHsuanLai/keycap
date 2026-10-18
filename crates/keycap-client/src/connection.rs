@@ -1,8 +1,8 @@
 //! The socket: connect, check `Hello`, send and receive one message per packet.
 
 use keycap_protocol::{
-    self as protocol, Compat, KEYMAP_PROTOCOL_VERSION, MAX_PACKET, MIN_PROTOCOL_VERSION,
-    PROTOCOL_VERSION, Status, ToClient, ToDaemon,
+    self as protocol, Compat, MAX_PACKET, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION, Status, ToClient,
+    ToDaemon,
 };
 use rustix::fd::OwnedFd;
 use rustix::io::Errno;
@@ -23,8 +23,6 @@ pub enum ClientError {
     Protocol(String),
     /// The daemon's `Hello` names a version this client does not speak.
     Incompatible { version: u16 },
-    /// The daemon is older than the messages asked for.
-    TooOld { version: u16 },
     /// The daemon did not answer in time.
     Silent,
     /// The daemon closed the connection.
@@ -42,11 +40,6 @@ impl fmt::Display for ClientError {
                 f,
                 "the daemon speaks protocol version {version}; this program speaks \
                  {MIN_PROTOCOL_VERSION} to {PROTOCOL_VERSION}"
-            ),
-            ClientError::TooOld { version } => write!(
-                f,
-                "the daemon speaks protocol version {version}, older than the \
-                 {KEYMAP_PROTOCOL_VERSION} the keymap needs"
             ),
             ClientError::Silent => write!(f, "the daemon sent nothing in time"),
             ClientError::Closed => write!(f, "the daemon closed the connection"),
@@ -166,17 +159,6 @@ impl Connection {
         &self.status
     }
 
-    /// Fails unless the daemon speaks the keymap messages.
-    pub fn require_keymap(self) -> Result<Connection, ClientError> {
-        if self.version >= KEYMAP_PROTOCOL_VERSION {
-            Ok(self)
-        } else {
-            Err(ClientError::TooOld {
-                version: self.version,
-            })
-        }
-    }
-
     /// Sends one message.
     pub fn send(&self, message: &ToDaemon) -> Result<(), ClientError> {
         rustix::net::send(&self.fd, &protocol::encode(message), SendFlags::NOSIGNAL)
@@ -240,14 +222,12 @@ mod tests {
         let current = FakeDaemon::start(PROTOCOL_VERSION, KeymapState::default());
         let connection = Connection::open(&current.socket, Duration::from_secs(2)).expect("opens");
         assert_eq!(connection.version(), PROTOCOL_VERSION);
-        assert!(connection.require_keymap().is_ok());
 
-        let old = FakeDaemon::start(MIN_PROTOCOL_VERSION, KeymapState::default());
-        let connection = Connection::open(&old.socket, Duration::from_secs(2)).expect("opens");
+        let old = FakeDaemon::start(MIN_PROTOCOL_VERSION - 1, KeymapState::default());
         assert_eq!(
-            connection.require_keymap().map(|_| ()),
-            Err(ClientError::TooOld {
-                version: MIN_PROTOCOL_VERSION
+            Connection::open(&old.socket, Duration::from_secs(2)).map(|_| ()),
+            Err(ClientError::Incompatible {
+                version: MIN_PROTOCOL_VERSION - 1
             })
         );
 

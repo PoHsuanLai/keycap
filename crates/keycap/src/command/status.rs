@@ -3,7 +3,7 @@
 
 use crate::daemon::leds::Lamp;
 use keycap_client::{ClientError, Connection};
-use keycap_protocol::{Grab, Keyboard, Mode, Status, ToDaemon};
+use keycap_protocol::{Grab, Keyboard, Mode, Status, Steer, ToDaemon};
 use std::path::Path;
 use std::time::Duration;
 
@@ -21,7 +21,7 @@ pub(super) fn read_status(runtime_dir: &Path) -> Result<Status, String> {
 /// programs are obeyed, so from another account this is refused and the connection closed.
 pub(super) fn send_resume(runtime_dir: &Path) -> Result<(), String> {
     connect(runtime_dir)?
-        .send(&ToDaemon::Resume)
+        .send(&ToDaemon::Steer(Steer::Resume))
         .map_err(|e| e.to_string())
 }
 

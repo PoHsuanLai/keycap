@@ -9,14 +9,14 @@ use super::limits::{
 };
 use super::peer::{Client, Link, Owed, Role, Sent, send};
 use super::seat::{Peer, Seat, SeatFile, Tenancy, request_of};
-use super::shelf::{Call, Reply, Shelf};
+use super::shelf::{Reply, Shelf};
 use crate::daemon::clock;
 use crate::daemon::inbox::{ClientId, Delivery, Inbox, Message, Request};
 use crate::daemon::readiness::Readiness;
 use crate::daemon::waker::Waker;
 use keycap_client::FileText;
 use keycap_protocol::{
-    self as protocol, PROTOCOL_VERSION, ProfileName, Status, ToClient, ToDaemon,
+    self as protocol, KeymapCall, PROTOCOL_VERSION, ProfileName, Status, ToClient, ToDaemon,
 };
 use latchkey::guard::{AcceptFailure, Voice, Vouch, accept_failure};
 use rustix::event::{PollFd, PollFlags, poll};
@@ -350,37 +350,35 @@ impl Server {
         };
         for packet in pulled.packets {
             match protocol::decode::<ToDaemon>(&packet) {
-                Ok(message) => match Call::of(message) {
-                    Ok(call) => {
-                        if self.keymap_only(id, uid, active) == Link::Gone {
-                            self.complain(uid, "too many keymap connections; dropped");
-                            link = Link::Gone;
-                            break;
-                        }
-                        if peer == Peer::Observer && matches!(call, Call::Register(_)) {
-                            self.complain(
-                                uid,
-                                "may not register actions without owning the seat; ignored",
-                            );
-                            continue;
-                        }
-                        let replies = self.shelf.call(id, call);
-                        self.deliver(replies);
+                Ok(ToDaemon::Keymap(call)) => {
+                    if self.keymap_only(id, uid, active) == Link::Gone {
+                        self.complain(uid, "too many keymap connections; dropped");
+                        link = Link::Gone;
+                        break;
                     }
-                    Err(message) => match request_of(peer, id, message) {
-                        Ok(request) => {
-                            if let Some(refusal) = self.steer(id, request) {
-                                self.complain(uid, refusal);
-                                link = Link::Gone;
-                                break;
-                            }
-                        }
-                        Err(refusal) => {
-                            self.complain(uid, refusal.what());
+                    if peer == Peer::Observer && matches!(call, KeymapCall::Register(_)) {
+                        self.complain(
+                            uid,
+                            "may not register actions without owning the seat; ignored",
+                        );
+                        continue;
+                    }
+                    let replies = self.shelf.call(id, call);
+                    self.deliver(replies);
+                }
+                Ok(ToDaemon::Steer(steer)) => match request_of(peer, id, steer) {
+                    Ok(request) => {
+                        if let Some(refusal) = self.steer(id, request) {
+                            self.complain(uid, refusal);
                             link = Link::Gone;
                             break;
                         }
-                    },
+                    }
+                    Err(refusal) => {
+                        self.complain(uid, refusal.what());
+                        link = Link::Gone;
+                        break;
+                    }
                 },
                 Err(e) => {
                     self.complain(uid, &format!("sent a malformed message ({e}); dropped"));

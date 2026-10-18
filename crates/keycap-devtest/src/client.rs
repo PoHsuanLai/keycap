@@ -1,7 +1,9 @@
 //! A desktop's end of the socket: `Hello`, `Status`, `Focus`, `Resume`.
 
 use crate::failure::{Failure, errno};
-use keycap_protocol::{self as protocol, Grab, PROTOCOL_VERSION, Status, ToClient, ToDaemon};
+use keycap_protocol::{
+    self as protocol, Grab, PROTOCOL_VERSION, Status, Steer, ToClient, ToDaemon,
+};
 use rustix::fd::OwnedFd;
 use rustix::io::Errno;
 use rustix::net::sockopt::{Timeout, set_socket_timeout};
@@ -124,12 +126,12 @@ impl Client {
     pub fn focus(&self, profile: &str) -> Result<(), Failure> {
         let profile = protocol::ProfileName::parse(profile)
             .map_err(|e| Failure::new(format!("profile name {profile:?}: {e}")))?;
-        self.send(&ToDaemon::Focus { profile })
+        self.send(&ToDaemon::Steer(Steer::Focus { profile }))
     }
 
     /// Ends a pause.
     pub fn resume(&self) -> Result<(), Failure> {
-        self.send(&ToDaemon::Resume)
+        self.send(&ToDaemon::Steer(Steer::Resume))
     }
 
     /// The last status heard.

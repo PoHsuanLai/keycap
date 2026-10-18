@@ -8,8 +8,8 @@ use crate::daemon::inbox::{Mailbox, Message, Request, mailbox};
 use crate::daemon::scratch::Scratch;
 use keycap_client::FileText;
 use keycap_protocol::{
-    self as protocol, KeymapState, Mode, PROTOCOL_VERSION, ProfileName, RegisteredAction,
-    Registration, Status, ToClient, ToDaemon, Warning,
+    self as protocol, KeymapCall, KeymapState, Mode, PROTOCOL_VERSION, ProfileName,
+    RegisteredAction, Registration, Status, Steer, ToClient, ToDaemon, Warning,
 };
 use latchkey::guard::{ShellCheck, Vouch};
 use peephole::{FixtureProc, Prober};
@@ -119,9 +119,9 @@ impl Harness {
 }
 
 fn focus(name: &str) -> ToDaemon {
-    ToDaemon::Focus {
+    ToDaemon::Steer(Steer::Focus {
         profile: ProfileName::parse(name).unwrap(),
-    }
+    })
 }
 
 fn hello(status: Status) -> ToClient {
@@ -170,7 +170,7 @@ fn the_seat_owner_is_obeyed_and_everyone_hears_status() {
     assert_eq!(recv(&owner), Some(hello(running())));
 
     send(&owner, &focus("terminal"));
-    send(&owner, &ToDaemon::Resume);
+    send(&owner, &ToDaemon::Steer(Steer::Resume));
     assert_eq!(
         h.requests(2),
         [
@@ -193,9 +193,9 @@ fn a_user_config_reaches_the_reader_and_its_warnings_come_back_to_that_client_on
 
     send(
         &a,
-        &ToDaemon::UserConfig {
+        &ToDaemon::Steer(Steer::UserConfig {
             toml: "[profile.x]\nmodmap = 3\n".to_owned(),
-        },
+        }),
     );
     let requests = h.requests(1);
     let [Request::UserConfig { client, toml }] = requests.as_slice() else {
@@ -240,10 +240,16 @@ fn an_observer_that_sends_a_request_is_dropped_and_nothing_is_relayed() {
 
 #[test]
 fn only_the_shell_may_focus_or_send_settings_and_only_the_users_own_programs_may_resume() {
-    let settings = || ToDaemon::UserConfig {
-        toml: String::new(),
+    let settings = || {
+        ToDaemon::Steer(Steer::UserConfig {
+            toml: String::new(),
+        })
     };
-    for request in [focus("terminal"), settings(), ToDaemon::Resume] {
+    for request in [
+        focus("terminal"),
+        settings(),
+        ToDaemon::Steer(Steer::Resume),
+    ] {
         let h = Harness::new(Some(own_uid() + 1));
         let client = connect(&h.socket);
         assert_eq!(recv(&client), Some(hello(running())));
@@ -269,7 +275,7 @@ fn only_the_shell_may_focus_or_send_settings_and_only_the_users_own_programs_may
     let h = Harness::without_a_shell(Some(own_uid()));
     let client = connect(&h.socket);
     assert_eq!(recv(&client), Some(hello(running())));
-    send(&client, &ToDaemon::Resume);
+    send(&client, &ToDaemon::Steer(Steer::Resume));
     assert_eq!(
         h.requests(1),
         [Request::Resume],
@@ -289,9 +295,9 @@ fn a_program_that_is_not_the_shell_may_watch_and_register_but_never_steers_or_co
     let h = Harness::without_a_shell(Some(own_uid()));
     let app = connect(&h.socket);
     assert_eq!(recv(&app), Some(hello(running())));
-    send(&app, &ToDaemon::Register(mail()));
+    send(&app, &ToDaemon::Keymap(KeymapCall::Register(mail())));
     assert_eq!(registered(&app), [mail()], "its registration stands");
-    send(&app, &ToDaemon::WatchKeymap);
+    send(&app, &ToDaemon::Keymap(KeymapCall::Watch));
     assert!(matches!(recv(&app), Some(ToClient::Keymap(_))));
     drop(app);
 
@@ -422,7 +428,7 @@ fn the_owner_leaving_sends_the_default_focus_and_clears_the_user_config() {
 
     drop(first);
     // The seat still has an owner connection, so nothing is vacated.
-    send(&second, &ToDaemon::Resume);
+    send(&second, &ToDaemon::Steer(Steer::Resume));
     assert_eq!(
         h.requests(1),
         [Request::Resume],
@@ -495,7 +501,7 @@ fn mail() -> Registration {
 
 /// What `client` is told about the registered apps right now.
 fn registered(client: &rustix::fd::OwnedFd) -> Vec<Registration> {
-    send(client, &ToDaemon::ListRegistered);
+    send(client, &ToDaemon::Keymap(KeymapCall::List));
     loop {
         match recv(client) {
             Some(ToClient::Registered(all)) => return all,
@@ -513,7 +519,7 @@ fn a_watcher_hears_the_keymap_at_once_and_again_on_each_change_and_others_never(
     assert_eq!(recv(&watcher), Some(hello(running())));
     assert_eq!(recv(&bystander), Some(hello(running())));
 
-    send(&watcher, &ToDaemon::WatchKeymap);
+    send(&watcher, &ToDaemon::Keymap(KeymapCall::Watch));
     let Some(ToClient::Keymap(first)) = recv(&watcher) else {
         panic!("no keymap");
     };
@@ -544,7 +550,7 @@ fn a_bad_edit_keeps_what_watchers_hold_and_tells_them_why() {
     let h = Harness::with_keymap(Some(own_uid()), text("copy = Primary+Alt+C\n"));
     let watcher = connect(&h.socket);
     assert_eq!(recv(&watcher), Some(hello(running())));
-    send(&watcher, &ToDaemon::WatchKeymap);
+    send(&watcher, &ToDaemon::Keymap(KeymapCall::Watch));
     let Some(ToClient::Keymap(good)) = recv(&watcher) else {
         panic!("no keymap");
     };
@@ -562,9 +568,9 @@ fn the_keymap_is_open_to_observers_who_stay_connected_but_registering_is_not() {
     let h = Harness::with_keymap(Some(own_uid() + 1), text("undo = none\n"));
     let observer = connect(&h.socket);
     assert_eq!(recv(&observer), Some(hello(running())));
-    send(&observer, &ToDaemon::WatchKeymap);
+    send(&observer, &ToDaemon::Keymap(KeymapCall::Watch));
     assert_eq!(recv(&observer), Some(keymap_of("undo = none\n")));
-    send(&observer, &ToDaemon::Register(mail()));
+    send(&observer, &ToDaemon::Keymap(KeymapCall::Register(mail())));
     assert_eq!(
         registered(&observer),
         [],
@@ -582,7 +588,7 @@ fn registrations_are_listed_to_everyone_and_end_with_their_connection() {
     assert_eq!(recv(&app), Some(hello(running())));
     assert_eq!(recv(&settings), Some(hello(running())));
 
-    send(&app, &ToDaemon::Register(mail()));
+    send(&app, &ToDaemon::Keymap(KeymapCall::Register(mail())));
     // The registration and the list travel on different connections, so ask until it shows.
     let deadline = Instant::now() + WAIT;
     while registered(&settings).is_empty() && Instant::now() < deadline {
@@ -605,13 +611,13 @@ fn a_keymap_watcher_coming_and_going_never_resets_the_reader() {
     for _ in 0..3 {
         let watcher = connect(&h.socket);
         assert_eq!(recv(&watcher), Some(hello(running())));
-        send(&watcher, &ToDaemon::WatchKeymap);
+        send(&watcher, &ToDaemon::Keymap(KeymapCall::Watch));
         assert!(matches!(recv(&watcher), Some(ToClient::Keymap(_))));
         drop(watcher);
     }
     let registrar = connect(&h.socket);
     assert_eq!(recv(&registrar), Some(hello(running())));
-    send(&registrar, &ToDaemon::Register(mail()));
+    send(&registrar, &ToDaemon::Keymap(KeymapCall::Register(mail())));
     drop(registrar);
     std::thread::sleep(Duration::from_millis(400));
     assert!(h.nothing_queued(), "no focus reset, no cleared user config");
@@ -624,7 +630,7 @@ fn keymap_connections_do_not_use_up_the_owners_share_and_a_real_owner_still_rese
         .map(|_| {
             let c = connect(&h.socket);
             assert_eq!(recv(&c), Some(hello(running())));
-            send(&c, &ToDaemon::WatchKeymap);
+            send(&c, &ToDaemon::Keymap(KeymapCall::Watch));
             assert!(matches!(recv(&c), Some(ToClient::Keymap(_))));
             c
         })

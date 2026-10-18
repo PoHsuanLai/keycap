@@ -14,15 +14,12 @@ pub const KEYMAP_FILE: &str = "keymap";
 /// The largest keymap file anyone reads. With the problem list bounded where the file is
 /// judged (`keymap::settle`), the served copy always fits one packet.
 pub const KEYMAP_MAX_BYTES: u64 = 32 * 1024;
-/// The protocol version carried by `Hello`. Version 2 added the keymap messages
-/// (`WatchKeymap`, `Register`, `ListRegistered`, `Keymap`, `Registered`); every message of
-/// version 1 is unchanged and a daemon sends the new ones only to a client that asked.
-pub const PROTOCOL_VERSION: u16 = 2;
-/// The oldest version whose messages this crate still reads and writes unchanged.
-pub const MIN_PROTOCOL_VERSION: u16 = 1;
-/// The first version that has the keymap messages: a client must not send them to a daemon
-/// that says less in its `Hello` (the daemon would drop the connection as malformed).
-pub const KEYMAP_PROTOCOL_VERSION: u16 = 2;
+/// The protocol version carried by `Hello`. Version 3 nests `ToDaemon` into steering and keymap
+/// calls; nothing older is read.
+pub const PROTOCOL_VERSION: u16 = 3;
+/// The oldest version whose messages this crate still reads and writes unchanged: only the
+/// current one.
+pub const MIN_PROTOCOL_VERSION: u16 = 3;
 /// No message is larger than this; it is sized so a whole config fits in one packet.
 pub const MAX_PACKET: usize = 65536;
 

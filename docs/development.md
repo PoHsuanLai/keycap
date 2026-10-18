@@ -42,24 +42,30 @@ touches a device, so a script replays to exactly the outputs the live daemon pro
 
 `/run/keycap/keycap.sock`, `SOCK_SEQPACKET`, mode 0666, one JSON message per packet, adjacently
 tagged (`{"kind": "...", "v": {...}}`). The first packet on a connection is `Hello`; a client
-checks `version` (`PROTOCOL_VERSION = 2`, `MIN_PROTOCOL_VERSION = 1`) before reading on. `MAX_PACKET` is 64 KiB, so a
+checks `version` (`PROTOCOL_VERSION = 3`, `MIN_PROTOCOL_VERSION = 3`: nothing older is read) before reading on. `MAX_PACKET` is 64 KiB, so a
 config fits in one packet.
 
 ```rust
 pub enum ToDaemon {
+    Steer(Steer),                     // honoured only from the seat owner's programs
+    Keymap(KeymapCall),               // open to every client
+}
+pub enum Steer {
     Focus { profile: ProfileName },   // the whole desktop-facing contract
     UserConfig { toml: String },      // the seat owner's settings, parsed leniently
     Resume,                           // after the escape chord or a pause
-    WatchKeymap,                      // protocol 2: send the keymap now, and on each change
-    Register(Registration),           // protocol 2: an app's actions, until the connection closes
-    ListRegistered,                   // protocol 2: every app's actions
+}
+pub enum KeymapCall {
+    Watch,                            // send the keymap now, and on each change
+    Register(Registration),           // an app's actions, until the connection closes
+    List,                             // every app's actions
 }
 pub enum ToClient {
     Hello { version: u16, status: Status },
     Status(Status),
     ConfigWarnings(Vec<Warning>),
-    Keymap(KeymapState),              // protocol 2, only to a client that sent WatchKeymap
-    Registered(Vec<Registration>),    // protocol 2, answering ListRegistered
+    Keymap(KeymapState),              // only to a client that sent KeymapCall::Watch
+    Registered(Vec<Registration>),    // answering KeymapCall::List
 }
 pub struct KeymapState { overrides: String, problems: Vec<KeymapProblem> }
 // overrides: chordkit's line format, only lines that read; problems: plain words with a line
@@ -81,9 +87,7 @@ that user, `Observer` anyone else. Only `Steering`'s `Focus` and `UserConfig` ar
 from the others ends their connection); every client receives `Status`. The user layer the shell sends is
 cut down on arrival: no rule on a key with no modifier held, no list or empty `then`, at most 256 rules. The
 machine file lifts the list ban with `[user_layer] sequences = "allow"`. The keymap messages are open to every client (they
-only read, or inform), and a client that never sends `WatchKeymap` is never sent a `Keymap`, so
-a version 1 client is unaffected. A client must not send them to a daemon whose `Hello` says
-less than `KEYMAP_PROTOCOL_VERSION`. Registrations are kept per connection, at most 16 apps
+only read, or inform), and a client that never sends `KeymapCall::Watch` is never sent a `Keymap`. Registrations are kept per connection, at most 16 apps
 each, and dropped when the connection closes. A connection that has sent only keymap messages is
 an observer for the seat (it is not the owner being present, so its leaving resets nothing) and
 counts against its own per-uid cap of 64; the cap on other connections stays 8.

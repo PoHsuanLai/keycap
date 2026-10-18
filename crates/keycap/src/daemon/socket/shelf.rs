@@ -6,7 +6,7 @@ use crate::daemon::inbox::ClientId;
 use crate::keymap::settle;
 use chordkit::{AppAction, AppId, DefaultChord};
 use keycap_client::FileText;
-use keycap_protocol::{KeymapState, RegisteredAction, Registration, ToClient, ToDaemon};
+use keycap_protocol::{KeymapCall, KeymapState, RegisteredAction, Registration, ToClient};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Apps one connection may register at once; the rest are ignored.
@@ -18,26 +18,6 @@ pub(super) const MAX_ACTIONS_PER_APP: usize = 128;
 /// The most one `Registered` reply carries, under `MAX_PACKET` with room for the framing: apps
 /// beyond it (in app order) are left out, because a longer reply is one no client could read.
 const REGISTERED_REPLY_BYTES: usize = 48 * 1024;
-
-/// A keymap message a client sent.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum Call {
-    Watch,
-    Register(Registration),
-    List,
-}
-
-impl Call {
-    /// The keymap call `message` is, or the message back when it is something else.
-    pub(super) fn of(message: ToDaemon) -> Result<Call, ToDaemon> {
-        match message {
-            ToDaemon::WatchKeymap => Ok(Call::Watch),
-            ToDaemon::Register(registration) => Ok(Call::Register(registration)),
-            ToDaemon::ListRegistered => Ok(Call::List),
-            other => Err(other),
-        }
-    }
-}
 
 /// One message for one client.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,17 +48,17 @@ impl Shelf {
     }
 
     /// What `client`'s call answers with.
-    pub(super) fn call(&mut self, client: ClientId, call: Call) -> Vec<Reply> {
+    pub(super) fn call(&mut self, client: ClientId, call: KeymapCall) -> Vec<Reply> {
         match call {
-            Call::Watch => {
+            KeymapCall::Watch => {
                 self.watchers.insert(client);
                 vec![self.keymap_for(client)]
             }
-            Call::Register(registration) => {
+            KeymapCall::Register(registration) => {
                 self.register(client, registration);
                 Vec::new()
             }
-            Call::List => vec![Reply {
+            KeymapCall::List => vec![Reply {
                 to: client,
                 message: ToClient::Registered(within_reply(self.everything())),
             }],
@@ -183,7 +163,7 @@ mod tests {
     }
 
     fn listed(shelf: &mut Shelf, who: u64) -> Vec<Registration> {
-        let replies = shelf.call(ClientId(who), Call::List);
+        let replies = shelf.call(ClientId(who), KeymapCall::List);
         let [
             Reply {
                 message: ToClient::Registered(all),
@@ -197,17 +177,10 @@ mod tests {
     }
 
     #[test]
-    fn only_keymap_messages_are_keymap_calls() {
-        assert_eq!(Call::of(ToDaemon::WatchKeymap), Ok(Call::Watch));
-        assert_eq!(Call::of(ToDaemon::ListRegistered), Ok(Call::List));
-        assert_eq!(Call::of(ToDaemon::Resume), Err(ToDaemon::Resume));
-    }
-
-    #[test]
     fn watching_answers_with_the_keymap_and_each_change_reaches_every_watcher() {
         let mut shelf = shelf();
         let (a, b) = (ClientId(1), ClientId(2));
-        let first = shelf.call(a, Call::Watch);
+        let first = shelf.call(a, KeymapCall::Watch);
         assert_eq!(
             first,
             [Reply {
@@ -216,7 +189,7 @@ mod tests {
             }]
         );
         assert!(!shelf.state().overrides.is_empty());
-        shelf.call(b, Call::Watch);
+        shelf.call(b, KeymapCall::Watch);
 
         let told = shelf
             .read(FileText::Text("paste = Primary+Alt+V\n".to_owned()))
@@ -232,7 +205,7 @@ mod tests {
     #[test]
     fn a_re_read_that_changes_nothing_tells_nobody() {
         let mut shelf = shelf();
-        shelf.call(ClientId(1), Call::Watch);
+        shelf.call(ClientId(1), KeymapCall::Watch);
         assert_eq!(
             shelf.read(FileText::Text("copy = Primary+Alt+C\n".to_owned())),
             None
@@ -242,7 +215,7 @@ mod tests {
     #[test]
     fn a_bad_edit_keeps_the_copy_and_still_tells_watchers_the_problem() {
         let mut shelf = shelf();
-        shelf.call(ClientId(1), Call::Watch);
+        shelf.call(ClientId(1), KeymapCall::Watch);
         let before = shelf.state().overrides.clone();
         let told = shelf
             .read(FileText::Text("nonsense\n".to_owned()))
@@ -254,7 +227,7 @@ mod tests {
     #[test]
     fn a_connection_that_never_watched_hears_no_change() {
         let mut shelf = shelf();
-        shelf.call(ClientId(7), Call::List);
+        shelf.call(ClientId(7), KeymapCall::List);
         let told = shelf.read(FileText::Missing).expect("changed");
         assert_eq!(told, []);
     }
@@ -263,10 +236,10 @@ mod tests {
     fn registrations_are_listed_for_anyone_and_end_with_their_connection() {
         let mut shelf = shelf();
         let mail = registration("mail", &[("mail.compose", "Primary+Shift+N")]);
-        shelf.call(ClientId(1), Call::Register(mail.clone()));
+        shelf.call(ClientId(1), KeymapCall::Register(mail.clone()));
         shelf.call(
             ClientId(2),
-            Call::Register(registration("notes", &[("notes.new", "Primary+N")])),
+            KeymapCall::Register(registration("notes", &[("notes.new", "Primary+N")])),
         );
         let apps: Vec<String> = listed(&mut shelf, 3).into_iter().map(|r| r.app).collect();
         assert_eq!(apps, ["mail", "notes"]);
@@ -281,10 +254,10 @@ mod tests {
         let mut shelf = shelf();
         let v1 = registration("mail", &[("mail.compose", "Primary+Shift+N")]);
         let v2 = registration("mail", &[("mail.reply", "Primary+R")]);
-        shelf.call(ClientId(1), Call::Register(v1.clone()));
-        shelf.call(ClientId(1), Call::Register(v2.clone()));
+        shelf.call(ClientId(1), KeymapCall::Register(v1.clone()));
+        shelf.call(ClientId(1), KeymapCall::Register(v2.clone()));
         assert_eq!(listed(&mut shelf, 9), std::slice::from_ref(&v2));
-        shelf.call(ClientId(2), Call::Register(v2.clone()));
+        shelf.call(ClientId(2), KeymapCall::Register(v2.clone()));
         assert_eq!(listed(&mut shelf, 9), [v2]);
     }
 
@@ -299,8 +272,11 @@ mod tests {
                 ("mail.bad-chord", "Hyper+Q"),
             ],
         );
-        shelf.call(ClientId(1), Call::Register(mixed));
-        shelf.call(ClientId(1), Call::Register(registration("Bad App", &[])));
+        shelf.call(ClientId(1), KeymapCall::Register(mixed));
+        shelf.call(
+            ClientId(1),
+            KeymapCall::Register(registration("Bad App", &[])),
+        );
         let got = listed(&mut shelf, 9);
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].actions.len(), 1);
@@ -309,7 +285,7 @@ mod tests {
         for n in 0..MAX_APPS_PER_CLIENT + 4 {
             shelf.call(
                 ClientId(2),
-                Call::Register(registration(&format!("app{n}"), &[])),
+                KeymapCall::Register(registration(&format!("app{n}"), &[])),
             );
         }
         assert_eq!(listed(&mut shelf, 9).len(), 1 + MAX_APPS_PER_CLIENT);
@@ -332,7 +308,7 @@ mod tests {
         let mut shelf = shelf();
         shelf.call(
             ClientId(1),
-            Call::Register(app_with_actions(0, MAX_ACTIONS_PER_APP + 20)),
+            KeymapCall::Register(app_with_actions(0, MAX_ACTIONS_PER_APP + 20)),
         );
         assert_eq!(listed(&mut shelf, 9)[0].actions.len(), MAX_ACTIONS_PER_APP);
     }
@@ -343,7 +319,7 @@ mod tests {
         for n in 0..MAX_APPS_PER_CLIENT {
             shelf.call(
                 ClientId(1),
-                Call::Register(app_with_actions(n, MAX_ACTIONS_PER_APP)),
+                KeymapCall::Register(app_with_actions(n, MAX_ACTIONS_PER_APP)),
             );
         }
         let held: usize = shelf.registered.values().flatten().count();

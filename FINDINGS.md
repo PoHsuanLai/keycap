@@ -10,7 +10,7 @@ the `terminal` profile's Ctrl+Shift+letter: Cmd+D and Cmd+Shift+D collapse to on
 Foreign terminals (foot, kitty, ...) keep the rewrite.
 
 **Mechanism: a profile, `keymap-aware`, chosen by the desktop from the app id.** Registration
-(`ToDaemon::Register`) was considered and rejected: keycap only ever learns the focused window as
+(`KeymapCall::Register`) was considered and rejected: keycap only ever learns the focused window as
 a profile name (`Focus`), never an app id, and a registration is tied to a connection, not a
 window, so the daemon cannot tell which focused window the registering app owns. A guess
 (any registration flips the focused terminal) would let a foreign terminal lose its rewrite while
@@ -214,8 +214,8 @@ by `load_reporting`, each labelled "System keymap:" or "Your keymap:".
 **How apps get it.** Through quire, which takes a `chordkit::KeymapSource`: it passes
 `KeycapSource::standard()`, whose `load(platform)` is chordkit's conventions for our desktop, the
 desktop's own bindings (`keycap_client::system_bindings`, only what chordkit's conventions leave to
-the source), the machine's overrides (asked of the daemon with `WatchKeymap`, or, when no daemon
-answers or it is older than protocol 2, read from `/etc/keycap/keymap`) and then the person's.
+the source), the machine's overrides (asked of the daemon with `KeymapCall::Watch`, or, when no daemon
+answers, read from `/etc/keycap/keymap`) and then the person's.
 `watch(callback)` fires on the daemon's next `Keymap` message that differs from the last one, on a
 change of the person's file, and, while there is no daemon, of the machine's file. Apps may
 `register` their actions so Settings can list them (`registered()`); resolution stays in each

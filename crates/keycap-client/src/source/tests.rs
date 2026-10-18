@@ -3,7 +3,7 @@
 use super::*;
 use crate::testing::{FakeDaemon, Scratch};
 use chordkit::{Action, Context, StandardAction};
-use keycap_protocol::{KEYMAP_PROTOCOL_VERSION, KeymapState};
+use keycap_protocol::{KeymapState, PROTOCOL_VERSION};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
@@ -48,7 +48,7 @@ fn wait_for(what: &str, ready: impl Fn() -> bool) {
 
 #[test]
 fn with_a_daemon_the_persons_keymap_comes_from_it_and_not_from_the_file() {
-    let daemon = FakeDaemon::start(KEYMAP_PROTOCOL_VERSION, state("copy = Primary+Alt+C\n"));
+    let daemon = FakeDaemon::start(PROTOCOL_VERSION, state("copy = Primary+Alt+C\n"));
     let dir = Scratch::new("source-daemon");
     let file = dir.path().join("keymap");
     std::fs::write(&file, "copy = Primary+Alt+X\n").expect("write");
@@ -128,7 +128,7 @@ fn problems_the_daemon_reports_are_passed_on_without_repeating_the_refusals() {
             what: "Something was wrong.".to_owned(),
         }],
     };
-    let daemon = FakeDaemon::start(KEYMAP_PROTOCOL_VERSION, served);
+    let daemon = FakeDaemon::start(PROTOCOL_VERSION, served);
     let source = KeycapSource::new(daemon.socket.clone(), "/nonexistent/keymap", "");
     let (_, problems) = source.load_reporting(OURS);
     assert_eq!(problems[0], "System keymap: line 4: Something was wrong.");
@@ -178,7 +178,7 @@ fn counter() -> (Arc<AtomicUsize>, ChangeCallback) {
 
 #[test]
 fn watch_fires_when_the_daemon_says_the_keymap_changed_and_not_for_the_first_state() {
-    let daemon = FakeDaemon::start(KEYMAP_PROTOCOL_VERSION, state("copy = Primary+Alt+C\n"));
+    let daemon = FakeDaemon::start(PROTOCOL_VERSION, state("copy = Primary+Alt+C\n"));
     let source = KeycapSource::new(daemon.socket.clone(), "/nonexistent/keymap", "");
     let (count, callback) = counter();
     let _watch = source.watch(callback).expect("watches");
@@ -226,7 +226,7 @@ fn dropping_the_watch_ends_it() {
 
 #[test]
 fn registered_actions_are_listed_and_end_with_their_registration() {
-    let daemon = FakeDaemon::start(KEYMAP_PROTOCOL_VERSION, KeymapState::default());
+    let daemon = FakeDaemon::start(PROTOCOL_VERSION, KeymapState::default());
     let source = KeycapSource::new(daemon.socket.clone(), "/nonexistent/keymap", "");
     let app = chordkit::AppId::new("mail").expect("app");
     let compose = chordkit::AppAction::new("mail.compose").expect("action");
@@ -250,14 +250,8 @@ fn registered_actions_are_listed_and_end_with_their_registration() {
 }
 
 #[test]
-fn registering_with_a_daemon_too_old_or_absent_says_so() {
-    let old = FakeDaemon::start(1, KeymapState::default());
+fn registering_with_an_absent_daemon_says_so() {
     let app = chordkit::AppId::new("mail").expect("app");
-    let source = KeycapSource::new(old.socket.clone(), "/nonexistent/keymap", "");
-    assert!(matches!(
-        source.register(&app, &[]),
-        Err(crate::ClientError::TooOld { version: 1 })
-    ));
     let absent = KeycapSource::new("/nonexistent/keycap.sock", "/nonexistent/keymap", "");
     assert!(matches!(
         absent.register(&app, &[]),
@@ -295,7 +289,7 @@ fn the_persons_file_wins_over_the_machines_and_problems_say_whose_they_are() {
 
 #[test]
 fn watch_fires_when_the_persons_file_changes_with_or_without_a_daemon() {
-    let daemon = FakeDaemon::start(KEYMAP_PROTOCOL_VERSION, KeymapState::default());
+    let daemon = FakeDaemon::start(PROTOCOL_VERSION, KeymapState::default());
     let dir = Scratch::new("source-person-watch");
     let person = dir.path().join("person");
     std::fs::write(&person, "copy = Primary+Alt+C\n").expect("write");

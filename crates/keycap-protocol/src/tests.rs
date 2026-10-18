@@ -83,16 +83,16 @@ fn registration() -> Registration {
 
 fn to_daemon_samples() -> Vec<ToDaemon> {
     vec![
-        ToDaemon::Focus {
+        ToDaemon::Steer(Steer::Focus {
             profile: name("terminal"),
-        },
-        ToDaemon::UserConfig {
+        }),
+        ToDaemon::Steer(Steer::UserConfig {
             toml: "[profile.default]\n".into(),
-        },
-        ToDaemon::Resume,
-        ToDaemon::WatchKeymap,
-        ToDaemon::Register(registration()),
-        ToDaemon::ListRegistered,
+        }),
+        ToDaemon::Steer(Steer::Resume),
+        ToDaemon::Keymap(KeymapCall::Watch),
+        ToDaemon::Keymap(KeymapCall::Register(registration())),
+        ToDaemon::Keymap(KeymapCall::List),
     ]
 }
 
@@ -114,12 +114,15 @@ fn every_message_round_trips() {
 #[test]
 fn wire_form_is_adjacently_tagged() {
     assert_eq!(
-        json(&ToDaemon::Focus {
+        json(&ToDaemon::Steer(Steer::Focus {
             profile: name("terminal")
-        }),
-        r#"{"kind":"focus","v":{"profile":"terminal"}}"#
+        })),
+        r#"{"kind":"steer","v":{"kind":"focus","v":{"profile":"terminal"}}}"#
     );
-    assert_eq!(json(&ToDaemon::Resume), r#"{"kind":"resume"}"#);
+    assert_eq!(
+        json(&ToDaemon::Steer(Steer::Resume)),
+        r#"{"kind":"steer","v":{"kind":"resume"}}"#
+    );
     assert_eq!(
         json(&ToClient::Hello {
             version: 1,
@@ -177,7 +180,7 @@ fn invalid_name_fails_to_deserialize() {
     for bad in [r#""Term""#, r#""""#, r#""a b""#] {
         assert!(serde_json::from_str::<ProfileName>(bad).is_err(), "{bad}");
     }
-    let focus = r#"{"kind":"focus","v":{"profile":"No Good"}}"#;
+    let focus = r#"{"kind":"steer","v":{"kind":"focus","v":{"profile":"No Good"}}}"#;
     assert!(decode::<ToDaemon>(focus.as_bytes()).is_err());
     assert_eq!(
         serde_json::from_str::<ProfileName>(r#""ok-1""#).expect("valid"),
@@ -237,14 +240,17 @@ fn only_a_hello_of_another_version_is_incompatible() {
 
 #[test]
 fn keymap_messages_have_a_stable_wire_form() {
-    assert_eq!(json(&ToDaemon::WatchKeymap), r#"{"kind":"watch_keymap"}"#);
     assert_eq!(
-        json(&ToDaemon::ListRegistered),
-        r#"{"kind":"list_registered"}"#
+        json(&ToDaemon::Keymap(KeymapCall::Watch)),
+        r#"{"kind":"keymap","v":{"kind":"watch"}}"#
     );
     assert_eq!(
-        json(&ToDaemon::Register(registration())),
-        r#"{"kind":"register","v":{"app":"mail","actions":[{"id":"mail.compose","chord":"Primary+Shift+N"}]}}"#
+        json(&ToDaemon::Keymap(KeymapCall::List)),
+        r#"{"kind":"keymap","v":{"kind":"list"}}"#
+    );
+    assert_eq!(
+        json(&ToDaemon::Keymap(KeymapCall::Register(registration()))),
+        r#"{"kind":"keymap","v":{"kind":"register","v":{"app":"mail","actions":[{"id":"mail.compose","chord":"Primary+Shift+N"}]}}}"#
     );
     assert_eq!(
         json(&ToClient::Keymap(KeymapState {
@@ -253,29 +259,6 @@ fn keymap_messages_have_a_stable_wire_form() {
         })),
         r#"{"kind":"keymap","v":{"overrides":"undo = none\n","problems":[]}}"#
     );
-}
-
-#[test]
-fn messages_written_by_a_version_1_peer_still_decode() {
-    let to_daemon: &[(&str, ToDaemon)] = &[
-        (
-            r#"{"kind":"focus","v":{"profile":"terminal"}}"#,
-            ToDaemon::Focus {
-                profile: name("terminal"),
-            },
-        ),
-        (
-            r#"{"kind":"user_config","v":{"toml":"x"}}"#,
-            ToDaemon::UserConfig { toml: "x".into() },
-        ),
-        (r#"{"kind":"resume"}"#, ToDaemon::Resume),
-    ];
-    for (text, want) in to_daemon {
-        assert_eq!(&decode::<ToDaemon>(text.as_bytes()).expect("decodes"), want);
-    }
-    let hello = r#"{"kind":"hello","v":{"version":1,"status":{"mode":"running","keyboards":[]}}}"#;
-    let heard = decode::<ToClient>(hello.as_bytes()).expect("decodes");
-    assert_eq!(compat(&heard), Compat::Compatible);
 }
 
 #[test]
@@ -293,7 +276,7 @@ fn the_version_window_is_min_through_current() {
             keyboards: vec![],
         },
     };
-    assert_eq!(compat(&hello(KEYMAP_PROTOCOL_VERSION)), Compat::Compatible);
+    assert_eq!(compat(&hello(PROTOCOL_VERSION)), Compat::Compatible);
     assert_eq!(compat(&hello(MIN_PROTOCOL_VERSION)), Compat::Compatible);
     assert_eq!(
         compat(&hello(MIN_PROTOCOL_VERSION - 1)),

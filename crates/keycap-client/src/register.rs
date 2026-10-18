@@ -4,7 +4,7 @@ use crate::connection::{ClientError, Connection};
 use crate::fetch::WAIT;
 use crate::source::KeycapSource;
 use chordkit::{AppAction, AppId, DefaultChord};
-use keycap_protocol::{RegisteredAction, Registration, ToClient, ToDaemon};
+use keycap_protocol::{KeymapCall, RegisteredAction, Registration, ToClient, ToDaemon};
 
 /// An app's registration. It lasts as long as this value: keycap forgets the actions when the
 /// connection closes, so an app that exits leaves nothing behind.
@@ -22,8 +22,8 @@ impl KeycapSource {
         app: &AppId,
         actions: &[(AppAction, DefaultChord)],
     ) -> Result<Registered, ClientError> {
-        let link = Connection::open(self.socket(), WAIT)?.require_keymap()?;
-        link.send(&ToDaemon::Register(Registration {
+        let link = Connection::open(self.socket(), WAIT)?;
+        link.send(&ToDaemon::Keymap(KeymapCall::Register(Registration {
             app: app.as_str().to_owned(),
             actions: actions
                 .iter()
@@ -32,14 +32,14 @@ impl KeycapSource {
                     chord: chord.canonical(),
                 })
                 .collect(),
-        }))?;
+        })))?;
         Ok(Registered { _link: link })
     }
 
     /// Every app's actions registered with keycap right now, for a settings screen.
     pub fn registered(&self) -> Result<Vec<Registration>, ClientError> {
-        let link = Connection::open(self.socket(), WAIT)?.require_keymap()?;
-        link.send(&ToDaemon::ListRegistered)?;
+        let link = Connection::open(self.socket(), WAIT)?;
+        link.send(&ToDaemon::Keymap(KeymapCall::List))?;
         link.await_message(WAIT, |message| match message {
             ToClient::Registered(all) => Some(all),
             _ => None,

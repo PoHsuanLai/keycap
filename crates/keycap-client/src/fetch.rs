@@ -1,7 +1,7 @@
 //! Asking the daemon for the person's keymap, and listening for it to change.
 
 use crate::connection::{ClientError, Connection};
-use keycap_protocol::{KeymapState, ToClient, ToDaemon};
+use keycap_protocol::{KeymapCall, KeymapState, ToClient, ToDaemon};
 use std::path::Path;
 use std::time::Duration;
 
@@ -10,8 +10,8 @@ pub(crate) const WAIT: Duration = Duration::from_secs(2);
 
 /// A connection that has asked to hear the keymap.
 pub(crate) fn subscribe(socket: &Path) -> Result<Connection, ClientError> {
-    let connection = Connection::open(socket, WAIT)?.require_keymap()?;
-    connection.send(&ToDaemon::WatchKeymap)?;
+    let connection = Connection::open(socket, WAIT)?;
+    connection.send(&ToDaemon::Keymap(KeymapCall::Watch))?;
     Ok(connection)
 }
 

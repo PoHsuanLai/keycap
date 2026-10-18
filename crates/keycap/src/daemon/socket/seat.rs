@@ -1,7 +1,7 @@
 //! Who owns the seat, and what that makes a client. The decisions are pure; reading the seat
 //! file is the one effect.
 
-use keycap_protocol::ToDaemon;
+use keycap_protocol::Steer;
 use latchkey::guard::Claim;
 
 use crate::daemon::inbox::{ClientId, Request};
@@ -33,9 +33,6 @@ pub(super) fn peer_of(uid: u32, active_uid: Option<u32>, claim: Claim) -> Peer {
 pub(crate) enum Refusal {
     /// Only the shell steers: any other client only listens.
     NotSteering,
-    /// A keymap message, which the shelf answers and which is never a request to the reader.
-    /// The server takes those before it asks for a request, so this is not reached.
-    NotARequest,
 }
 
 impl Refusal {
@@ -43,27 +40,18 @@ impl Refusal {
     pub(crate) fn what(self) -> &'static str {
         match self {
             Refusal::NotSteering => "sent a request without being the shell of the seat; dropped",
-            Refusal::NotARequest => "sent a keymap message where a request was expected; dropped",
         }
     }
 }
 
 /// What `peer` asking for `message` becomes: `Focus` and `UserConfig` only from the shell;
 /// `Resume` also from another program of the seat's user, since it only re-grabs.
-pub(crate) fn request_of(
-    peer: Peer,
-    client: ClientId,
-    message: ToDaemon,
-) -> Result<Request, Refusal> {
+pub(crate) fn request_of(peer: Peer, client: ClientId, message: Steer) -> Result<Request, Refusal> {
     match (peer, message) {
-        (Peer::Steering | Peer::Plain, ToDaemon::Resume) => Ok(Request::Resume),
+        (Peer::Steering | Peer::Plain, Steer::Resume) => Ok(Request::Resume),
         (Peer::Plain | Peer::Observer, _) => Err(Refusal::NotSteering),
-        (Peer::Steering, ToDaemon::Focus { profile }) => Ok(Request::Focus(profile)),
-        (Peer::Steering, ToDaemon::UserConfig { toml }) => Ok(Request::UserConfig { client, toml }),
-        (
-            Peer::Steering,
-            ToDaemon::WatchKeymap | ToDaemon::Register(_) | ToDaemon::ListRegistered,
-        ) => Err(Refusal::NotARequest),
+        (Peer::Steering, Steer::Focus { profile }) => Ok(Request::Focus(profile)),
+        (Peer::Steering, Steer::UserConfig { toml }) => Ok(Request::UserConfig { client, toml }),
     }
 }
 
@@ -185,10 +173,10 @@ mod tests {
     fn only_the_shell_is_obeyed() {
         let client = ClientId(3);
         let profile = ProfileName::parse("terminal").unwrap();
-        let focus = || ToDaemon::Focus {
+        let focus = || Steer::Focus {
             profile: profile.clone(),
         };
-        let config = || ToDaemon::UserConfig {
+        let config = || Steer::UserConfig {
             toml: "x = 1".to_owned(),
         };
         let cases = [
@@ -210,7 +198,7 @@ mod tests {
             (
                 "shell resume",
                 Peer::Steering,
-                ToDaemon::Resume,
+                Steer::Resume,
                 Ok(Request::Resume),
             ),
             (
@@ -228,7 +216,7 @@ mod tests {
             (
                 "observer resume",
                 Peer::Observer,
-                ToDaemon::Resume,
+                Steer::Resume,
                 Err(Refusal::NotSteering),
             ),
             (
@@ -246,14 +234,8 @@ mod tests {
             (
                 "plain resume",
                 Peer::Plain,
-                ToDaemon::Resume,
+                Steer::Resume,
                 Ok(Request::Resume),
-            ),
-            (
-                "shell keymap message",
-                Peer::Steering,
-                ToDaemon::WatchKeymap,
-                Err(Refusal::NotARequest),
             ),
         ];
         for (name, peer, message, want) in cases {

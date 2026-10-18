@@ -2,7 +2,7 @@
 //! the keymap part of the protocol. It needs no devices, so these tests run everywhere.
 
 use keycap_protocol::{
-    self as protocol, KeymapState, Mode, Registration, Status, ToClient, ToDaemon,
+    self as protocol, KeymapCall, KeymapState, Mode, Registration, Status, ToClient, ToDaemon,
 };
 use rustix::fd::OwnedFd;
 use rustix::net::{AddressFamily, RecvFlags, SendFlags, SocketAddrUnix, SocketType};
@@ -122,16 +122,18 @@ fn serve(fd: Arc<OwnedFd>, version: u16, shared: &Mutex<Shared>) {
         };
         let mut shared = shared.lock().expect("lock");
         match message {
-            ToDaemon::WatchKeymap => {
+            ToDaemon::Keymap(KeymapCall::Watch) => {
                 shared.watchers.push(Arc::clone(&fd));
                 send(&fd, &ToClient::Keymap(shared.keymap.clone()));
             }
-            ToDaemon::Register(registration) => shared.registered.push((me, registration)),
-            ToDaemon::ListRegistered => {
+            ToDaemon::Keymap(KeymapCall::Register(registration)) => {
+                shared.registered.push((me, registration));
+            }
+            ToDaemon::Keymap(KeymapCall::List) => {
                 let all = shared.registered.iter().map(|(_, r)| r.clone()).collect();
                 send(&fd, &ToClient::Registered(all));
             }
-            ToDaemon::Focus { .. } | ToDaemon::UserConfig { .. } | ToDaemon::Resume => {}
+            ToDaemon::Steer(_) => {}
         }
     }
     let mut shared = shared.lock().expect("lock");
