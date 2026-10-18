@@ -48,11 +48,13 @@ EDGES=(
   "keycap-core: keycap-protocol thiserror toml"
   "keycap-protocol: serde serde_json thiserror"
   # keycap also links peephole (who the socket's peer is) and turnstile-client (the root service
-  # that makes its virtual devices), both by tag; neither brings a bus or an async runtime.
-  "keycap: chordkit input-linux keycap-client keycap-core keycap-protocol notify peephole peephole-core rustix thiserror turnstile-client"
+  # that makes its virtual devices), both by tag; neither brings a bus or an async runtime. latchkey
+  # (feature guard) holds the socket guard keycap shares with palmrest.
+  "keycap: chordkit input-linux keycap-client keycap-core keycap-protocol latchkey notify peephole peephole-core rustix thiserror turnstile-client"
   # keycap-client: what an app links to read the desktop keymap. The protocol, chordkit's pure core
-  # and rustix for the SOCK_SEQPACKET socket std lacks; no runtime, no file watcher.
-  "keycap-client: chordkit keycap-protocol rustix"
+  # and its bounded file reader (chordkit-file), and rustix for the SOCK_SEQPACKET socket std
+  # lacks; no runtime, no file watcher.
+  "keycap-client: chordkit chordkit-file keycap-protocol rustix"
 )
 for edge in "${EDGES[@]}"; do
   crate="${edge%%:*}"
