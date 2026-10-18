@@ -3,8 +3,9 @@
 //! the server sends them.
 
 use crate::daemon::inbox::ClientId;
-use crate::keymap::{Reading, settle};
+use crate::keymap::settle;
 use chordkit::{AppAction, AppId, DefaultChord};
+use keycap_client::FileText;
 use keycap_protocol::{KeymapState, RegisteredAction, Registration, ToClient, ToDaemon};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -54,7 +55,7 @@ pub(super) struct Shelf {
 
 impl Shelf {
     /// A shelf holding the state settled from the file as the daemon starts.
-    pub(super) fn starting_with(first: Reading) -> Shelf {
+    pub(super) fn starting_with(first: FileText) -> Shelf {
         Shelf {
             state: settle(&KeymapState::default(), first),
             ..Shelf::default()
@@ -86,7 +87,7 @@ impl Shelf {
 
     /// Settles a fresh reading of the file. `None` when nothing changed; otherwise the new state
     /// for every watcher.
-    pub(super) fn read(&mut self, reading: Reading) -> Option<Vec<Reply>> {
+    pub(super) fn read(&mut self, reading: FileText) -> Option<Vec<Reply>> {
         let next = settle(&self.state, reading);
         if next == self.state {
             return None;
@@ -178,7 +179,7 @@ mod tests {
     }
 
     fn shelf() -> Shelf {
-        Shelf::starting_with(Reading::Text("copy = Primary+Alt+C\n".to_owned()))
+        Shelf::starting_with(FileText::Text("copy = Primary+Alt+C\n".to_owned()))
     }
 
     fn listed(shelf: &mut Shelf, who: u64) -> Vec<Registration> {
@@ -218,7 +219,7 @@ mod tests {
         shelf.call(b, Call::Watch);
 
         let told = shelf
-            .read(Reading::Text("paste = Primary+Alt+V\n".to_owned()))
+            .read(FileText::Text("paste = Primary+Alt+V\n".to_owned()))
             .expect("changed");
         assert_eq!(told.iter().map(|r| r.to).collect::<Vec<_>>(), [a, b]);
         assert_eq!(
@@ -233,7 +234,7 @@ mod tests {
         let mut shelf = shelf();
         shelf.call(ClientId(1), Call::Watch);
         assert_eq!(
-            shelf.read(Reading::Text("copy = Primary+Alt+C\n".to_owned())),
+            shelf.read(FileText::Text("copy = Primary+Alt+C\n".to_owned())),
             None
         );
     }
@@ -244,7 +245,7 @@ mod tests {
         shelf.call(ClientId(1), Call::Watch);
         let before = shelf.state().overrides.clone();
         let told = shelf
-            .read(Reading::Text("nonsense\n".to_owned()))
+            .read(FileText::Text("nonsense\n".to_owned()))
             .expect("a problem is news");
         assert_eq!(shelf.state().overrides, before);
         assert!(matches!(&told[0].message, ToClient::Keymap(s) if !s.problems.is_empty()));
@@ -254,7 +255,7 @@ mod tests {
     fn a_connection_that_never_watched_hears_no_change() {
         let mut shelf = shelf();
         shelf.call(ClientId(7), Call::List);
-        let told = shelf.read(Reading::Missing).expect("changed");
+        let told = shelf.read(FileText::Missing).expect("changed");
         assert_eq!(told, []);
     }
 

@@ -2,7 +2,7 @@
 
 use crate::daemon::inbox::ClientId;
 use crate::daemon::waker::Waker;
-use crate::keymap::Reading;
+use keycap_client::FileText;
 use keycap_protocol::{Status, Warning};
 use std::sync::mpsc::Sender;
 
@@ -17,7 +17,7 @@ pub(crate) enum ToSocket {
         warnings: Vec<Warning>,
     },
     /// The keymap file was read again: watchers hear the new keymap when it changed.
-    Keymap(Reading),
+    Keymap(FileText),
 }
 
 /// A channel plus the eventfd that wakes the socket thread, so the reader never waits on a client.

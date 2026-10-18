@@ -15,7 +15,7 @@ use crate::daemon::clock;
 use crate::daemon::inbox::{ClientId, Delivery, Inbox, Message, Request};
 use crate::daemon::readiness::Readiness;
 use crate::daemon::waker::Waker;
-use crate::keymap::Reading;
+use keycap_client::FileText;
 use keycap_protocol::{
     self as protocol, PROTOCOL_VERSION, ProfileName, Status, ToClient, ToDaemon,
 };
@@ -72,7 +72,7 @@ pub(crate) fn spawn(
     seat: SeatFile,
     vouch: Box<dyn Vouch>,
     status: Status,
-    keymap: Reading,
+    keymap: FileText,
 ) -> io::Result<SocketHandle> {
     let waker = Waker::new()?;
     let (tx, rx) = mpsc::channel();

@@ -7,7 +7,7 @@
 use chordkit::{Desktop, Keymap, OverrideProblem, Overrides, Platform};
 use keycap_protocol::{KeymapProblem, KeymapState};
 
-use super::file::Reading;
+use keycap_client::FileText;
 
 /// The platform the file is checked against: ours, whose reserved chords the person may not take.
 const OURS: Platform = Platform::Linux {
@@ -34,7 +34,7 @@ const MAX_PROBLEM_CHARS: usize = 200;
 
 /// The state after `reading`, given the state in force before it, with the problems within
 /// bounds so the state always fits one packet.
-pub fn settle(previous: &KeymapState, reading: Reading) -> KeymapState {
+pub fn settle(previous: &KeymapState, reading: FileText) -> KeymapState {
     let state = settle_unbounded(previous, reading);
     KeymapState {
         problems: bounded(state.problems),
@@ -58,17 +58,17 @@ fn bounded(problems: Vec<KeymapProblem>) -> Vec<KeymapProblem> {
     kept
 }
 
-fn settle_unbounded(previous: &KeymapState, reading: Reading) -> KeymapState {
+fn settle_unbounded(previous: &KeymapState, reading: FileText) -> KeymapState {
     match reading {
-        Reading::Missing => KeymapState::default(),
-        Reading::Unusable(why) => keep(
+        FileText::Missing => KeymapState::default(),
+        FileText::Unusable(why) => keep(
             previous,
             vec![problem(
                 0,
                 format!("The keymap file couldn't be used ({why}), so the last good one stays."),
             )],
         ),
-        Reading::Text(text) => {
+        FileText::Text(text) => {
             let (overrides, mut problems) = Overrides::parse(&text);
             if overrides.entries().is_empty() && !problems.is_empty() {
                 let mut kept = vec![problem(
@@ -100,8 +100,8 @@ fn keep(previous: &KeymapState, problems: Vec<KeymapProblem>) -> KeymapState {
 mod tests {
     use super::*;
 
-    fn text(t: &str) -> Reading {
-        Reading::Text(t.to_owned())
+    fn text(t: &str) -> FileText {
+        FileText::Text(t.to_owned())
     }
 
     fn good() -> KeymapState {
@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn a_missing_file_clears_the_overrides() {
-        assert_eq!(settle(&good(), Reading::Missing), KeymapState::default());
+        assert_eq!(settle(&good(), FileText::Missing), KeymapState::default());
     }
 
     #[test]
@@ -194,7 +194,7 @@ mod tests {
     #[test]
     fn an_unusable_file_keeps_the_last_good_copy_and_says_why() {
         let before = good();
-        let after = settle(&before, Reading::Unusable("it is not plain text".into()));
+        let after = settle(&before, FileText::Unusable("it is not plain text".into()));
         assert_eq!(after.overrides, before.overrides);
         assert_eq!(after.problems.len(), 1);
         assert!(after.problems[0].what.contains("not plain text"));

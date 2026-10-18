@@ -13,7 +13,8 @@ use super::uinput::Device;
 use crate::ConfigLayer;
 use crate::CoreStatus;
 use crate::config::{self, system, vendor};
-use crate::keymap::{self, Reading};
+use crate::keymap;
+use keycap_client::FileText;
 use keycap_protocol::Warning;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -123,7 +124,7 @@ fn watch_devices(dev_input: &Path, inbox: &Inbox) -> Result<notify::RecommendedW
 /// the keymap. A directory that cannot be watched costs live reload only. The watcher must be
 /// kept alive.
 fn watch_keymap(dir: &Path, socket: &SocketHandle) -> Option<notify::RecommendedWatcher> {
-    let (tx, rx) = mpsc::channel::<Reading>();
+    let (tx, rx) = mpsc::channel::<FileText>();
     let relay = socket.clone();
     let thread = std::thread::Builder::new()
         .name("keycap-keymap".to_owned())

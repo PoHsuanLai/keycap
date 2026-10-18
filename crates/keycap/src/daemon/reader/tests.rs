@@ -42,7 +42,7 @@ impl Rig {
             SeatFile(dir.path().join("seat0")),
             Steering::SeatUser.vouch(),
             initial,
-            crate::keymap::Reading::Missing,
+            keycap_client::FileText::Missing,
         )
         .unwrap();
         let reader = Reader::new(Wiring {

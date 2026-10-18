@@ -7,7 +7,7 @@ use super::shell::{ShellCheck, Vouch};
 use super::*;
 use crate::daemon::inbox::{Mailbox, Message, Request, mailbox};
 use crate::daemon::scratch::Scratch;
-use crate::keymap::Reading;
+use keycap_client::FileText;
 use keycap_protocol::{
     self as protocol, KeymapState, Mode, PROTOCOL_VERSION, ProfileName, RegisteredAction,
     Registration, Status, ToClient, ToDaemon, Warning,
@@ -55,10 +55,10 @@ struct Harness {
 
 impl Harness {
     fn new(active_uid: Option<u32>) -> Self {
-        Self::with_keymap(active_uid, Reading::Missing)
+        Self::with_keymap(active_uid, FileText::Missing)
     }
 
-    fn with_keymap(active_uid: Option<u32>, keymap: Reading) -> Self {
+    fn with_keymap(active_uid: Option<u32>, keymap: FileText) -> Self {
         Self::start(active_uid, keymap, Steering::SeatUser.vouch())
     }
 
@@ -66,10 +66,10 @@ impl Harness {
     /// `/proc` it reads is empty, so every program of the seat's user is an ordinary one.
     fn without_a_shell(active_uid: Option<u32>) -> Self {
         let nobody = ShellCheck::new(Prober::new(FixtureProc::new()), Table::empty());
-        Self::start(active_uid, Reading::Missing, Box::new(nobody))
+        Self::start(active_uid, FileText::Missing, Box::new(nobody))
     }
 
-    fn start(active_uid: Option<u32>, keymap: Reading, vouch: Box<dyn Vouch>) -> Self {
+    fn start(active_uid: Option<u32>, keymap: FileText, vouch: Box<dyn Vouch>) -> Self {
         let dir = Scratch::new("socket");
         let socket = socket_path(dir.path());
         let seat = dir.path().join("seat0");
@@ -472,8 +472,8 @@ fn no_seat_file_means_nobody_is_obeyed() {
     assert!(h.nothing_queued());
 }
 
-fn text(t: &str) -> Reading {
-    Reading::Text(t.to_owned())
+fn text(t: &str) -> FileText {
+    FileText::Text(t.to_owned())
 }
 
 fn keymap_of(overrides: &str) -> ToClient {
