@@ -11,4 +11,4 @@ mod switcher_tests;
 #[cfg(test)]
 mod tests;
 
-pub use model::{CoreStatus, RemapInput, RemapOut, Remapper};
+pub use model::{RemapInput, RemapOut, Remapper};

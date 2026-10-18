@@ -333,7 +333,7 @@ fn a_lone_esc_after_resume_is_written_when_no_release_reached_the_remapper() {
         (press(0, "esc"), "+esc SYN"),
         (release(0, "esc"), "-esc SYN"),
     ]);
-    assert_eq!(rig.status(), keycap::CoreStatus::Running);
+    assert_eq!(rig.status(), keycap_protocol::Mode::Running);
 }
 
 #[test]

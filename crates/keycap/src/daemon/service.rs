@@ -11,11 +11,10 @@ use super::socket::{self, SeatFile, SocketHandle, ToSocket, bind, socket_path};
 use super::source::Source;
 use super::uinput::Device;
 use crate::ConfigLayer;
-use crate::CoreStatus;
 use crate::config::{self, system, vendor};
 use crate::keymap;
 use keycap_client::FileText;
-use keycap_protocol::Warning;
+use keycap_protocol::{Mode, Warning};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
@@ -30,7 +29,7 @@ pub(crate) fn run(env: Env) -> Result<(), String> {
     let (inbox, mailbox) = mailbox().map_err(|e| format!("inbox: {e}"))?;
     let path = socket_path(&env.runtime_dir);
     let listener = bind(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let initial = status_of(&Default::default(), CoreStatus::Running);
+    let initial = status_of(&Default::default(), Mode::Running);
     let first_keymap = keymap::read(&env.config_dir);
     keymap::settle(&Default::default(), first_keymap.clone())
         .problems

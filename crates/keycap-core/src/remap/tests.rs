@@ -1,4 +1,4 @@
-use keycap_protocol::ProfileName;
+use keycap_protocol::{Mode, ProfileName};
 
 use super::*;
 use crate::config::{ConfigLayer, ConfigSource, resolve};
@@ -196,10 +196,10 @@ fn the_remapper_is_paused_by_the_chord_and_running_again_after_resume() {
     let profiles = profiles();
     let (state, out) = run(&["+leftshift", "+rightshift", "+esc"]);
     assert_eq!(out[2], "-leftshift SYN; GRABS-OFF; Paused");
-    assert_eq!(state.status(), CoreStatus::Paused);
+    assert_eq!(state.status(), Mode::Paused);
     let (state, outs) = state.step(RemapInput::Focus(ProfileName::default_profile()), &profiles);
     assert!(outs.is_empty());
     let (state, outs) = state.step(RemapInput::Resume, &profiles);
     assert_eq!(render(&outs), "Running");
-    assert_eq!(state.status(), CoreStatus::Running);
+    assert_eq!(state.status(), Mode::Running);
 }

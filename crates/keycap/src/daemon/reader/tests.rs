@@ -35,7 +35,7 @@ impl Rig {
         let listener = bind(&path).unwrap();
         let (inbox, mailbox) = mailbox().unwrap();
         let initial =
-            crate::daemon::devices::status_of(&Devices::new(), crate::CoreStatus::Running);
+            crate::daemon::devices::status_of(&Devices::new(), keycap_protocol::Mode::Running);
         let socket = spawn(
             listener,
             inbox.clone(),

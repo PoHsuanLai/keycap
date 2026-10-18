@@ -5,7 +5,8 @@ use super::script::{Input, Step, parse};
 use crate::daemon::caps::{CapsFix, CapsKey};
 use crate::daemon::leds::{Led, LedEvent};
 use crate::daemon::settings::{Layers, parse_user};
-use crate::{CoreStatus, Edge, OutEvent, Profiles, RemapOut, Remapper};
+use crate::{Edge, OutEvent, Profiles, RemapOut, Remapper};
+use keycap_protocol::Mode;
 use std::path::Path;
 
 /// The writes and requests of one step as text: `+key` and `-key` for presses and releases,
@@ -19,8 +20,8 @@ pub(super) fn render(outs: &[RemapOut]) -> String {
             .collect::<Vec<_>>()
             .join(" "),
         RemapOut::ReleaseGrabs => "release-grabs".to_owned(),
-        RemapOut::Status(CoreStatus::Running) => "status running".to_owned(),
-        RemapOut::Status(CoreStatus::Paused) => "status paused".to_owned(),
+        RemapOut::Status(Mode::Running) => "status running".to_owned(),
+        RemapOut::Status(Mode::Paused) => "status paused".to_owned(),
     };
     outs.iter().map(one).collect::<Vec<_>>().join("; ")
 }
@@ -288,8 +289,8 @@ mod tests {
                 vec![
                     RemapOut::Write(vec![OutEvent::Sync]),
                     RemapOut::ReleaseGrabs,
-                    RemapOut::Status(CoreStatus::Paused),
-                    RemapOut::Status(CoreStatus::Running),
+                    RemapOut::Status(Mode::Paused),
+                    RemapOut::Status(Mode::Running),
                 ],
                 "SYN; release-grabs; status paused; status running",
             ),

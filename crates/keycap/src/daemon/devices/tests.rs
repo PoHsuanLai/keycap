@@ -2,7 +2,7 @@ use super::model::DeviceEffect;
 use super::*;
 use crate::daemon::discover::Identity;
 use crate::daemon::grabber::FakeGrabber;
-use crate::{CoreStatus, DeviceId, Layout, Mono};
+use crate::{DeviceId, Layout, Mono};
 use keycap_protocol::{Grab, Mode};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -65,7 +65,7 @@ impl Rig {
     }
 
     fn grabs(&self) -> Vec<Grab> {
-        status_of(&self.devices, CoreStatus::Running)
+        status_of(&self.devices, Mode::Running)
             .keyboards
             .iter()
             .map(|k| k.grab)
@@ -98,7 +98,7 @@ fn appearing_twice_is_one_keyboard_and_no_second_effect() {
         }],
         "another path is another keyboard with the next id"
     );
-    assert_eq!(status_of(&devices, CoreStatus::Running).keyboards.len(), 2);
+    assert_eq!(status_of(&devices, Mode::Running).keyboards.len(), 2);
 }
 
 #[test]
@@ -290,7 +290,7 @@ fn a_node_that_cannot_be_opened_is_not_kept_so_the_next_sighting_tries_again() {
     nodes.refuse_open(A);
     let mut rig = Rig::new(nodes);
     rig.appear(identity(3, 0x05ac), at(0));
-    assert_eq!(status_of(&rig.devices, CoreStatus::Running).keyboards, []);
+    assert_eq!(status_of(&rig.devices, Mode::Running).keyboards, []);
     assert_eq!(rig.nodes.open_ids(), []);
     rig.appear(identity(3, 0x05ac), at(1));
     assert_eq!(
@@ -305,7 +305,7 @@ fn status_names_the_mode_and_lists_keyboards_in_id_order() {
     let mut rig = Rig::new(FakeGrabber::with_busy([B]));
     rig.appear(identity(3, 0x05ac), at(0));
     rig.appear(identity(4, 0x046d), at(0));
-    let running = status_of(&rig.devices, CoreStatus::Running);
+    let running = status_of(&rig.devices, Mode::Running);
     assert_eq!(running.mode, Mode::Running);
     let seen: Vec<_> = running
         .keyboards
@@ -326,14 +326,8 @@ fn status_names_the_mode_and_lists_keyboards_in_id_order() {
             ("keyboard 4", "/dev/input/event4", 0x046d, Grab::Conflict),
         ]
     );
-    assert_eq!(
-        status_of(&rig.devices, CoreStatus::Paused).mode,
-        Mode::Paused
-    );
-    assert_eq!(
-        status_of(&Devices::new(), CoreStatus::Running).keyboards,
-        []
-    );
+    assert_eq!(status_of(&rig.devices, Mode::Paused).mode, Mode::Paused);
+    assert_eq!(status_of(&Devices::new(), Mode::Running).keyboards, []);
 }
 
 #[test]

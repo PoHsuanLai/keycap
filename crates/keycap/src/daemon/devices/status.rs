@@ -1,16 +1,12 @@
 //! What the devices look like to a desktop.
 
 use super::model::Devices;
-use crate::CoreStatus;
 use keycap_protocol::{Grab, Keyboard, KeyboardInfo, Mode, Status};
 
 /// The status a desktop sees: the remapper's mode and each keyboard's grab, by id.
-pub(crate) fn status_of(devices: &Devices, core: CoreStatus) -> Status {
+pub(crate) fn status_of(devices: &Devices, mode: Mode) -> Status {
     Status {
-        mode: match core {
-            CoreStatus::Running => Mode::Running,
-            CoreStatus::Paused => Mode::Paused,
-        },
+        mode,
         keyboards: devices
             .tracked
             .values()

@@ -34,6 +34,6 @@ pub use held::{Held, Record};
 pub use key::Key;
 pub use layout::{Layout, role};
 pub use profile::{ChordError, Hold, ModMap, Profile, Profiles, RuleAction, Stroke, Trigger};
-pub use remap::{CoreStatus, RemapInput, RemapOut, Remapper};
+pub use remap::{RemapInput, RemapOut, Remapper};
 pub use role::{OutMod, OutMods, Role, Roles};
 pub use time::Mono;

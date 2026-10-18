@@ -1,11 +1,12 @@
 //! `Remapper::step`: one input in, the next state and what to write out.
 
 use super::batch::Batch;
-use super::model::{CoreStatus, RemapInput, RemapOut, Remapper};
+use super::model::{RemapInput, RemapOut, Remapper};
 use crate::escape::{Escape, EscapeChord};
 use crate::event::{Edge, OutEvent};
 use crate::held::Held;
 use crate::profile::Profiles;
+use keycap_protocol::Mode;
 
 impl Remapper {
     /// Feed one input. Keys are tracked by the escape chord first; while `Paused` they yield
@@ -23,12 +24,12 @@ impl Remapper {
                 let this = Remapper { escape, ..self };
                 let at = (device, key);
                 match (this.status, chord, edge) {
-                    (CoreStatus::Paused, _, _) | (_, _, Edge::Repeat) => (this, Vec::new()),
-                    (CoreStatus::Running, EscapeChord::Fired, _) => this.fire_escape(),
-                    (CoreStatus::Running, EscapeChord::Quiet, Edge::Release) => {
+                    (Mode::Paused, _, _) | (_, _, Edge::Repeat) => (this, Vec::new()),
+                    (Mode::Running, EscapeChord::Fired, _) => this.fire_escape(),
+                    (Mode::Running, EscapeChord::Quiet, Edge::Release) => {
                         this.settle(|held| held.release(at))
                     }
-                    (CoreStatus::Running, EscapeChord::Quiet, Edge::Press) => {
+                    (Mode::Running, EscapeChord::Quiet, Edge::Press) => {
                         let profile = profiles.resolve(&this.focus);
                         this.press(profile, layout, at)
                     }
@@ -51,11 +52,11 @@ impl Remapper {
             }
             RemapInput::Resume => (
                 Remapper {
-                    status: CoreStatus::Running,
+                    status: Mode::Running,
                     escape: Escape::new(),
                     ..self
                 },
-                vec![RemapOut::Status(CoreStatus::Running)],
+                vec![RemapOut::Status(Mode::Running)],
             ),
         }
     }
@@ -75,10 +76,10 @@ impl Remapper {
     /// never written.
     fn fire_escape(self) -> (Self, Vec<RemapOut>) {
         let (this, mut outs) = self.settle(Held::drain);
-        outs.extend([RemapOut::ReleaseGrabs, RemapOut::Status(CoreStatus::Paused)]);
+        outs.extend([RemapOut::ReleaseGrabs, RemapOut::Status(Mode::Paused)]);
         (
             Remapper {
-                status: CoreStatus::Paused,
+                status: Mode::Paused,
                 ..this
             },
             outs,

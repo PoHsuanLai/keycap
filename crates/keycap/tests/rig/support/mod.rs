@@ -6,10 +6,10 @@
 use std::collections::BTreeSet;
 
 use keycap::{
-    CoreStatus, DeviceId, Edge, Key, Layout, Logical, Mono, OutEvent, Physical, Profiles,
-    RemapInput, RemapOut, Remapper, builtin, resolve,
+    DeviceId, Edge, Key, Layout, Logical, Mono, OutEvent, Physical, Profiles, RemapInput, RemapOut,
+    Remapper, builtin, resolve,
 };
-use keycap_protocol::ProfileName;
+use keycap_protocol::{Mode, ProfileName};
 
 /// The shipped profiles, resolved; the built-in layer must parse without a warning.
 pub fn real_profiles() -> Profiles {
@@ -87,8 +87,8 @@ pub fn render(outs: &[RemapOut]) -> String {
             .collect::<Vec<_>>()
             .join(" "),
         RemapOut::ReleaseGrabs => "GRABS-OFF".to_owned(),
-        RemapOut::Status(CoreStatus::Paused) => "PAUSED".to_owned(),
-        RemapOut::Status(CoreStatus::Running) => "RUNNING".to_owned(),
+        RemapOut::Status(Mode::Paused) => "PAUSED".to_owned(),
+        RemapOut::Status(Mode::Running) => "RUNNING".to_owned(),
     };
     outs.iter().map(one).collect::<Vec<_>>().join("; ")
 }
@@ -167,7 +167,7 @@ impl Rig {
         self.wire.iter().map(|k| k.0.name()).collect()
     }
 
-    pub fn status(&self) -> CoreStatus {
+    pub fn status(&self) -> Mode {
         self.remapper.status()
     }
 
