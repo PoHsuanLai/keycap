@@ -3,7 +3,7 @@
 //! merely broken. Pure: instants are arguments.
 
 use crate::Mono;
-use rustix::io::Errno;
+use latchkey::guard::{ACCEPT_PAUSE, COMPLAINT_INTERVAL, Voice};
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::time::Duration;
@@ -23,11 +23,6 @@ pub(super) const MESSAGES_PER_PASS: usize = 16;
 pub(super) const STEERING_PER_SECOND: u32 = 100;
 /// Connections accepted in one pass.
 pub(super) const ACCEPTS_PER_PASS: usize = 16;
-/// How long the listener is left alone after `accept` failed for a reason that will not clear
-/// by retrying at once (out of file descriptors).
-pub(super) const ACCEPT_PAUSE: Duration = Duration::from_secs(1);
-/// How often one uid's misbehaviour is logged.
-pub(super) const COMPLAINT_INTERVAL: Duration = Duration::from_secs(60);
 
 /// The two client caps, as data so a table can use small ones.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,26 +73,6 @@ pub(super) fn admit(
         Admission::TooManyForUser
     } else {
         Admission::Admit
-    }
-}
-
-/// What a failed `accept` means.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum AcceptFailure {
-    /// No connection is waiting: the loop is done for this pass.
-    NothingPending,
-    /// Interrupted: ask again.
-    Retry,
-    /// The connection stays pending, so polling would return at once and spin: leave the
-    /// listener alone for a while.
-    Pause,
-}
-
-pub(super) fn accept_failure(e: Errno) -> AcceptFailure {
-    match e {
-        Errno::AGAIN => AcceptFailure::NothingPending,
-        Errno::INTR => AcceptFailure::Retry,
-        _ => AcceptFailure::Pause,
     }
 }
 
@@ -169,13 +144,6 @@ impl Intake {
             Intake::Open => ceiling,
         }
     }
-}
-
-/// Whether a complaint is written to the log.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Voice {
-    Speak,
-    Silent,
 }
 
 /// The last time each uid was complained about, so one client cannot fill the log.
@@ -291,30 +259,6 @@ mod tests {
         for &(name, connected, uid, want) in cases {
             let got = admit(connected.iter().copied(), uid, owner, SMALL);
             assert_eq!(got, want, "{name}");
-        }
-    }
-
-    #[test]
-    fn accept_failure_table() {
-        let cases: &[(&str, Errno, AcceptFailure)] = &[
-            (
-                "nothing waiting",
-                Errno::AGAIN,
-                AcceptFailure::NothingPending,
-            ),
-            ("a signal", Errno::INTR, AcceptFailure::Retry),
-            ("out of descriptors", Errno::MFILE, AcceptFailure::Pause),
-            (
-                "out of descriptors system-wide",
-                Errno::NFILE,
-                AcceptFailure::Pause,
-            ),
-            ("out of buffers", Errno::NOBUFS, AcceptFailure::Pause),
-            ("out of memory", Errno::NOMEM, AcceptFailure::Pause),
-            ("anything else", Errno::IO, AcceptFailure::Pause),
-        ];
-        for &(name, errno, want) in cases {
-            assert_eq!(accept_failure(errno), want, "{name}");
         }
     }
 

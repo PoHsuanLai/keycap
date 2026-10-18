@@ -20,6 +20,7 @@ notify.workspace = true
 rustix.workspace = true
 input-linux.workspace = true
 peephole.workspace = true
+latchkey.workspace = true
 peephole-core.workspace = true
 # The broker that makes the virtual devices, and the device vocabulary its requests are written in.
 turnstile-client.workspace = true

@@ -2,13 +2,9 @@
 //! file is the one effect.
 
 use keycap_protocol::ToDaemon;
-use std::path::PathBuf;
+use latchkey::guard::Claim;
 
-use super::shell::Claim;
 use crate::daemon::inbox::{ClientId, Request};
-
-/// Where logind records the seat's state.
-pub(crate) const SEAT_FILE: &str = "/run/systemd/seats/seat0";
 
 /// What a connected client may do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,13 +16,6 @@ pub(crate) enum Peer {
     Plain,
     /// Anyone else: hears status, is never obeyed.
     Observer,
-}
-
-/// The `ACTIVE_UID=` line of a `seat0` state file; `None` when there is no active session.
-pub(crate) fn active_uid(text: &str) -> Option<u32> {
-    text.lines()
-        .find_map(|line| line.strip_prefix("ACTIVE_UID="))
-        .and_then(|value| value.trim().parse().ok())
 }
 
 /// A client's standing, from the uid the kernel vouches for, the seat's active uid and what
@@ -127,52 +116,10 @@ impl Seat {
     }
 }
 
-/// The file the active uid is read from.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SeatFile(pub PathBuf);
-
-impl SeatFile {
-    /// The active uid now; a missing or unreadable file means nobody owns the seat.
-    pub(crate) fn active_uid(&self) -> Option<u32> {
-        std::fs::read_to_string(&self.0)
-            .ok()
-            .and_then(|text| active_uid(&text))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use keycap_protocol::ProfileName;
-
-    #[test]
-    fn active_uid_table() {
-        const CASES: &[(&str, &str, Option<u32>)] = &[
-            (
-                "typical file",
-                "# This is private data.\nIS_SEAT0=1\nACTIVE=c2\nACTIVE_UID=1000\nSESSIONS=c2\nUIDS=1000\n",
-                Some(1000),
-            ),
-            ("no active session", "IS_SEAT0=1\nSESSIONS=\nUIDS=\n", None),
-            ("empty file", "", None),
-            ("root", "ACTIVE_UID=0\n", Some(0)),
-            ("not a number", "ACTIVE_UID=bob\n", None),
-            ("negative", "ACTIVE_UID=-1\n", None),
-            ("empty value", "ACTIVE_UID=\n", None),
-            (
-                "a different key that ends the same",
-                "OLD_ACTIVE_UID=5\n",
-                None,
-            ),
-            ("indented is not the key", " ACTIVE_UID=7\n", None),
-            ("first wins", "ACTIVE_UID=1\nACTIVE_UID=2\n", Some(1)),
-            ("trailing space", "ACTIVE_UID=42 \n", Some(42)),
-            ("no final newline", "ACTIVE_UID=9", Some(9)),
-        ];
-        for &(name, text, want) in CASES {
-            assert_eq!(active_uid(text), want, "{name}");
-        }
-    }
 
     #[test]
     fn peer_table() {

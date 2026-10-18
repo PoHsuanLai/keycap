@@ -3,9 +3,9 @@
 
 use super::limits::Pace;
 use super::seat::{Peer, peer_of};
-use super::shell::Origin;
 use crate::daemon::inbox::ClientId;
 use keycap_protocol::{self as protocol, KeymapState, MAX_PACKET, Status, ToClient};
+use latchkey::guard::Origin;
 use rustix::fd::{AsFd, OwnedFd};
 use rustix::io::Errno;
 use rustix::net::SendFlags;

@@ -3,7 +3,6 @@
 //! program of the seat's user as one, an ordinary program when the steering table is empty.
 
 use super::client::{WAIT, connect, recv, send};
-use super::shell::{ShellCheck, Vouch};
 use super::*;
 use crate::daemon::inbox::{Mailbox, Message, Request, mailbox};
 use crate::daemon::scratch::Scratch;
@@ -12,6 +11,7 @@ use keycap_protocol::{
     self as protocol, KeymapState, Mode, PROTOCOL_VERSION, ProfileName, RegisteredAction,
     Registration, Status, ToClient, ToDaemon, Warning,
 };
+use latchkey::guard::{ShellCheck, Vouch};
 use peephole::{FixtureProc, Prober};
 use peephole_core::Table;
 use rustix::net::SendFlags;
@@ -65,7 +65,7 @@ impl Harness {
     /// A harness in which no client is the shell: the steering table has no rows and the
     /// `/proc` it reads is empty, so every program of the seat's user is an ordinary one.
     fn without_a_shell(active_uid: Option<u32>) -> Self {
-        let nobody = ShellCheck::new(Prober::new(FixtureProc::new()), Table::empty());
+        let nobody = ShellCheck::new(Prober::new(FixtureProc::new()), Table::empty(), Vec::new());
         Self::start(active_uid, FileText::Missing, Box::new(nobody))
     }
 

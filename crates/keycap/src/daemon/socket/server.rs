@@ -4,13 +4,12 @@
 use super::handle::{SocketHandle, ToSocket};
 use super::inbound::{Stream, pull};
 use super::limits::{
-    ACCEPTS_PER_PASS, AcceptFailure, Admission, Caps, Complaints, Intake,
-    MAX_KEYMAP_CLIENTS_PER_UID, MESSAGES_PER_PASS, Pace, Pacing, Voice, accept_failure, admit,
+    ACCEPTS_PER_PASS, Admission, Caps, Complaints, Intake, MAX_KEYMAP_CLIENTS_PER_UID,
+    MESSAGES_PER_PASS, Pace, Pacing, admit,
 };
 use super::peer::{Client, Link, Owed, Role, Sent, send};
 use super::seat::{Peer, Seat, SeatFile, Tenancy, request_of};
 use super::shelf::{Call, Reply, Shelf};
-use super::shell::Vouch;
 use crate::daemon::clock;
 use crate::daemon::inbox::{ClientId, Delivery, Inbox, Message, Request};
 use crate::daemon::readiness::Readiness;
@@ -19,6 +18,7 @@ use keycap_client::FileText;
 use keycap_protocol::{
     self as protocol, PROTOCOL_VERSION, ProfileName, Status, ToClient, ToDaemon,
 };
+use latchkey::guard::{AcceptFailure, Voice, Vouch, accept_failure};
 use rustix::event::{PollFd, PollFlags, poll};
 use rustix::fd::OwnedFd;
 use rustix::io::Errno;
