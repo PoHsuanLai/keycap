@@ -13,6 +13,7 @@ pub(crate) mod events;
 pub(crate) mod grabber;
 pub(crate) mod inbox;
 pub(crate) mod leds;
+pub(crate) mod machine;
 pub(crate) mod pointer;
 pub(crate) mod reader;
 pub(crate) mod readiness;

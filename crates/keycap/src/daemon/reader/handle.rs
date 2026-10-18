@@ -160,11 +160,14 @@ impl<E: Emitter> Reader<E> {
         self.sync_grabs();
     }
 
-    /// One input through the remapper, and what it asks for carried out.
+    /// One input through the remapper, and what it asks for carried out: the Caps Lock tap first
+    /// when a stray lock is due to be cleared.
     pub(super) fn feed(&mut self, input: RemapInput) {
-        self.settle_caps(&input);
-        let (remapper, outs) = std::mem::take(&mut self.remapper).step(input, &self.profiles);
-        self.remapper = remapper;
+        let (machine, tap) = std::mem::take(&mut self.machine).settled(&input, &self.profiles);
+        self.machine = machine;
+        self.write_caps_tap(&tap);
+        let (machine, outs) = std::mem::take(&mut self.machine).step(input, &self.profiles);
+        self.machine = machine;
         let mut wire = Wire::Intact;
         for out in outs {
             wire = self.dispatch(out, wire);
@@ -238,9 +241,7 @@ impl<E: Emitter> Reader<E> {
             }
         }
         // The new device has nothing down, so what the releases would write is not written.
-        let (remapper, _unwritten) =
-            std::mem::take(&mut self.remapper).step(RemapInput::ReleaseAll, &self.profiles);
-        self.remapper = remapper;
+        self.machine = std::mem::take(&mut self.machine).forgotten(&self.profiles);
         self.buttons = std::mem::take(&mut self.buttons).forget();
     }
 

@@ -176,7 +176,7 @@ impl<E: Emitter> Reader<E> {
 
     /// The pushed status, if it differs from the last one pushed.
     pub(super) fn publish(&mut self) {
-        let status = status_of(&self.devices, self.remapper.status());
+        let status = status_of(&self.devices, self.machine.status());
         if status != self.published {
             if let Err(e) = self.notifier.status(&summary(&status)) {
                 eprintln!("keycap: status line failed: {e}");

@@ -2,10 +2,9 @@
 //! input and what it writes, the Caps Lock tap of `daemon::caps` included.
 
 use super::script::{Input, Step, parse};
-use crate::daemon::caps::{CapsFix, CapsKey};
-use crate::daemon::leds::{Led, LedEvent};
+use crate::daemon::machine::Machine;
 use crate::daemon::settings::{Layers, parse_user};
-use crate::{Edge, OutEvent, Profiles, RemapOut, Remapper};
+use crate::{Edge, OutEvent, Profiles, RemapOut};
 use keycap_protocol::Mode;
 use std::path::Path;
 
@@ -44,56 +43,34 @@ fn render_event(event: &OutEvent) -> String {
     }
 }
 
-/// The remapper and the Caps Lock rule, as the reader runs them.
-#[derive(Debug, Clone, Default)]
-struct Machine {
-    remapper: Remapper,
-    caps: CapsFix,
-}
-
-impl Machine {
-    /// The machine after `input`, and what it wrote: the Caps Lock tap first when one is due.
-    fn step(self, input: Input, profiles: &Profiles, key: CapsKey) -> (Machine, Vec<RemapOut>) {
-        match input {
-            Input::Led(LedEvent {
-                led: Led::Caps,
-                lamp,
-            }) => (
-                Machine {
-                    caps: self.caps.reported(lamp),
-                    ..self
-                },
-                Vec::new(),
-            ),
-            Input::Led(_) => (self, Vec::new()),
-            Input::Remap(input) => {
-                let (caps, tap) = self.caps.before(&input, key);
-                let (remapper, outs) = self.remapper.step(input, profiles);
-                let caps = outs.iter().fold(caps, |caps, out| match out {
-                    RemapOut::Write(batch) => caps.wrote(batch),
-                    _ => caps,
-                });
-                let tap = Some(tap).filter(|tap| !tap.is_empty()).map(RemapOut::Write);
-                (
-                    Machine { remapper, caps },
-                    tap.into_iter().chain(outs).collect(),
-                )
-            }
+/// The machine after `input`, and what it wrote: the Caps Lock tap first when one is due. Every
+/// write is noted as written, as the reader notes what reaches the wire.
+fn step(machine: Machine, input: Input, profiles: &Profiles) -> (Machine, Vec<RemapOut>) {
+    match input {
+        Input::Led(event) => (machine.reported(&[event]), Vec::new()),
+        Input::Remap(input) => {
+            let (machine, tap) = machine.settled(&input, profiles);
+            let (machine, outs) = machine.step(input, profiles);
+            let machine = outs.iter().fold(machine, |machine, out| match out {
+                RemapOut::Write(batch) => machine.wrote(batch),
+                _ => machine,
+            });
+            let tap = Some(tap).filter(|tap| !tap.is_empty()).map(RemapOut::Write);
+            (machine, tap.into_iter().chain(outs).collect())
         }
     }
 }
 
 /// One line per step: the input as written, then `->` and what it wrote when it wrote anything.
 pub(super) fn run(steps: Vec<Step>, profiles: &Profiles) -> Vec<String> {
-    let key = CapsKey::in_profile(profiles.default_profile());
     steps
         .into_iter()
-        .scan(Machine::default(), |machine, step| {
-            let (next, outs) = std::mem::take(machine).step(step.input, profiles, key);
+        .scan(Machine::default(), |machine, step_in| {
+            let (next, outs) = step(std::mem::take(machine), step_in.input, profiles);
             *machine = next;
             Some(match outs.as_slice() {
-                [] => step.text,
-                outs => format!("{} -> {}", step.text, render(outs)),
+                [] => step_in.text,
+                outs => format!("{} -> {}", step_in.text, render(outs)),
             })
         })
         .collect()

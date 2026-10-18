@@ -19,18 +19,18 @@ mod twins;
 mod unknown;
 
 use super::buttons::Buttons;
-use super::caps::CapsFix;
 use super::devices::Devices;
 use super::discover::VirtualAllowance;
 use super::env::Env;
 use super::grabber::EvdevGrabber;
 use super::inbox::Mailbox;
 use super::leds::LedState;
+use super::machine::Machine;
 use super::sdnotify::Notifier;
 use super::settings::Layers;
 use super::socket::SocketHandle;
 use super::uinput::Emitter;
-use crate::{DeviceId, Profiles, Remapper};
+use crate::{DeviceId, Profiles};
 use keycap_protocol::Status;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -84,7 +84,8 @@ pub(crate) struct Reader<E: Emitter> {
     nodes: EvdevGrabber,
     layers: Layers,
     profiles: Profiles,
-    remapper: Remapper,
+    /// The remapper and the Caps Lock lock as keycap follows it, and whether the user asked for it.
+    machine: Machine,
     devices: Devices,
     /// The mouse buttons written for combo devices, released with the device.
     buttons: Buttons,
@@ -94,8 +95,6 @@ pub(crate) struct Reader<E: Emitter> {
     held: BTreeSet<DeviceId>,
     /// The lamps the desktop last set on the virtual keyboard.
     lamps: LedState,
-    /// The Caps Lock lock as keycap follows it, and whether the user asked for it.
-    caps: CapsFix,
     /// Focused names the config does not define, already logged.
     unknowns: Unknowns,
     /// Devices whose queue overflowed and whose events are discarded up to the next
@@ -114,9 +113,9 @@ impl<E: Emitter> Reader<E> {
         let (profiles, warnings) = wiring.layers.resolve();
         warnings.iter().for_each(handle::log_warning);
         let devices = Devices::new().with_overrides(wiring.layers.overrides());
-        let remapper = Remapper::new();
+        let machine = Machine::default();
         Self {
-            published: super::devices::status_of(&devices, remapper.status()),
+            published: super::devices::status_of(&devices, machine.status()),
             mailbox: wiring.mailbox,
             socket: wiring.socket,
             emitter: wiring.emitter,
@@ -126,13 +125,12 @@ impl<E: Emitter> Reader<E> {
             nodes: EvdevGrabber::default(),
             layers: wiring.layers,
             profiles,
-            remapper,
+            machine,
             devices,
             buttons: Buttons::default(),
             twins: Twins::default(),
             held: BTreeSet::new(),
             lamps: LedState::default(),
-            caps: CapsFix::default(),
             unknowns: Unknowns::default(),
             discarding: BTreeSet::new(),
             looking: rescan::Lookout::default(),
