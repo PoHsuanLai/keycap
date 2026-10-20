@@ -50,6 +50,10 @@ const ROWS: &[Row] = &[
         Handler::Shell(ShellVerb::EmojiAndSymbols),
     ),
     (
+        StandardAction::NextInputSource,
+        Handler::Shell(ShellVerb::NextInputSource),
+    ),
+    (
         StandardAction::PreviousApp,
         Handler::Shell(ShellVerb::SwitcherPrev),
     ),
