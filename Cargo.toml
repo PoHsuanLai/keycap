@@ -32,7 +32,7 @@ chordkit-file = { git = "https://github.com/PoHsuanLai/chordkit.git", rev = "eb0
 
 # The typed verbs casement sends sill, so keycap-client's handled-actions table names them; the
 # casement-protocols revision is moved by Whopper.
-shell-verbs = { git = "https://github.com/PoHsuanLai/casement-protocols", rev = "79aef3be4bead802ef5748178b0e25a589624a9d" }
+shell-verbs = { git = "https://github.com/PoHsuanLai/casement-protocols", rev = "ba9778f6b4827566e181f441628d799fc7622394" }
 
 # Caller identity (who is on the other end of the socket) and the root service that makes the
 # virtual devices, by git tag, never by path.

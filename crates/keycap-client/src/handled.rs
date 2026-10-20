@@ -46,6 +46,10 @@ const ROWS: &[Row] = &[
     ),
     (StandardAction::LockScreen, Handler::Shell(ShellVerb::Lock)),
     (
+        StandardAction::EmojiAndSymbols,
+        Handler::Shell(ShellVerb::EmojiAndSymbols),
+    ),
+    (
         StandardAction::PreviousApp,
         Handler::Shell(ShellVerb::SwitcherPrev),
     ),

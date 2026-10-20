@@ -457,7 +457,7 @@ dependencies = [
 [[package]]
 name = "shell-verbs"
 version = "0.1.0"
-source = "git+https://github.com/PoHsuanLai/casement-protocols?rev=79aef3be4bead802ef5748178b0e25a589624a9d#79aef3be4bead802ef5748178b0e25a589624a9d"
+source = "git+https://github.com/PoHsuanLai/casement-protocols?rev=ba9778f6b4827566e181f441628d799fc7622394#ba9778f6b4827566e181f441628d799fc7622394"
 
 [[package]]
 name = "syn"
