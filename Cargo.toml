@@ -30,6 +30,10 @@ chordkit = { git = "https://github.com/PoHsuanLai/chordkit.git", rev = "eb0deff1
 # Whopper moves it with the chordkit pin above.
 chordkit-file = { git = "https://github.com/PoHsuanLai/chordkit.git", rev = "eb0deff12add543565ec41eecffda646ede43cf0" }
 
+# The typed verbs casement sends sill, so keycap-client's handled-actions table names them; the
+# casement-protocols revision is moved by Whopper.
+shell-verbs = { git = "https://github.com/PoHsuanLai/casement-protocols", rev = "79aef3be4bead802ef5748178b0e25a589624a9d" }
+
 # Caller identity (who is on the other end of the socket) and the root service that makes the
 # virtual devices, by git tag, never by path.
 peephole = { git = "https://github.com/PoHsuanLai/peephole", tag = "v0.1.7" }

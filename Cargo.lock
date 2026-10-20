@@ -176,6 +176,7 @@ dependencies = [
  "chordkit-file",
  "keycap-protocol",
  "rustix",
+ "shell-verbs",
 ]
 
 [[package]]
@@ -452,6 +453,11 @@ checksum = "6662b5879511e06e8999a8a235d848113e942c9124f211511b16466ee2995f26"
 dependencies = [
  "serde_core",
 ]
+
+[[package]]
+name = "shell-verbs"
+version = "0.1.0"
+source = "git+https://github.com/PoHsuanLai/casement-protocols?rev=79aef3be4bead802ef5748178b0e25a589624a9d#79aef3be4bead802ef5748178b0e25a589624a9d"
 
 [[package]]
 name = "syn"
