@@ -27,8 +27,8 @@ mod watch;
 
 pub use bounded::{FileText, read_text};
 pub use connection::{ClientError, Connection, Heard};
+pub use handled::{Handler, handled_actions, handler};
 pub use keycap_protocol::{Registration, SOCKET_PATH};
 pub use register::Registered;
-pub use handled::{Handler, handled_actions, handler};
 pub use source::{KeycapSource, Layer, Origin};
 pub use system::system_bindings;

@@ -53,8 +53,8 @@ EDGES=(
   "keycap: chordkit input-linux keycap-client keycap-core keycap-protocol latchkey notify peephole peephole-core rustix thiserror turnstile-client"
   # keycap-client: what an app links to read the desktop keymap. The protocol, chordkit's pure core
   # and its bounded file reader (chordkit-file), and rustix for the SOCK_SEQPACKET socket std
-  # lacks; no runtime, no file watcher.
-  "keycap-client: chordkit chordkit-file keycap-protocol rustix"
+  # lacks; no runtime, no file watcher. shell-verbs names the shell's verbs in the handled table.
+  "keycap-client: chordkit chordkit-file keycap-protocol rustix shell-verbs"
 )
 for edge in "${EDGES[@]}"; do
   crate="${edge%%:*}"
