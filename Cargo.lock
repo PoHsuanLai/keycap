@@ -29,7 +29,7 @@ checksum = "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
 [[package]]
 name = "chordkit"
 version = "0.1.0"
-source = "git+https://github.com/PoHsuanLai/chordkit.git?rev=7b80eddb86559909eeb63b882d5563d36f5bad37#7b80eddb86559909eeb63b882d5563d36f5bad37"
+source = "git+https://github.com/PoHsuanLai/chordkit.git?rev=eb0deff12add543565ec41eecffda646ede43cf0#eb0deff12add543565ec41eecffda646ede43cf0"
 dependencies = [
  "thiserror",
 ]
@@ -37,7 +37,7 @@ dependencies = [
 [[package]]
 name = "chordkit-file"
 version = "0.1.0"
-source = "git+https://github.com/PoHsuanLai/chordkit.git?rev=7b80eddb86559909eeb63b882d5563d36f5bad37#7b80eddb86559909eeb63b882d5563d36f5bad37"
+source = "git+https://github.com/PoHsuanLai/chordkit.git?rev=eb0deff12add543565ec41eecffda646ede43cf0#eb0deff12add543565ec41eecffda646ede43cf0"
 dependencies = [
  "libc",
  "thiserror",
