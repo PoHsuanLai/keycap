@@ -28,7 +28,7 @@ for rule in "${RULES[@]}"; do
   fi
   leaked=0
   for dep in "${forbidden[@]}"; do
-    if cargo tree -p "$crate" -i "$dep" -e normal,build 2>/dev/null | grep -q .; then
+    if [ -n "$(cargo tree -p "$crate" -i "$dep" -e normal,build 2>/dev/null)" ]; then
       echo "LEAK: $crate depends on $dep"
       cargo tree -p "$crate" -i "$dep" -e normal,build 2>/dev/null | head -20
       leaked=1
@@ -74,7 +74,7 @@ done
 # is a test-only harness and outside the table.
 for member in $(sed -n 's#^members = \[\(.*\)\]#\1#p' Cargo.toml | tr -d '", ' | sed 's#crates/#\n#g' | grep .); do
   [ "$member" = keycap-devtest ] && continue
-  printf '%s\n' "${EDGES[@]}" | grep -q "^$member:" || { echo "ERROR: $member has no row in EDGES"; fail=1; }
+  grep -q "^$member:" <<<"$(printf '%s\n' "${EDGES[@]}")" || { echo "ERROR: $member has no row in EDGES"; fail=1; }
 done
 
 exit "$fail"
