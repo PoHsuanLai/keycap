@@ -24,11 +24,11 @@ rustix = { version = "1", features = ["event", "fs", "net", "time", "process"] }
 input-linux = { version = "0.7", default-features = false }
 # The portable keymap core: actions, chords, overrides, the resolver. keycap is only this
 # desktop's source and remapper; it defines no keymap nouns of its own.
-chordkit = { git = "https://github.com/PoHsuanLai/chordkit.git", rev = "ae28c234f10aa79bb4a9167bc58e0911b21fedae" }
+chordkit = { git = "https://github.com/PoHsuanLai/chordkit.git", rev = "99eec9ddd03ee345b669fcc7954ed44590724290" }
 
 # The bounded reader for a settings file, at the same chordkit revision as `chordkit`;
 # Whopper moves it with the chordkit pin above.
-chordkit-file = { git = "https://github.com/PoHsuanLai/chordkit.git", rev = "ae28c234f10aa79bb4a9167bc58e0911b21fedae" }
+chordkit-file = { git = "https://github.com/PoHsuanLai/chordkit.git", rev = "99eec9ddd03ee345b669fcc7954ed44590724290" }
 
 # The typed verbs casement sends sill, so keycap-client's handled-actions table names them; the
 # casement-protocols revision is moved by Whopper.
