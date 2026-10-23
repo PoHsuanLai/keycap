@@ -32,13 +32,13 @@ chordkit-file = { git = "https://github.com/PoHsuanLai/chordkit.git", rev = "99e
 
 # The typed verbs casement sends sill, so keycap-client's handled-actions table names them; the
 # casement-protocols revision is moved by Whopper.
-shell-verbs = { git = "https://github.com/PoHsuanLai/casement-protocols", rev = "5d53899f3c29f3c9900be8b87dd8e5d7a5c35df6" }
+shell-verbs = { git = "https://github.com/PoHsuanLai/casement-protocols", rev = "fa664f1fcb312abd7e7a0e38ccae216406e88139" }
 
 # Caller identity (who is on the other end of the socket) and the root service that makes the
 # virtual devices, by git tag, never by path.
 peephole = { git = "https://github.com/PoHsuanLai/peephole", tag = "v0.1.7" }
 peephole-core = { git = "https://github.com/PoHsuanLai/peephole", tag = "v0.1.7", features = ["desktop"] }
-turnstile-client = { git = "https://github.com/PoHsuanLai/turnstile", tag = "v0.1.5" }
+turnstile-client = { git = "https://github.com/PoHsuanLai/turnstile", tag = "v0.1.6" }
 
 # The socket guards (who is the shell, who has the seat), shared with palmrest, by git rev.
 latchkey = { git = "https://github.com/PoHsuanLai/latchkey", rev = "b10ae1b8c49c55cce2c5affde8f5db76edb66ab4", features = ["guard"] }

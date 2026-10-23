@@ -62,7 +62,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -390,7 +390,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -457,7 +457,7 @@ dependencies = [
 [[package]]
 name = "shell-verbs"
 version = "0.1.0"
-source = "git+https://github.com/PoHsuanLai/casement-protocols?rev=5d53899f3c29f3c9900be8b87dd8e5d7a5c35df6#5d53899f3c29f3c9900be8b87dd8e5d7a5c35df6"
+source = "git+https://github.com/PoHsuanLai/casement-protocols?rev=fa664f1fcb312abd7e7a0e38ccae216406e88139#fa664f1fcb312abd7e7a0e38ccae216406e88139"
 
 [[package]]
 name = "syn"
@@ -532,7 +532,7 @@ checksum = "7d56353a2a665ad0f41a421187180aab746c8c325620617ad883a99a1cbe66d2"
 [[package]]
 name = "turnstile-client"
 version = "0.1.1"
-source = "git+https://github.com/PoHsuanLai/turnstile?tag=v0.1.5#5090afb5ec091eca98eb2a896badb8c623f827ad"
+source = "git+https://github.com/PoHsuanLai/turnstile?tag=v0.1.6#f28c4fcc3614ef7f2f36387f38e28839bd4703db"
 dependencies = [
  "rustix",
  "thiserror",
@@ -542,7 +542,7 @@ dependencies = [
 [[package]]
 name = "turnstile-wire"
 version = "0.1.1"
-source = "git+https://github.com/PoHsuanLai/turnstile?tag=v0.1.5#5090afb5ec091eca98eb2a896badb8c623f827ad"
+source = "git+https://github.com/PoHsuanLai/turnstile?tag=v0.1.6#f28c4fcc3614ef7f2f36387f38e28839bd4703db"
 dependencies = [
  "thiserror",
 ]
@@ -581,7 +581,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
