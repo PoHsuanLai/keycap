@@ -1,19 +1,10 @@
 //! The data of the device state machine.
 
 use crate::daemon::discover::Identity;
-use crate::{Backoff, DeviceId, GrabGate, Layout, Mono};
+use crate::{Backoff, DeviceId, Layout, Mono};
 use keycap_protocol::Grab;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-
-/// Whether keycap wants the keyboards grabbed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(super) enum Standing {
-    #[default]
-    Grabbing,
-    /// The escape chord gave them back; they stay free until `Resume`.
-    Released,
-}
 
 /// When a keyboard may next be checked for grabbing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,7 +28,8 @@ impl Retry {
 pub(super) struct Tracked {
     pub(super) identity: Identity,
     pub(super) layout: Layout,
-    pub(super) gate: GrabGate,
+    /// Whether the gate has let the device through to be grabbed.
+    pub(super) past_gate: bool,
     pub(super) grab: Grab,
     pub(super) retry: Retry,
 }
@@ -47,7 +39,9 @@ pub(super) struct Tracked {
 pub(crate) struct Devices {
     pub(super) tracked: BTreeMap<DeviceId, Tracked>,
     pub(super) next: u32,
-    pub(super) standing: Standing,
+    /// The escape chord gave the keyboards back; they stay free until `Resume`. Otherwise
+    /// keycap wants them grabbed.
+    pub(super) released: bool,
     /// Layouts the config assigns by name or id, over what the vendor says.
     pub(super) overrides: crate::LayoutOverrides,
 }

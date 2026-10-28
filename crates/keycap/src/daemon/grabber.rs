@@ -5,7 +5,7 @@ use super::discover::{Bits, Identity};
 use super::events::InputEvent;
 use super::leds::LedsLit;
 use super::pointer::{AbsAxis, Masks, PointerCaps};
-use super::sys::{self, Capability, Grab, GrabError};
+use super::sys::{self, Capability, GrabError};
 use crate::{DeviceId, KeysDown};
 use rustix::fd::OwnedFd;
 use rustix::fs::{Mode, OFlags};
@@ -123,14 +123,14 @@ impl Nodes for EvdevGrabber {
 
     fn grab(&mut self, id: DeviceId) -> Result<(), GrabError> {
         match self.fds.get(&id) {
-            Some(fd) => sys::grab(fd, Grab::On),
+            Some(fd) => sys::grab(fd),
             None => Err(not_open().into()),
         }
     }
 
     fn ungrab(&mut self, id: DeviceId) {
         if let Some(fd) = self.fds.get(&id) {
-            let _ = sys::grab(fd, Grab::Off);
+            let _ = sys::release(fd);
         }
     }
 }

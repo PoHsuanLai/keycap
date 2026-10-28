@@ -74,20 +74,6 @@ impl AbsSetup {
     }
 }
 
-/// Whether a device is held exclusively.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Grab {
-    On,
-    Off,
-}
-
-impl Grab {
-    /// The handle's argument: true grabs, false releases.
-    const fn is_on(self) -> bool {
-        matches!(self, Grab::On)
-    }
-}
-
 /// Why a grab failed; `Busy` is another program already holding the device.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum GrabError {
@@ -97,12 +83,17 @@ pub(crate) enum GrabError {
     Other(#[from] io::Error),
 }
 
-/// Takes or releases the exclusive grab on an evdev fd.
-pub(crate) fn grab(fd: impl AsFd, grab: Grab) -> Result<(), GrabError> {
-    evdev(&fd).grab(grab.is_on()).map_err(|e| match e.kind() {
+/// Takes the exclusive grab on an evdev fd.
+pub(crate) fn grab(fd: impl AsFd) -> Result<(), GrabError> {
+    evdev(&fd).grab(true).map_err(|e| match e.kind() {
         io::ErrorKind::ResourceBusy => GrabError::Busy,
         _ => GrabError::Other(e),
     })
+}
+
+/// Releases the exclusive grab on an evdev fd.
+pub(crate) fn release(fd: impl AsFd) -> io::Result<()> {
+    evdev(&fd).grab(false)
 }
 
 /// The keys the kernel believes are down on the device.
@@ -196,11 +187,6 @@ pub(crate) fn dev_destroy(fd: impl AsFd) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn grab_on_grabs_and_off_releases() {
-        assert_eq!((Grab::On.is_on(), Grab::Off.is_on()), (true, false));
-    }
 
     #[test]
     fn the_name_ends_at_its_first_nul() {

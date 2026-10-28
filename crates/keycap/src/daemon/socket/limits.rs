@@ -38,14 +38,23 @@ impl Caps {
     };
 }
 
-/// Whether a new connection is let in.
+/// Why a new connection is not let in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Admission {
-    Admit,
+pub(super) enum Refused {
     /// The daemon is full.
     TooManyClients,
     /// This uid already has its share.
     TooManyForUser,
+}
+
+impl Refused {
+    /// The line logged against the client.
+    pub(super) const fn line(self) -> &'static str {
+        match self {
+            Refused::TooManyClients => "refused: the daemon is full",
+            Refused::TooManyForUser => "refused: too many connections for this user",
+        }
+    }
 }
 
 /// Whether a client of `uid` may join `connected` (the uid of every current client).
@@ -58,7 +67,7 @@ pub(super) fn admit(
     uid: u32,
     owner: Option<u32>,
     caps: Caps,
-) -> Admission {
+) -> Result<(), Refused> {
     let (others, mine) = connected
         .into_iter()
         .fold((0usize, 0usize), |(others, mine), other| {
@@ -68,19 +77,12 @@ pub(super) fn admit(
             )
         });
     if Some(uid) != owner && others >= caps.total {
-        Admission::TooManyClients
+        Err(Refused::TooManyClients)
     } else if mine >= caps.per_uid {
-        Admission::TooManyForUser
+        Err(Refused::TooManyForUser)
     } else {
-        Admission::Admit
+        Ok(())
     }
-}
-
-/// Whether a client is within its request rate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Pacing {
-    Within,
-    Over,
 }
 
 /// The requests a client made in the second since its window opened.
@@ -98,20 +100,16 @@ impl Pace {
         }
     }
 
-    /// Counts one request at `now`. A second after the window opened, a new one opens.
-    pub(super) fn note(self, now: Mono) -> (Self, Pacing) {
+    /// Counts one request at `now`; true when the client is over its rate. A second after the
+    /// window opened, a new one opens.
+    pub(super) fn note(self, now: Mono) -> (Self, bool) {
         let window = if now.since(self.opened) >= Duration::from_secs(1) {
             Self::starting(now)
         } else {
             self
         };
         let count = window.count.saturating_add(1);
-        let pacing = if count > STEERING_PER_SECOND {
-            Pacing::Over
-        } else {
-            Pacing::Within
-        };
-        (Self { count, ..window }, pacing)
+        (Self { count, ..window }, count > STEERING_PER_SECOND)
     }
 }
 
@@ -182,37 +180,45 @@ mod tests {
     fn a_client_may_make_a_hundred_requests_a_second_and_gets_a_new_second() {
         let t0 = Mono::default();
         let (last, pacing) = (0..STEERING_PER_SECOND)
-            .fold((Pace::starting(t0), Pacing::Within), |(pace, _), _| {
+            .fold((Pace::starting(t0), false), |(pace, _), _| {
                 pace.note(t0.after(Duration::from_millis(10)))
             });
-        assert_eq!(pacing, Pacing::Within, "the hundredth is still inside");
+        assert!(!pacing, "the hundredth is still inside");
         let (over, pacing) = last.note(t0.after(Duration::from_millis(20)));
-        assert_eq!(pacing, Pacing::Over, "the hundred and first is not");
+        assert!(pacing, "the hundred and first is not");
         let (_, pacing) = over.note(t0.after(Duration::from_secs(1)));
-        assert_eq!(pacing, Pacing::Within, "a new second opens a new window");
+        assert!(!pacing, "a new second opens a new window");
     }
+
+    /// A case's name, the uids already in, the asking uid, and the answer.
+    type AdmitCase = (&'static str, &'static [u32], u32, Result<(), Refused>);
 
     #[test]
     fn admission_table() {
-        let cases: &[(&str, &[u32], u32, Admission)] = &[
-            ("an empty daemon", &[], 1000, Admission::Admit),
-            ("one of mine", &[1000], 1000, Admission::Admit),
-            ("my second is my last", &[1000, 7], 1000, Admission::Admit),
-            ("my third", &[1000, 1000], 1000, Admission::TooManyForUser),
+        let cases: &[AdmitCase] = &[
+            ("an empty daemon", &[], 1000, Ok(())),
+            ("one of mine", &[1000], 1000, Ok(())),
+            ("my second is my last", &[1000, 7], 1000, Ok(())),
+            (
+                "my third",
+                &[1000, 1000],
+                1000,
+                Err(Refused::TooManyForUser),
+            ),
             (
                 "someone else's third does not count against me",
                 &[1000, 1000, 7],
                 7,
-                Admission::Admit,
+                Ok(()),
             ),
-            ("full", &[1, 2, 3, 4], 5, Admission::TooManyClients),
+            ("full", &[1, 2, 3, 4], 5, Err(Refused::TooManyClients)),
             (
                 "full of my own: the daemon's limit is named",
                 &[1000, 1000, 7, 8],
                 1000,
-                Admission::TooManyClients,
+                Err(Refused::TooManyClients),
             ),
-            ("one short of full", &[1, 2, 3], 4, Admission::Admit),
+            ("one short of full", &[1, 2, 3], 4, Ok(())),
         ];
         for &(name, connected, uid, want) in cases {
             let got = admit(connected.iter().copied(), uid, None, SMALL);
@@ -222,7 +228,7 @@ mod tests {
         let eight = std::iter::repeat_n(1000, 8);
         assert_eq!(
             admit(eight, 1000, None, Caps::SERVICE),
-            Admission::TooManyForUser,
+            Err(Refused::TooManyForUser),
             "service caps"
         );
     }
@@ -230,30 +236,30 @@ mod tests {
     #[test]
     fn others_filling_the_daemon_never_lock_the_seat_owner_out() {
         let owner = Some(1000);
-        let cases: &[(&str, &[u32], u32, Admission)] = &[
+        let cases: &[AdmitCase] = &[
             (
                 "full of strangers, the owner still gets in",
                 &[1, 2, 3, 4],
                 1000,
-                Admission::Admit,
+                Ok(()),
             ),
             (
                 "a stranger is still refused",
                 &[1, 2, 3, 4],
                 5,
-                Admission::TooManyClients,
+                Err(Refused::TooManyClients),
             ),
             (
                 "the owner's own clients leave room for others",
                 &[1000, 1000, 1, 2],
                 3,
-                Admission::Admit,
+                Ok(()),
             ),
             (
                 "the owner keeps only its per-uid share",
                 &[1000, 1000],
                 1000,
-                Admission::TooManyForUser,
+                Err(Refused::TooManyForUser),
             ),
         ];
         for &(name, connected, uid, want) in cases {

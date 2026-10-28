@@ -55,26 +55,12 @@ pub(crate) fn request_of(peer: Peer, client: ClientId, message: Steer) -> Result
     }
 }
 
-/// Whether a seat owner has a connection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Presence {
-    Absent,
-    Present,
-}
-
-/// What a look at the seat concluded.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Tenancy {
-    Unchanged,
-    /// The owner left or another user took the seat: their focus and settings must go.
-    Vacated,
-}
-
 /// What the socket thread last saw of the seat.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Seat {
     active: Option<u32>,
-    owner: Presence,
+    /// Whether the owner has a connection.
+    owner_present: bool,
 }
 
 impl Seat {
@@ -82,25 +68,23 @@ impl Seat {
     pub(crate) fn first_sight(active: Option<u32>) -> Self {
         Self {
             active,
-            owner: Presence::Absent,
+            owner_present: false,
         }
     }
 
     /// The seat now: `active` is its owner's uid, `owner_connections` how many clients are
-    /// that owner. Vacated when the active uid changed or the owner's last connection closed.
-    pub(crate) fn look(self, active: Option<u32>, owner_connections: usize) -> (Seat, Tenancy) {
-        let owner = match owner_connections {
-            0 => Presence::Absent,
-            _ => Presence::Present,
-        };
-        let vacated =
-            self.active != active || (self.owner, owner) == (Presence::Present, Presence::Absent);
-        let tenancy = if vacated {
-            Tenancy::Vacated
-        } else {
-            Tenancy::Unchanged
-        };
-        (Seat { active, owner }, tenancy)
+    /// that owner. True when the seat was vacated: the active uid changed or the owner's last
+    /// connection closed, so their focus and settings must go.
+    pub(crate) fn look(self, active: Option<u32>, owner_connections: usize) -> (Seat, bool) {
+        let owner_present = owner_connections != 0;
+        let vacated = self.active != active || (self.owner_present && !owner_present);
+        (
+            Seat {
+                active,
+                owner_present,
+            },
+            vacated,
+        )
     }
 }
 
@@ -245,90 +229,91 @@ mod tests {
 
     #[test]
     fn the_seat_is_vacated_when_the_owner_leaves_or_the_user_changes() {
-        use Tenancy::{Unchanged, Vacated};
-        // (name, seat before, active now, owner connections now, tenancy)
+        const UNCHANGED: bool = false;
+        const VACATED: bool = true;
+        // (name, seat before, active now, owner connections now, vacated)
         let cases = [
             (
                 "first sight, nobody",
                 Seat::first_sight(Some(1000)),
                 Some(1000),
                 0,
-                Unchanged,
+                UNCHANGED,
             ),
             (
                 "owner connects",
                 Seat::first_sight(Some(1000)),
                 Some(1000),
                 1,
-                Unchanged,
+                UNCHANGED,
             ),
             (
                 "owner stays",
                 Seat {
                     active: Some(1000),
-                    owner: Presence::Present,
+                    owner_present: true,
                 },
                 Some(1000),
                 2,
-                Unchanged,
+                UNCHANGED,
             ),
             (
                 "last owner connection closes",
                 Seat {
                     active: Some(1000),
-                    owner: Presence::Present,
+                    owner_present: true,
                 },
                 Some(1000),
                 0,
-                Vacated,
+                VACATED,
             ),
             (
                 "user switch",
                 Seat {
                     active: Some(1000),
-                    owner: Presence::Present,
+                    owner_present: true,
                 },
                 Some(1001),
                 0,
-                Vacated,
+                VACATED,
             ),
             (
                 "user switch to one already connected",
                 Seat {
                     active: Some(1000),
-                    owner: Presence::Present,
+                    owner_present: true,
                 },
                 Some(1001),
                 1,
-                Vacated,
+                VACATED,
             ),
             (
                 "session ends",
                 Seat {
                     active: Some(1000),
-                    owner: Presence::Absent,
+                    owner_present: false,
                 },
                 None,
                 0,
-                Vacated,
+                VACATED,
             ),
             (
                 "an observer's closing is nothing",
                 Seat {
                     active: Some(1000),
-                    owner: Presence::Absent,
+                    owner_present: false,
                 },
                 Some(1000),
                 0,
-                Unchanged,
+                UNCHANGED,
             ),
         ];
         for (name, seat, active, owners, want) in cases {
-            let (next, tenancy) = seat.look(active, owners);
-            assert_eq!(tenancy, want, "{name}");
+            let (next, vacated) = seat.look(active, owners);
+            assert_eq!(vacated, want, "{name}");
             assert_eq!(next.active, active, "{name}: remembers the active uid");
         }
         let (after, _) = Seat::first_sight(Some(1)).look(Some(1), 1);
-        assert_eq!(after.owner, Presence::Present);
+        assert!(after.owner_present);
     }
 }

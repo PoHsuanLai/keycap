@@ -7,8 +7,8 @@ use crate::daemon::clock;
 use crate::daemon::devices::{poll_gates, status_of, summary};
 use crate::daemon::discover::scan;
 use crate::daemon::evdev::{End, drain};
-use crate::daemon::readiness::Readiness;
-use crate::daemon::route::{Routed, Skip, route};
+use crate::daemon::readiness::ready;
+use crate::daemon::route::{Routed, route};
 use crate::daemon::socket::ToSocket;
 use crate::daemon::uinput::Emitter;
 use rustix::event::{PollFd, PollFlags, poll};
@@ -28,9 +28,9 @@ pub(super) fn poll_timeout(wake: Option<Duration>, watchdog: Option<Duration>) -
 
 /// What a poll found readable.
 struct Ready {
-    mail: Readiness,
+    mail: bool,
     /// The desktop set a LED on the virtual keyboard.
-    leds: Readiness,
+    leds: bool,
     devices: Vec<DeviceId>,
 }
 
@@ -67,7 +67,7 @@ impl<E: Emitter> Reader<E> {
             .min();
         let timeout = poll_timeout(wake, self.watchdog);
         let ready = self.wait(timeout)?;
-        if ready.mail == Readiness::Readable {
+        if ready.mail {
             for message in self.mailbox.drain() {
                 self.handle(message);
             }
@@ -77,7 +77,7 @@ impl<E: Emitter> Reader<E> {
             self.safety = self.safety.done(clock::now());
         }
         self.look();
-        if ready.leds == Readiness::Readable {
+        if ready.leds {
             self.forward_leds();
         }
         for id in ready.devices {
@@ -113,12 +113,12 @@ impl<E: Emitter> Reader<E> {
             Err(e) => return Err(format!("poll failed: {e}")),
         }
         Ok(Ready {
-            mail: Readiness::of(&fds[0]),
-            leds: led_slot.map_or(Readiness::Quiet, |slot| Readiness::of(&fds[slot])),
+            mail: ready(&fds[0]),
+            leds: led_slot.is_some_and(|slot| ready(&fds[slot])),
             devices: nodes
                 .iter()
                 .zip(&fds[first_node..])
-                .filter(|(_, f)| Readiness::of(f) == Readiness::Readable)
+                .filter(|(_, f)| ready(f))
                 .map(|((id, _), _)| *id)
                 .collect(),
         })
@@ -132,12 +132,9 @@ impl<E: Emitter> Reader<E> {
         };
         let drained = drain(fd);
         if let Some(layout) = self.devices.active(id) {
-            let skip = match self.discarding.remove(&id) {
-                true => Skip::UntilSync,
-                false => Skip::Nothing,
-            };
-            let (routed, skip) = route(id, layout, &drained.events, clock::now(), skip);
-            if skip == Skip::UntilSync {
+            let skipping = self.discarding.remove(&id);
+            let (routed, skipping) = route(id, layout, &drained.events, clock::now(), skipping);
+            if skipping {
                 self.discarding.insert(id);
             }
             for routed in routed {

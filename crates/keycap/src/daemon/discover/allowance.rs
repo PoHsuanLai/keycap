@@ -37,12 +37,15 @@ impl VirtualAllowance {
 #[cfg(test)]
 mod tests {
     use super::super::caps::{Bits, Caps};
-    use super::super::classify::{Eligibility, Identity, Origin, classify};
+    use super::super::classify::{Eligibility, Identity, classify};
     use super::*;
     use crate::Key;
     use crate::daemon::events::{EV_KEY, EV_SYN};
     use crate::daemon::uinput;
     use std::path::PathBuf;
+
+    const HARDWARE: bool = false;
+    const VIRTUAL: bool = true;
 
     /// A keyboard's capability masks: the letters and the space bar.
     fn keyboard_caps() -> Caps {
@@ -94,67 +97,67 @@ mod tests {
     #[test]
     fn classify_with_an_allowance_table() {
         let named = VirtualAllowance::Named("ci keyboard".to_owned());
-        let cases: Vec<(&str, Identity, Origin, VirtualAllowance, Eligibility)> = vec![
+        let cases: Vec<(&str, Identity, bool, VirtualAllowance, Eligibility)> = vec![
             (
                 "the named virtual device is eligible",
                 identity("ci keyboard", 0x05ac, 0x0267),
-                Origin::Virtual,
+                VIRTUAL,
                 named.clone(),
                 Eligibility::Keyboard,
             ),
             (
                 "no allowance leaves a virtual device alone",
                 identity("ci keyboard", 0x05ac, 0x0267),
-                Origin::Virtual,
+                VIRTUAL,
                 VirtualAllowance::Nobody,
                 Eligibility::NotKeyboard,
             ),
             (
                 "another virtual device stays excluded",
                 identity("other remapper", 0x1234, 0x5678),
-                Origin::Virtual,
+                VIRTUAL,
                 named.clone(),
                 Eligibility::NotKeyboard,
             ),
             (
                 "a name that only starts like the allowed one",
                 identity("ci keyboard 2", 0x1234, 0x5678),
-                Origin::Virtual,
+                VIRTUAL,
                 named.clone(),
                 Eligibility::NotKeyboard,
             ),
             (
                 "the name in another case",
                 identity("CI Keyboard", 0x1234, 0x5678),
-                Origin::Virtual,
+                VIRTUAL,
                 named.clone(),
                 Eligibility::NotKeyboard,
             ),
             (
                 "a named allowance leaves hardware alone",
                 identity("Some Keyboard", 0x1234, 0x5678),
-                Origin::Hardware,
+                HARDWARE,
                 named.clone(),
                 Eligibility::NotKeyboard,
             ),
             (
                 "no allowance leaves hardware eligible",
                 identity("Some Keyboard", 0x1234, 0x5678),
-                Origin::Hardware,
+                HARDWARE,
                 VirtualAllowance::Nobody,
                 Eligibility::Keyboard,
             ),
             (
                 "keycap's own keyboard stays excluded even when named",
                 identity(uinput::NAME, uinput::VENDOR, uinput::PRODUCT),
-                Origin::Virtual,
+                VIRTUAL,
                 VirtualAllowance::Named(uinput::NAME.to_owned()),
                 Eligibility::NotKeyboard,
             ),
             (
                 "palmrest's devices stay excluded even when named",
                 identity("palmrest keys", 0x0001, 0x0003),
-                Origin::Virtual,
+                VIRTUAL,
                 VirtualAllowance::Named("palmrest keys".to_owned()),
                 Eligibility::NotKeyboard,
             ),

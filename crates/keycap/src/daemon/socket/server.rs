@@ -5,15 +5,15 @@ use super::SeatFile;
 use super::handle::{SocketHandle, ToSocket};
 use super::inbound::{Stream, pull};
 use super::limits::{
-    ACCEPTS_PER_PASS, Admission, Caps, Complaints, Intake, MAX_KEYMAP_CLIENTS_PER_UID,
-    MESSAGES_PER_PASS, Pace, Pacing, admit,
+    ACCEPTS_PER_PASS, Caps, Complaints, Intake, MAX_KEYMAP_CLIENTS_PER_UID, MESSAGES_PER_PASS,
+    Pace, admit,
 };
-use super::peer::{Client, Link, Owed, Role, Sent, send};
-use super::seat::{Peer, Seat, Tenancy, request_of};
+use super::peer::{Client, Owed, Role, Sent, send};
+use super::seat::{Peer, Seat, request_of};
 use super::shelf::{Reply, Shelf};
 use crate::daemon::clock;
-use crate::daemon::inbox::{ClientId, Delivery, Inbox, Message, Request};
-use crate::daemon::readiness::Readiness;
+use crate::daemon::inbox::{ClientId, Inbox, Message, NotQueued, Request};
+use crate::daemon::readiness::ready;
 use crate::daemon::waker::Waker;
 use keycap_client::FileText;
 use keycap_protocol::{
@@ -119,8 +119,8 @@ struct Server {
 
 /// What a poll found readable.
 struct Ready {
-    listener: Readiness,
-    wake: Readiness,
+    listener: bool,
+    wake: bool,
     clients: Vec<ClientId>,
 }
 
@@ -140,10 +140,10 @@ impl Server {
             };
             let active = self.seat.active_uid();
             self.watch_seat(active);
-            if ready.listener == Readiness::Readable {
+            if ready.listener {
                 self.accept();
             }
-            if ready.wake == Readiness::Readable && self.drain().is_err() {
+            if ready.wake && self.drain().is_err() {
                 return;
             }
             ready
@@ -180,13 +180,13 @@ impl Server {
             Err(e) => return Err(e.into()),
         }
         Ok(Ready {
-            listener: listener_slot.map_or(Readiness::Quiet, |slot| Readiness::of(&fds[slot])),
-            wake: Readiness::of(&fds[0]),
+            listener: listener_slot.is_some_and(|slot| ready(&fds[slot])),
+            wake: ready(&fds[0]),
             clients: self
                 .clients
                 .iter()
                 .zip(&fds[first_client..])
-                .filter(|(_, f)| Readiness::of(f) == Readiness::Readable)
+                .filter(|(_, f)| ready(f))
                 .map(|(c, _)| c.id)
                 .collect(),
         })
@@ -222,7 +222,7 @@ impl Server {
             return;
         };
         let uid = cred.uid.as_raw();
-        match admit(
+        if let Err(refused) = admit(
             self.clients
                 .iter()
                 .filter(|c| c.role != Role::KeymapOnly)
@@ -231,11 +231,7 @@ impl Server {
             self.seat.active_uid(),
             Caps::SERVICE,
         ) {
-            Admission::Admit => {}
-            Admission::TooManyClients => return self.complain(uid, "refused: the daemon is full"),
-            Admission::TooManyForUser => {
-                return self.complain(uid, "refused: too many connections for this user");
-            }
+            return self.complain(uid, refused.line());
         }
         // Asked of every connection, whoever has the seat now: the shell may connect a moment
         // before logind names its user the seat's owner.
@@ -252,7 +248,7 @@ impl Server {
             version: PROTOCOL_VERSION,
             status: self.status.clone(),
         };
-        if send(&client, &hello).link() == Link::Alive {
+        if send(&client, &hello).alive() {
             self.clients.push(client);
         }
     }
@@ -278,7 +274,7 @@ impl Server {
                 Ok(ToSocket::Warnings { client, warnings }) => {
                     let reply = ToClient::ConfigWarnings(warnings);
                     self.clients
-                        .retain(|c| c.id != client || send(c, &reply).link() == Link::Alive);
+                        .retain(|c| c.id != client || send(c, &reply).alive());
                 }
                 Ok(ToSocket::Keymap(reading)) => {
                     if let Some(replies) = self.shelf.read(reading) {
@@ -332,8 +328,7 @@ impl Server {
             return;
         }
         let (status, keymap) = (self.status.clone(), self.shelf.state().clone());
-        self.clients
-            .retain_mut(|c| c.settle(&status, &keymap) == Link::Alive);
+        self.clients.retain_mut(|c| c.settle(&status, &keymap));
     }
 
     /// Reads what client `id` sent, a bounded number of messages per pass. A client that
@@ -345,16 +340,16 @@ impl Server {
         };
         let (uid, peer) = (client.uid, client.peer(active));
         let pulled = pull(&client.fd, MESSAGES_PER_PASS);
-        let mut link = match pulled.stream {
-            Stream::Closed => Link::Gone,
-            Stream::More | Stream::Idle => Link::Alive,
+        let mut alive = match pulled.stream {
+            Stream::Closed => false,
+            Stream::More | Stream::Idle => true,
         };
         for packet in pulled.packets {
             match protocol::decode::<ToDaemon>(&packet) {
                 Ok(ToDaemon::Keymap(call)) => {
-                    if self.keymap_only(id, uid, active) == Link::Gone {
+                    if !self.keymap_only(id, uid, active) {
                         self.complain(uid, "too many keymap connections; dropped");
-                        link = Link::Gone;
+                        alive = false;
                         break;
                     }
                     if peer == Peer::Observer && matches!(call, KeymapCall::Register(_)) {
@@ -371,24 +366,24 @@ impl Server {
                     Ok(request) => {
                         if let Some(refusal) = self.steer(id, request) {
                             self.complain(uid, refusal);
-                            link = Link::Gone;
+                            alive = false;
                             break;
                         }
                     }
                     Err(refusal) => {
                         self.complain(uid, refusal.what());
-                        link = Link::Gone;
+                        alive = false;
                         break;
                     }
                 },
                 Err(e) => {
                     self.complain(uid, &format!("sent a malformed message ({e}); dropped"));
-                    link = Link::Gone;
+                    alive = false;
                     break;
                 }
             }
         }
-        if link == Link::Gone {
+        if !alive {
             self.clients.retain(|c| c.id != id);
         }
     }
@@ -398,15 +393,15 @@ impl Server {
     fn steer(&mut self, id: ClientId, request: Request) -> Option<&'static str> {
         let now = clock::now();
         let client = self.clients.iter_mut().find(|c| c.id == id)?;
-        let (pace, pacing) = client.pace.note(now);
+        let (pace, over_rate) = client.pace.note(now);
         client.pace = pace;
-        if pacing == Pacing::Over {
+        if over_rate {
             return Some("sends requests too fast; dropped");
         }
         client.role = Role::Steering;
         match self.inbox.try_send(Message::Request(request)) {
-            Delivery::Queued | Delivery::ReaderGone => None,
-            Delivery::Full => Some("too many requests waiting; dropped"),
+            Err(NotQueued::Full) => Some("too many requests waiting; dropped"),
+            Ok(()) | Err(NotQueued::ReaderGone) => None,
         }
     }
 
@@ -418,11 +413,11 @@ impl Server {
 
     /// A keymap message from `id`: a connection that has not steered anything is an observer
     /// from now on, which is no change of the seat's owner (it was never one), so the seat is
-    /// brought up to date without a reset. `Gone` when `uid` already has its share.
-    fn keymap_only(&mut self, id: ClientId, uid: u32, active: Option<u32>) -> Link {
+    /// brought up to date without a reset. False when `uid` already has its share.
+    fn keymap_only(&mut self, id: ClientId, uid: u32, active: Option<u32>) -> bool {
         let current = self.clients.iter().find(|c| c.id == id).map(|c| c.role);
         if current != Some(Role::Undecided) {
-            return Link::Alive;
+            return true;
         }
         let sharing = self
             .clients
@@ -430,12 +425,12 @@ impl Server {
             .filter(|c| c.uid == uid && c.role == Role::KeymapOnly)
             .count();
         if sharing >= MAX_KEYMAP_CLIENTS_PER_UID {
-            return Link::Gone;
+            return false;
         }
         self.set_role(id, Role::KeymapOnly);
         let (state, _) = self.state.look(active, self.owners(active));
         self.state = state;
-        Link::Alive
+        true
     }
 
     /// The connections of the seat's shell that count as the owner being present.
@@ -449,9 +444,9 @@ impl Server {
     /// Looks at the seat: when its owner is gone or changed, the reader goes back to `default`
     /// and forgets the owner's settings.
     fn watch_seat(&mut self, active: Option<u32>) {
-        let (state, tenancy) = self.state.look(active, self.owners(active));
+        let (state, vacated) = self.state.look(active, self.owners(active));
         self.state = state;
-        if tenancy == Tenancy::Vacated {
+        if vacated {
             self.inbox.send(Message::Request(Request::Focus(
                 ProfileName::default_profile(),
             )));

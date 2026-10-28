@@ -5,7 +5,7 @@ Internals for contributors. User documentation is in `README.md`; the crate map 
 ## Architecture
 
 ```
-evdev (grabbed) ──► GrabGate ──► Remapper::step ──► Vec<RemapOut> ──► dispatch ──► uinput keyboard
+evdev (grabbed) ──► check_gate ──► Remapper::step ──► Vec<RemapOut> ──► dispatch ──► uinput keyboard
    EVIOCGRAB       (no key held)   (pure state)                  │
    └─ touchpad axes of a combo device ──────────────────────────┴─────────────────► "<name> (keycap pointer)"
 socket ── Focus ───────────────────► Remapper::step (profile)    └─ ReleaseGrabs ─► ungrab, Paused
@@ -30,7 +30,7 @@ touches a device, so a script replays to exactly the outputs the live daemon pro
 | `config` | lenient TOML into `ConfigLayer`s (built-in defaults, system file, the seat owner's `UserConfig`), folded by `resolve` |
 | `remap` | `Remapper::step(self, RemapInput, &Profiles) -> (Self, Vec<RemapOut>)` |
 | `held` | what each physical press emitted, so its release sends exactly that |
-| `gate` | `GrabGate`: a keyboard is grabbed only once no key is down |
+| `gate` | `check_gate`: a keyboard is grabbed only once no key is down |
 | `escape` | the emergency chord, both Shifts + Esc |
 | `backoff` | the pure reconnect backoff |
 | `keycap-protocol` (crate) | the socket messages and their codec |

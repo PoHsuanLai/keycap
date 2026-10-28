@@ -3,7 +3,7 @@
 
 use super::allowance::VirtualAllowance;
 use super::caps::{Bits, Caps};
-use super::classify::{Eligibility, Identity, Origin, classify};
+use super::classify::{Eligibility, Identity, classify, is_virtual};
 use std::path::PathBuf;
 
 /// One node as sysfs shows it: name, vendor, product and the three masks.
@@ -62,7 +62,7 @@ fn eligibility(node: &Node, allow: &VirtualAllowance) -> Eligibility {
     };
     // Bluetooth HID devices register under `devices/virtual/misc/uhid`, which is not
     // `devices/virtual/input`, so they are hardware to keycap.
-    classify(&caps, &id, Origin::Hardware, allow)
+    classify(&caps, &id, false, allow)
 }
 
 #[test]
@@ -90,5 +90,5 @@ fn the_uhid_sysfs_path_is_hardware() {
     let path = std::path::Path::new(
         "/sys/devices/virtual/misc/uhid/0005:3434:0A53.0024/input/input103/event16",
     );
-    assert_eq!(Origin::of_sysfs(path), Origin::Hardware);
+    assert!(!is_virtual(path));
 }

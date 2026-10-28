@@ -1,6 +1,7 @@
 //! A desktop's end of the socket: `Hello`, `Status`, `Focus`, `Resume`.
 
 use crate::failure::{Failure, errno};
+use keycap_client::Heard;
 use keycap_protocol::{
     self as protocol, Grab, PROTOCOL_VERSION, Status, Steer, ToClient, ToDaemon,
 };
@@ -14,16 +15,6 @@ use std::time::{Duration, Instant};
 
 /// How long `connect` waits for the socket to exist.
 const CONNECT_WAIT: Duration = Duration::from_secs(5);
-
-/// What a wait for the next packet came to.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Heard {
-    Message(ToClient),
-    /// Nothing arrived in time.
-    Silence,
-    /// The daemon closed the connection, as it does to an observer that sends a request.
-    Closed,
-}
 
 /// A connected client that remembers the last status and everything it was told.
 #[derive(Debug)]

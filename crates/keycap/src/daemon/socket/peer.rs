@@ -46,13 +46,6 @@ pub(super) struct Client {
     pub(super) owed: BTreeSet<Owed>,
 }
 
-/// Whether a client is still connected after something was done to it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Link {
-    Alive,
-    Gone,
-}
-
 /// What sending one message came to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Sent {
@@ -66,11 +59,9 @@ pub(super) enum Sent {
 }
 
 impl Sent {
-    pub(super) fn link(self) -> Link {
-        match self {
-            Sent::Gone => Link::Gone,
-            Sent::Delivered | Sent::Behind | Sent::TooLarge => Link::Alive,
-        }
+    /// Whether the client is still connected.
+    pub(super) fn alive(self) -> bool {
+        self != Sent::Gone
     }
 }
 
@@ -93,21 +84,21 @@ impl Client {
     }
 
     /// Sends the latest of everything this client missed, keeping what still does not go.
-    pub(super) fn settle(&mut self, status: &Status, keymap: &KeymapState) -> Link {
+    pub(super) fn settle(&mut self, status: &Status, keymap: &KeymapState) -> bool {
         for owed in self.owed.clone() {
             let message = match owed {
                 Owed::Status => ToClient::Status(status.clone()),
                 Owed::Keymap => ToClient::Keymap(keymap.clone()),
             };
             match send(self, &message) {
-                Sent::Gone => return Link::Gone,
+                Sent::Gone => return false,
                 Sent::Delivered | Sent::TooLarge => {
                     self.owed.remove(&owed);
                 }
                 Sent::Behind => {}
             }
         }
-        Link::Alive
+        true
     }
 }
 
@@ -181,11 +172,11 @@ mod tests {
         );
         client.owed.insert(Owed::Status);
 
-        assert_eq!(client.settle(&paused, &KeymapState::default()), Link::Alive);
+        assert!(client.settle(&paused, &KeymapState::default()));
         assert!(client.owed.contains(&Owed::Status), "still no room");
         assert_eq!(read_all(&theirs), queued);
 
-        assert_eq!(client.settle(&paused, &KeymapState::default()), Link::Alive);
+        assert!(client.settle(&paused, &KeymapState::default()));
         assert!(client.owed.is_empty(), "delivered");
         let mut buf = vec![0u8; MAX_PACKET];
         let (n, _) = rustix::net::recv(&theirs, &mut buf, RecvFlags::DONTWAIT).unwrap();
@@ -203,7 +194,7 @@ mod tests {
             problems: Vec::new(),
         });
         assert_eq!(send(&client, &huge), Sent::TooLarge);
-        assert_eq!(Sent::TooLarge.link(), Link::Alive);
+        assert!(Sent::TooLarge.alive());
         assert_eq!(read_all(&theirs), 0);
     }
 

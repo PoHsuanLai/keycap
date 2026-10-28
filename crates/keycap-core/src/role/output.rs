@@ -12,25 +12,15 @@ pub enum OutMod {
     Shift,
 }
 
+// The names are the ones a profile's `then` chord uses.
+names!(OutMod {
+    Ctrl => "ctrl",
+    Alt => "alt",
+    Super => "super",
+    Shift => "shift",
+});
+
 impl OutMod {
-    /// Every written modifier, in declaration order.
-    pub const ALL: [OutMod; 4] = [OutMod::Ctrl, OutMod::Alt, OutMod::Super, OutMod::Shift];
-
-    /// The written modifier called `name` in a profile's `then` chord.
-    pub fn named(name: &str) -> Option<OutMod> {
-        Self::ALL.into_iter().find(|m| m.name() == name)
-    }
-
-    /// The name used in a profile's `then` chord.
-    pub const fn name(self) -> &'static str {
-        match self {
-            OutMod::Ctrl => "ctrl",
-            OutMod::Alt => "alt",
-            OutMod::Super => "super",
-            OutMod::Shift => "shift",
-        }
-    }
-
     /// The left-hand key written for this modifier.
     pub const fn key(self) -> Key {
         match self {

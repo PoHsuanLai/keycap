@@ -193,6 +193,7 @@ name = "keycap-devtest"
 version = "0.1.0"
 dependencies = [
  "input-linux",
+ "keycap-client",
  "keycap-protocol",
  "rustix",
 ]

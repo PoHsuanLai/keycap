@@ -10,49 +10,19 @@ fn bitmap(set: &[(usize, u8)]) -> KeysDown {
 }
 
 #[test]
-fn gate_step_table() {
+fn gate_check_table() {
     let none = bitmap(&[]);
     let first = bitmap(&[(0, 0b10)]);
     let last = bitmap(&[(KEYS_DOWN_BYTES - 1, 0x80)]);
     let cases = [
-        (
-            "pending, clear",
-            GrabGate::Pending,
-            none,
-            GrabGate::Grabbed,
-            Decision::Grab,
-        ),
-        (
-            "pending, key down",
-            GrabGate::Pending,
-            first,
-            GrabGate::Pending,
-            Decision::Wait,
-        ),
-        (
-            "pending, last bit down",
-            GrabGate::Pending,
-            last,
-            GrabGate::Pending,
-            Decision::Wait,
-        ),
-        (
-            "grabbed, clear",
-            GrabGate::Grabbed,
-            none,
-            GrabGate::Grabbed,
-            Decision::Keep,
-        ),
-        (
-            "grabbed, key down",
-            GrabGate::Grabbed,
-            first,
-            GrabGate::Grabbed,
-            Decision::Keep,
-        ),
+        ("pending, clear", false, none, Some(Decision::Grab)),
+        ("pending, key down", false, first, Some(Decision::Wait)),
+        ("pending, last bit down", false, last, Some(Decision::Wait)),
+        ("grabbed, clear", true, none, None),
+        ("grabbed, key down", true, first, None),
     ];
-    for (name, gate, keys, next, decision) in cases {
-        assert_eq!(gate.step(keys), (next, decision), "{name}");
+    for (name, past_gate, keys, decision) in cases {
+        assert_eq!(check_gate(past_gate, keys), decision, "{name}");
     }
 }
 

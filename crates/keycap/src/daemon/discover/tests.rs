@@ -1,5 +1,5 @@
 use super::caps::{Bits, Caps};
-use super::classify::{Eligibility, Origin, classify};
+use super::classify::{Eligibility, classify, is_virtual};
 use super::hotplug::{concerns_us, hotplug_of, hotplugs_of};
 use super::*;
 use crate::Key;
@@ -10,6 +10,9 @@ use crate::daemon::uinput;
 use notify::EventKind;
 use notify::event::{CreateKind, Flag, MetadataKind, ModifyKind, RemoveKind, RenameMode};
 use std::path::{Path, PathBuf};
+
+const HARDWARE: bool = false;
+const VIRTUAL: bool = true;
 
 /// A sysfs mask with the given bits set, as the kernel prints it: 64-bit hex words, most
 /// significant first.
@@ -111,47 +114,47 @@ fn classify_table() {
     let mut no_z = typing_keys();
     no_z.retain(|&c| c != Key::named("z").unwrap().code());
 
-    let cases: Vec<(&str, Caps, Identity, Origin, Eligibility)> = vec![
+    let cases: Vec<(&str, Caps, Identity, bool, Eligibility)> = vec![
         (
             "a plain keyboard",
             caps(&ev_kb, &typing_keys(), &[]),
             apple.clone(),
-            Origin::Hardware,
+            HARDWARE,
             Eligibility::Keyboard,
         ),
         (
             "a keyboard with a trackpad",
             caps(&ev_combo, &combo_keys, &[REL_X, REL_Y]),
             apple.clone(),
-            Origin::Hardware,
+            HARDWARE,
             Eligibility::KeyboardAndPointer,
         ),
         (
             "EV_REL without REL_X is not a pointer",
             caps(&ev_combo, &typing_keys(), &[REL_Y]),
             apple.clone(),
-            Origin::Hardware,
+            HARDWARE,
             Eligibility::Keyboard,
         ),
         (
             "REL_X without EV_REL is not a pointer",
             caps(&ev_kb, &typing_keys(), &[REL_X]),
             apple.clone(),
-            Origin::Hardware,
+            HARDWARE,
             Eligibility::Keyboard,
         ),
         (
             "a power button",
             caps(&ev_kb, &codes(&["power"]), &[]),
             identity("Power Button", 0, 1),
-            Origin::Hardware,
+            HARDWARE,
             Eligibility::NotKeyboard,
         ),
         (
             "a lid switch",
             caps(&[EV_SYN, 0x05], &[], &[]),
             identity("Lid Switch", 0, 5),
-            Origin::Hardware,
+            HARDWARE,
             Eligibility::NotKeyboard,
         ),
         (
@@ -162,7 +165,7 @@ fn classify_table() {
                 &[],
             ),
             identity("Consumer Control", 0x046d, 0xc52b),
-            Origin::Hardware,
+            HARDWARE,
             Eligibility::NotKeyboard,
         ),
         (
@@ -173,91 +176,91 @@ fn classify_table() {
                 &[REL_X, REL_Y],
             ),
             identity("Logitech Mouse", 0x046d, 0xc077),
-            Origin::Hardware,
+            HARDWARE,
             Eligibility::NotKeyboard,
         ),
         (
             "letters but no space bar",
             caps(&ev_kb, &no_space, &[]),
             apple.clone(),
-            Origin::Hardware,
+            HARDWARE,
             Eligibility::NotKeyboard,
         ),
         (
             "a missing letter",
             caps(&ev_kb, &no_z, &[]),
             apple.clone(),
-            Origin::Hardware,
+            HARDWARE,
             Eligibility::NotKeyboard,
         ),
         (
             "keys without EV_KEY in the event mask",
             caps(&[EV_SYN], &typing_keys(), &[]),
             apple.clone(),
-            Origin::Hardware,
+            HARDWARE,
             Eligibility::NotKeyboard,
         ),
         (
             "our own virtual keyboard, by name",
             caps(&ev_combo, &combo_keys, &[REL_X, REL_Y]),
             identity(uinput::NAME, 0x1234, 0x5678),
-            Origin::Hardware,
+            HARDWARE,
             Eligibility::NotKeyboard,
         ),
         (
             "our own virtual keyboard, by vendor and product",
             caps(&ev_kb, &typing_keys(), &[]),
             identity("renamed", uinput::VENDOR, uinput::PRODUCT),
-            Origin::Hardware,
+            HARDWARE,
             Eligibility::NotKeyboard,
         ),
         (
             "palmrest's virtual keys",
             caps(&ev_kb, &typing_keys(), &[]),
             identity("palmrest keys", 0x0001, 0x0003),
-            Origin::Hardware,
+            HARDWARE,
             Eligibility::NotKeyboard,
         ),
         (
             "another remapper's virtual keyboard",
             caps(&ev_kb, &typing_keys(), &[]),
             identity("kmonad", 0x1234, 0x5678),
-            Origin::Virtual,
+            VIRTUAL,
             Eligibility::NotKeyboard,
         ),
         (
             "a virtual keyboard-and-pointer",
             caps(&ev_combo, &combo_keys, &[REL_X, REL_Y]),
             identity("remote desktop input", 0, 0),
-            Origin::Virtual,
+            VIRTUAL,
             Eligibility::NotKeyboard,
         ),
         (
             "a keyboard with a touchpad: absolute axes make it a pointer",
             caps(&[EV_SYN, EV_KEY, EV_ABS], &combo_keys, &[]),
             apple.clone(),
-            Origin::Hardware,
+            HARDWARE,
             Eligibility::KeyboardAndPointer,
         ),
         (
             "our own pointer twin, a virtual device with the keys and axes of its original",
             caps(&[EV_SYN, EV_KEY, EV_ABS], &combo_keys, &[]),
             identity(&twin_name("Apple Inc. Magic Keyboard"), 0x004c, 0x0267),
-            Origin::Virtual,
+            VIRTUAL,
             Eligibility::NotKeyboard,
         ),
         (
             "our own pointer twin, even where it registers as hardware",
             caps(&[EV_SYN, EV_KEY, EV_ABS], &combo_keys, &[]),
             identity(&twin_name("Apple Inc. Magic Keyboard"), 0x004c, 0x0267),
-            Origin::Hardware,
+            HARDWARE,
             Eligibility::NotKeyboard,
         ),
         (
             "same product, other vendor, is not ours",
             caps(&ev_kb, &typing_keys(), &[]),
             identity("Some Keyboard", 0x1111, uinput::PRODUCT),
-            Origin::Hardware,
+            HARDWARE,
             Eligibility::Keyboard,
         ),
     ];
@@ -271,41 +274,41 @@ fn classify_table() {
 }
 
 #[test]
-fn origin_is_read_off_the_resolved_sysfs_path() {
-    const CASES: &[(&str, &str, Origin)] = &[
+fn virtual_is_read_off_the_resolved_sysfs_path() {
+    const CASES: &[(&str, &str, bool)] = &[
         (
             "a uinput device",
             "/sys/devices/virtual/input/input23/event7",
-            Origin::Virtual,
+            VIRTUAL,
         ),
         (
             "a usb keyboard",
             "/sys/devices/pci0000:00/0000:00:14.0/usb1/1-2/1-2:1.0/0003:05AC:0267.0004/input/input21/event5",
-            Origin::Hardware,
+            HARDWARE,
         ),
         (
             "a bluetooth keyboard through uhid",
             "/sys/devices/virtual/misc/uhid/0005:05AC:0267.0008/input/input30/event9",
-            Origin::Hardware,
+            HARDWARE,
         ),
         (
             "a ps/2 keyboard",
             "/sys/devices/platform/i8042/serio0/input/input3/event3",
-            Origin::Hardware,
+            HARDWARE,
         ),
         (
             "a name that only starts like the directory",
             "/sys/devices/virtual/input-ish/input1/event1",
-            Origin::Hardware,
+            HARDWARE,
         ),
         (
             "the directory under a relocated sysfs root",
             "/mnt/sys/devices/virtual/input/input2/event0",
-            Origin::Virtual,
+            VIRTUAL,
         ),
     ];
     for &(name, path, want) in CASES {
-        assert_eq!(Origin::of_sysfs(Path::new(path)), want, "{name}");
+        assert_eq!(is_virtual(Path::new(path)), want, "{name}");
     }
 }
 

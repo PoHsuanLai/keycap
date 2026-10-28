@@ -3,6 +3,13 @@ FINDINGS
 
 Open items and standing facts.
 
+## Type rules (2026-10-28)
+
+CONVENTIONS now follows the plain-Rust-first type rule: `bool` for fields, returns and private
+functions; enums only for public `f(true, false)` arguments, a realistic third state, or disk/bus
+values; newtypes only with a rule; two-way outcomes are `Result`/`Option`. The two-state private
+enums that existed only because `bool` was banned are gone.
+
 ## Keymap-aware apps
 
 An app that resolves Cmd itself through chordkit (temor, any quire app) must receive Super, not

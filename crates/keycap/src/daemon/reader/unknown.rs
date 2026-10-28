@@ -9,26 +9,17 @@ use std::collections::BTreeSet;
 /// and logged is bounded; the rest are counted as one line.
 const MAX_LISTED: usize = 64;
 
-/// Whether the "more names" line has been written this generation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-enum Overflow {
-    #[default]
-    Unsaid,
-    Said,
-}
-
 /// The undefined names already reported since the config last changed.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(super) struct Unknowns {
     listed: BTreeSet<ProfileName>,
-    overflow: Overflow,
+    /// Whether the "more names" line has been written this generation.
+    overflow_said: bool,
 }
 
 /// What focusing a profile calls for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Notice {
-    /// The profile exists, or its absence was already reported.
-    Silent,
     /// The first focus of a name the config does not define.
     Undefined(ProfileName),
     /// More undefined names than are listed; said once.
@@ -37,24 +28,28 @@ pub(super) enum Notice {
 
 impl Unknowns {
     /// `name` was focused under `profiles`: the notice it earns and the names reported now.
-    pub(super) fn note(mut self, name: &ProfileName, profiles: &Profiles) -> (Self, Notice) {
+    pub(super) fn note(
+        mut self,
+        name: &ProfileName,
+        profiles: &Profiles,
+    ) -> (Self, Option<Notice>) {
         if profiles.defines(name) || self.listed.contains(name) {
-            return (self, Notice::Silent);
+            return (self, None);
         }
         if self.listed.len() < MAX_LISTED {
             self.listed.insert(name.clone());
-            return (self, Notice::Undefined(name.clone()));
+            return (self, Some(Notice::Undefined(name.clone())));
         }
-        match self.overflow {
-            Overflow::Unsaid => (
-                Self {
-                    overflow: Overflow::Said,
-                    ..self
-                },
-                Notice::TooMany,
-            ),
-            Overflow::Said => (self, Notice::Silent),
+        if self.overflow_said {
+            return (self, None);
         }
+        (
+            Self {
+                overflow_said: true,
+                ..self
+            },
+            Some(Notice::TooMany),
+        )
     }
 
     /// The config changed: every name may be reported again.
@@ -64,16 +59,15 @@ impl Unknowns {
 }
 
 impl Notice {
-    /// The log line, if there is one.
-    pub(super) fn line(&self) -> Option<String> {
+    /// The log line.
+    pub(super) fn line(&self) -> String {
         match self {
-            Notice::Silent => None,
-            Notice::Undefined(name) => Some(format!(
-                "keycap: profile \"{name}\" is not defined; using default"
-            )),
-            Notice::TooMany => Some(format!(
+            Notice::Undefined(name) => {
+                format!("keycap: profile \"{name}\" is not defined; using default")
+            }
+            Notice::TooMany => format!(
                 "keycap: more than {MAX_LISTED} undefined profile names were focused; not listing the rest"
-            )),
+            ),
         }
     }
 }
@@ -159,7 +153,7 @@ mod tests {
                     Step::Focus(n, profiles) => {
                         let (next, notice) = unknowns.clone().note(&name(n), &profiles());
                         unknowns = next;
-                        notice.line()
+                        notice.map(|notice| notice.line())
                     }
                     Step::ConfigChanged => {
                         unknowns = unknowns.clone().reset();
@@ -183,15 +177,15 @@ mod tests {
             },
         );
         assert_eq!(unknowns.listed.len(), MAX_LISTED);
-        let said: Vec<&Notice> = notices
+        let said: Vec<_> = notices
             .iter()
-            .filter(|n| matches!(n, Notice::TooMany))
+            .filter(|n| matches!(n, Some(Notice::TooMany)))
             .collect();
         assert_eq!(said.len(), 1, "one overflow line in all");
         assert_eq!(
             notices
                 .iter()
-                .filter(|n| matches!(n, Notice::Undefined(_)))
+                .filter(|n| matches!(n, Some(Notice::Undefined(_))))
                 .count(),
             MAX_LISTED
         );

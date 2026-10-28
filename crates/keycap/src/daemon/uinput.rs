@@ -238,17 +238,10 @@ pub(crate) fn probe(permit: ProbePermit, node: &Path) -> Result<(), OutputError>
 pub(crate) struct TwinLog {
     pub caps: PointerCaps,
     pub batches: Vec<Vec<InputEvent>>,
-    pub life: TwinLife,
+    /// Whether the twin has been dropped, as a real one is destroyed.
+    pub destroyed: bool,
     /// How many of the next writes fail.
     pub failing: u32,
-}
-
-/// Whether a recording twin has been dropped, as a real one is destroyed.
-#[cfg(test)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TwinLife {
-    Alive,
-    Destroyed,
 }
 
 /// A twin that writes into a log the test keeps.
@@ -274,7 +267,7 @@ impl PointerSink for RecordingTwin {
 #[cfg(test)]
 impl Drop for RecordingTwin {
     fn drop(&mut self) {
-        self.0.borrow_mut().life = TwinLife::Destroyed;
+        self.0.borrow_mut().destroyed = true;
     }
 }
 
@@ -302,7 +295,7 @@ impl Emitter for RecordingEmitter {
         let log = std::rc::Rc::new(std::cell::RefCell::new(TwinLog {
             caps: caps.clone(),
             batches: Vec::new(),
-            life: TwinLife::Alive,
+            destroyed: false,
             failing: 0,
         }));
         self.twins.push(log.clone());

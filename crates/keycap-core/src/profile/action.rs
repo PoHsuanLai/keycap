@@ -12,23 +12,11 @@ pub enum Hold {
     WhileHeld,
 }
 
-impl Hold {
-    /// Every hold, in declaration order.
-    pub const ALL: [Hold; 2] = [Hold::Restore, Hold::WhileHeld];
-
-    /// The hold called `name` in a rule's `hold` key.
-    pub fn named(name: &str) -> Option<Hold> {
-        Self::ALL.into_iter().find(|h| h.name() == name)
-    }
-
-    /// The name used in a rule's `hold` key.
-    pub const fn name(self) -> &'static str {
-        match self {
-            Hold::Restore => "restore",
-            Hold::WhileHeld => "while_held",
-        }
-    }
-}
+// The names are the ones a rule's `hold` key uses.
+names!(Hold {
+    Restore => "restore",
+    WhileHeld => "while_held",
+});
 
 /// What a matched trigger writes.
 #[derive(Debug, Clone, PartialEq, Eq)]

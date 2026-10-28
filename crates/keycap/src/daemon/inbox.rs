@@ -42,10 +42,9 @@ pub(crate) enum Message {
 /// stuck, or a client asking faster than the socket thread's rate limit allows, fills this.
 const INBOX_MAX: usize = 256;
 
-/// Whether a message was queued for the reader.
+/// Why a message was not queued for the reader.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Delivery {
-    Queued,
+pub(crate) enum NotQueued {
     /// The inbox is full: the message was not queued.
     Full,
     /// The reader has gone: the daemon is ending.
@@ -70,14 +69,14 @@ impl Inbox {
 
     /// Queues `message` and wakes the reader, or says why not without waiting: for the socket
     /// thread, which must keep serving every other client.
-    pub(crate) fn try_send(&self, message: Message) -> Delivery {
+    pub(crate) fn try_send(&self, message: Message) -> Result<(), NotQueued> {
         match self.tx.try_send(message) {
             Ok(()) => {
                 self.waker.wake();
-                Delivery::Queued
+                Ok(())
             }
-            Err(TrySendError::Full(_)) => Delivery::Full,
-            Err(TrySendError::Disconnected(_)) => Delivery::ReaderGone,
+            Err(TrySendError::Full(_)) => Err(NotQueued::Full),
+            Err(TrySendError::Disconnected(_)) => Err(NotQueued::ReaderGone),
         }
     }
 }
@@ -154,24 +153,18 @@ mod tests {
     fn a_full_inbox_refuses_without_waiting_and_makes_room_when_drained() {
         let (inbox, mailbox) = mailbox().unwrap();
         for _ in 0..INBOX_MAX {
-            assert_eq!(
-                inbox.try_send(Message::Request(Request::Resume)),
-                Delivery::Queued
-            );
+            assert_eq!(inbox.try_send(Message::Request(Request::Resume)), Ok(()));
         }
         assert_eq!(
             inbox.try_send(Message::Request(Request::Resume)),
-            Delivery::Full
+            Err(NotQueued::Full)
         );
         assert_eq!(mailbox.drain().len(), INBOX_MAX);
-        assert_eq!(
-            inbox.try_send(Message::Request(Request::Resume)),
-            Delivery::Queued
-        );
+        assert_eq!(inbox.try_send(Message::Request(Request::Resume)), Ok(()));
         drop(mailbox);
         assert_eq!(
             inbox.try_send(Message::Request(Request::Resume)),
-            Delivery::ReaderGone
+            Err(NotQueued::ReaderGone)
         );
     }
 

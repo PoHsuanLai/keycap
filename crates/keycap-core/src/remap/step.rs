@@ -2,7 +2,7 @@
 
 use super::batch::Batch;
 use super::model::{RemapInput, RemapOut, Remapper};
-use crate::escape::{Escape, EscapeChord};
+use crate::escape::Escape;
 use crate::event::{Edge, OutEvent};
 use crate::held::Held;
 use crate::profile::Profiles;
@@ -20,16 +20,14 @@ impl Remapper {
                 edge,
                 ..
             } => {
-                let (escape, chord) = self.escape.step(device, key, edge);
+                let (escape, fired) = self.escape.step(device, key, edge);
                 let this = Remapper { escape, ..self };
                 let at = (device, key);
-                match (this.status, chord, edge) {
+                match (this.status, fired, edge) {
                     (Mode::Paused, _, _) | (_, _, Edge::Repeat) => (this, Vec::new()),
-                    (Mode::Running, EscapeChord::Fired, _) => this.fire_escape(),
-                    (Mode::Running, EscapeChord::Quiet, Edge::Release) => {
-                        this.settle(|held| held.release(at))
-                    }
-                    (Mode::Running, EscapeChord::Quiet, Edge::Press) => {
+                    (Mode::Running, true, _) => this.fire_escape(),
+                    (Mode::Running, false, Edge::Release) => this.settle(|held| held.release(at)),
+                    (Mode::Running, false, Edge::Press) => {
                         let profile = profiles.resolve(&this.focus);
                         this.press(profile, layout, at)
                     }

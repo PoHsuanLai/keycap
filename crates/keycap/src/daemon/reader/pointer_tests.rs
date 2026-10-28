@@ -10,7 +10,7 @@ use crate::daemon::inbox::Request;
 use crate::daemon::leds::{Lamp, Led, LedEvent};
 use crate::daemon::pointer::{Masks, PointerCaps};
 use crate::daemon::route::Routed;
-use crate::daemon::uinput::{Emitter, TwinLife};
+use crate::daemon::uinput::Emitter;
 use keycap_protocol::ProfileName;
 
 const PAD: DeviceId = DeviceId(0);
@@ -79,7 +79,7 @@ fn an_unplugged_device_releases_its_buttons_on_the_twin_and_destroys_it() {
         Some(&release_frame()),
         "BTN_LEFT up on the twin"
     );
-    assert_eq!(twin.life, TwinLife::Destroyed);
+    assert!(twin.destroyed);
     assert_eq!(
         rig.reader.emitter.batches,
         Vec::<Vec<InputEvent>>::new(),
@@ -96,11 +96,7 @@ fn the_escape_chord_releases_the_twins_buttons_and_gives_the_twin_up() {
     rig.key("esc", Edge::Press);
     let twin = rig.reader.emitter.twins[0].borrow();
     assert_eq!(twin.batches.last(), Some(&release_frame()));
-    assert_eq!(
-        twin.life,
-        TwinLife::Destroyed,
-        "the device is let go, so is its twin"
-    );
+    assert!(twin.destroyed, "the device is let go, so is its twin");
 }
 
 #[test]
@@ -108,10 +104,7 @@ fn a_twin_that_fails_hands_its_pointer_to_the_keyboard() {
     let mut rig = rig_with_twin();
     rig.reader.emitter.twins[0].borrow_mut().failing = 1;
     pass(&mut rig, &[ev(EV_KEY, BTN_LEFT, 1), InputEvent::SYNC]);
-    assert_eq!(
-        rig.reader.emitter.twins[0].borrow().life,
-        TwinLife::Destroyed
-    );
+    assert!(rig.reader.emitter.twins[0].borrow().destroyed);
     let frame = [ev(EV_KEY, BTN_LEFT, 0), InputEvent::SYNC];
     pass(&mut rig, &frame);
     assert_eq!(rig.reader.emitter.batches, [frame.to_vec()]);

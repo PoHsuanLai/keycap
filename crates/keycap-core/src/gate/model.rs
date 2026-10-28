@@ -19,15 +19,6 @@ impl KeysDown {
     }
 }
 
-/// Whether a device has been grabbed yet.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum GrabGate {
-    /// Seen, not grabbed: a key may still be down.
-    Pending,
-    /// Grabbed.
-    Grabbed,
-}
-
 /// What the daemon does with the device after a check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Decision {
@@ -35,6 +26,4 @@ pub enum Decision {
     Wait,
     /// Grab the device now.
     Grab,
-    /// Already grabbed: nothing to do.
-    Keep,
 }

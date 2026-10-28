@@ -13,12 +13,3 @@ use crate::event::{DeviceId, Physical};
 pub struct Escape {
     pub(super) down: BTreeSet<(DeviceId, Physical)>,
 }
-
-/// What a key event did to the chord.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum EscapeChord {
-    /// Esc was pressed while both Shift keys were down.
-    Fired,
-    /// Anything else.
-    Quiet,
-}

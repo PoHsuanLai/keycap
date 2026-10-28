@@ -19,33 +19,17 @@ pub(crate) struct Identity {
     pub path: PathBuf,
 }
 
-/// Where a node comes from, read off its resolved sysfs path.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum Origin {
-    /// A device behind a bus: USB, Bluetooth, PS/2, I2C.
-    Hardware,
-    /// A uinput device, which another program writes: grabbing it would feed that program's
-    /// output back through keycap.
-    Virtual,
-}
-
-impl Origin {
-    /// The origin of the node whose resolved (symlink-free) sysfs path is `resolved`: virtual
-    /// when it sits under `devices/virtual/input`, which is where uinput devices register.
-    pub(crate) fn of_sysfs(resolved: &Path) -> Self {
-        let parts: Vec<_> = resolved.components().collect();
-        let virtual_input = ["devices", "virtual", "input"];
-        let under = parts.windows(virtual_input.len()).any(|w| {
-            w.iter()
-                .map(|c| c.as_os_str())
-                .eq(virtual_input.iter().map(std::ffi::OsStr::new))
-        });
-        if under {
-            Origin::Virtual
-        } else {
-            Origin::Hardware
-        }
-    }
+/// Whether a node is a uinput device, read off its resolved (symlink-free) sysfs path: it sits
+/// under `devices/virtual/input`, where uinput devices register. Another program writes such a
+/// device, so grabbing it would feed that program's output back through keycap.
+pub(crate) fn is_virtual(resolved: &Path) -> bool {
+    let parts: Vec<_> = resolved.components().collect();
+    let virtual_input = ["devices", "virtual", "input"];
+    parts.windows(virtual_input.len()).any(|w| {
+        w.iter()
+            .map(|c| c.as_os_str())
+            .eq(virtual_input.iter().map(std::ffi::OsStr::new))
+    })
 }
 
 /// What keycap does with a node.
@@ -87,7 +71,7 @@ fn has_pointer_axes(caps: &Caps) -> bool {
     relative || absolute
 }
 
-/// The rule, on capabilities, identity, origin and the allowance. A virtual device is never
+/// The rule, on capabilities, identity, whether the node is virtual and the allowance. A virtual device is never
 /// grabbed, whoever made it, unless `allow` names it exactly: two remappers grabbing each
 /// other's output is a feedback loop. A named allowance excludes every other device too.
 /// keycap's own device and palmrest's stay excluded even
@@ -95,12 +79,12 @@ fn has_pointer_axes(caps: &Caps) -> bool {
 pub(crate) fn classify(
     caps: &Caps,
     id: &Identity,
-    origin: Origin,
+    virtual_node: bool,
     allow: &VirtualAllowance,
 ) -> Eligibility {
     let keyboard = caps.ev.has(u32::from(EV_KEY)) && has_typing_keys(caps);
     let pointer = has_pointer_axes(caps);
-    let refused_virtual = origin == Origin::Virtual && !allow.admits(&id.name);
+    let refused_virtual = virtual_node && !allow.admits(&id.name);
     let excluded = refused_virtual || allow.names_another(&id.name) || is_ours_or_palmrests(id);
     match (excluded, keyboard, pointer) {
         (true, _, _) | (false, false, _) => Eligibility::NotKeyboard,

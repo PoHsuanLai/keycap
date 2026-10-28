@@ -119,7 +119,7 @@ mod tests {
     use super::*;
     use crate::daemon::events::{EV_ABS, EV_KEY};
     use crate::daemon::pointer::{Masks, PointerCaps};
-    use crate::daemon::uinput::{Emitter, RecordingEmitter, TwinLife};
+    use crate::daemon::uinput::{Emitter, RecordingEmitter};
 
     const A: DeviceId = DeviceId(0);
     const B: DeviceId = DeviceId(1);
@@ -187,7 +187,7 @@ mod tests {
             &[ev(EV_KEY, LEFT, 0), InputEvent::SYNC],
             "the release is the last thing the twin is told"
         );
-        assert_eq!(log.life, TwinLife::Destroyed);
+        assert!(log.destroyed);
         assert_eq!(twins.devices(), []);
     }
 
@@ -218,7 +218,7 @@ mod tests {
                 log.batches.last().unwrap(),
                 &[ev(EV_KEY, LEFT, 0), InputEvent::SYNC]
             );
-            assert_eq!(log.life, TwinLife::Alive);
+            assert!(!log.destroyed);
         }
     }
 
@@ -230,7 +230,7 @@ mod tests {
         emitter.twins[0].borrow_mut().failing = 1;
         let lost = twins.pass(A, &[ev(EV_KEY, LEFT, 1), InputEvent::SYNC]);
         assert!(matches!(lost, Passed::Lost(_)), "{lost:?}");
-        assert_eq!(emitter.twins[0].borrow().life, TwinLife::Destroyed);
+        assert!(emitter.twins[0].borrow().destroyed);
         assert!(matches!(twins.pass(A, &[InputEvent::SYNC]), Passed::NoTwin));
     }
 }

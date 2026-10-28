@@ -18,28 +18,21 @@ pub(crate) enum Routed {
     Resync(DeviceId),
 }
 
-/// Whether the events being read are the fragment that follows a `SYN_DROPPED`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Skip {
-    Nothing,
-    /// Discard events up to and including the next `SYN_REPORT`; the fragment may continue in
-    /// the next read.
-    UntilSync,
-}
-
 /// The pointer events gathered since the last frame boundary, and what was routed so far.
 struct Frame {
     device: DeviceId,
-    skip: Skip,
+    /// Whether the events being read are the fragment that follows a `SYN_DROPPED`: discard
+    /// up to and including the next `SYN_REPORT`; the fragment may continue in the next read.
+    skipping: bool,
     routed: Vec<Routed>,
     pointer: Vec<InputEvent>,
 }
 
 impl Frame {
-    fn new(device: DeviceId, skip: Skip) -> Self {
+    fn new(device: DeviceId, skipping: bool) -> Self {
         Self {
             device,
-            skip,
+            skipping,
             routed: Vec::new(),
             pointer: Vec::new(),
         }
@@ -64,7 +57,7 @@ impl Frame {
         self = self.flush();
         self.routed.push(Routed::Resync(self.device));
         Self {
-            skip: Skip::UntilSync,
+            skipping: true,
             ..self
         }
     }
@@ -91,32 +84,32 @@ pub(crate) fn route(
     layout: Layout,
     events: &[InputEvent],
     at: Mono,
-    skip: Skip,
-) -> (Vec<Routed>, Skip) {
+    skipping: bool,
+) -> (Vec<Routed>, bool) {
     let frame = events
         .iter()
-        .fold(Frame::new(device, skip), |frame, &event| {
-            match (frame.skip, decode(event)) {
+        .fold(Frame::new(device, skipping), |frame, &event| {
+            match (frame.skipping, decode(event)) {
                 (_, Decoded::Dropped) => frame.dropped(),
-                (Skip::UntilSync, Decoded::Sync) => Frame {
-                    skip: Skip::Nothing,
+                (true, Decoded::Sync) => Frame {
+                    skipping: false,
                     ..frame
                 },
-                (Skip::UntilSync, _) => frame,
-                (Skip::Nothing, Decoded::Key(key, edge)) => frame.flush().remap(RemapInput::Key {
+                (true, _) => frame,
+                (false, Decoded::Key(key, edge)) => frame.flush().remap(RemapInput::Key {
                     device,
                     layout,
                     key,
                     edge,
                     at,
                 }),
-                (Skip::Nothing, Decoded::Pointer(pointer)) => frame.point(pointer),
-                (Skip::Nothing, Decoded::Sync) => frame.flush(),
-                (Skip::Nothing, Decoded::Other) => frame,
+                (false, Decoded::Pointer(pointer)) => frame.point(pointer),
+                (false, Decoded::Sync) => frame.flush(),
+                (false, Decoded::Other) => frame,
             }
         })
         .flush();
-    (frame.routed, frame.skip)
+    (frame.routed, frame.skipping)
 }
 
 #[cfg(test)]
@@ -195,20 +188,20 @@ mod tests {
             ),
         ];
         for (name, events, want) in cases {
-            let (got, skip) = route(DEV, Layout::Pc, events, AT, Skip::Nothing);
+            let (got, skip) = route(DEV, Layout::Pc, events, AT, false);
             assert_eq!(&got, want, "{name}");
-            assert_eq!(skip, Skip::Nothing, "{name}");
+            assert!(!skip, "{name}");
         }
     }
 
     #[test]
     fn an_overflow_asks_for_a_resync_and_discards_up_to_the_next_report() {
         // (name, skip on entry, events, routed, skip on exit)
-        type Case<'a> = (&'a str, Skip, &'a [InputEvent], Vec<Routed>, Skip);
+        type Case<'a> = (&'a str, bool, &'a [InputEvent], Vec<Routed>, bool);
         let cases: [Case<'_>; 6] = [
             (
                 "the fragment after the marker is discarded, the next frame is routed",
-                Skip::Nothing,
+                false,
                 &[
                     ev(EV_KEY, 30, 1),
                     DROPPED,
@@ -222,42 +215,42 @@ mod tests {
                     Routed::Resync(DEV),
                     key(32, Edge::Press),
                 ],
-                Skip::Nothing,
+                false,
             ),
             (
                 "a fragment that runs into the next read",
-                Skip::Nothing,
+                false,
                 &[DROPPED, ev(EV_KEY, 31, 1)],
                 vec![Routed::Resync(DEV)],
-                Skip::UntilSync,
+                true,
             ),
             (
                 "the next read finishes the fragment and resumes",
-                Skip::UntilSync,
+                true,
                 &[ev(EV_KEY, 31, 0), SYN, ev(EV_KEY, 32, 1), SYN],
                 vec![key(32, Edge::Press)],
-                Skip::Nothing,
+                false,
             ),
             (
                 "a read of only the fragment's middle keeps discarding",
-                Skip::UntilSync,
+                true,
                 &[ev(EV_KEY, 31, 0)],
                 vec![],
-                Skip::UntilSync,
+                true,
             ),
             (
                 "pointer motion before the marker is closed and kept",
-                Skip::Nothing,
+                false,
                 &[MOVE, DROPPED, SYN],
                 vec![pass(&[MOVE, SYN]), Routed::Resync(DEV)],
-                Skip::Nothing,
+                false,
             ),
             (
                 "a second marker inside the fragment asks again",
-                Skip::Nothing,
+                false,
                 &[DROPPED, ev(EV_KEY, 31, 1), DROPPED, SYN],
                 vec![Routed::Resync(DEV), Routed::Resync(DEV)],
-                Skip::Nothing,
+                false,
             ),
         ];
         for (name, skip, events, want, want_skip) in cases {

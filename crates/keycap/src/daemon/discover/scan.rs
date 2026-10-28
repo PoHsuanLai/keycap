@@ -2,7 +2,7 @@
 
 use super::allowance::VirtualAllowance;
 use super::caps::{Bits, Caps};
-use super::classify::{Eligibility, Identity, Origin, classify};
+use super::classify::{Eligibility, Identity, classify, is_virtual};
 use std::path::{Path, PathBuf};
 
 /// Where input class devices are listed.
@@ -60,8 +60,8 @@ fn candidate(dir: &Path, dev_root: &Path, allow: &VirtualAllowance) -> Option<Ca
         path: dev_root.join(dir.file_name()?),
     };
     // The class entry is a symlink into the device tree; where it leads says what made the node.
-    let origin = Origin::of_sysfs(&std::fs::canonicalize(dir).ok()?);
-    match classify(&caps, &identity, origin, allow) {
+    let virtual_node = is_virtual(&std::fs::canonicalize(dir).ok()?);
+    match classify(&caps, &identity, virtual_node, allow) {
         Eligibility::NotKeyboard => None,
         eligibility => Some(Candidate {
             identity,

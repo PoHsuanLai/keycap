@@ -1,6 +1,6 @@
 //! The chord's transitions.
 
-use super::model::{Escape, EscapeChord};
+use super::model::Escape;
 use crate::event::{DeviceId, Edge, Physical};
 use crate::key::Key;
 
@@ -10,27 +10,23 @@ impl Escape {
         Self::default()
     }
 
-    /// Track `key`'s `edge` on `device`. The chord fires only when Esc is the last of the three
-    /// pressed, with each Shift down on some keyboard; repeats change nothing.
-    pub fn step(mut self, device: DeviceId, key: Physical, edge: Edge) -> (Self, EscapeChord) {
+    /// Track `key`'s `edge` on `device`; true when the chord fired. The chord fires only when
+    /// Esc is the last of the three pressed, with each Shift down on some keyboard; repeats
+    /// change nothing.
+    pub fn step(mut self, device: DeviceId, key: Physical, edge: Edge) -> (Self, bool) {
         if !matches!(key.0, Key::LEFTSHIFT | Key::RIGHTSHIFT | Key::ESC) {
-            return (self, EscapeChord::Quiet);
+            return (self, false);
         }
         match edge {
             Edge::Press => self.down.insert((device, key)),
             Edge::Release => self.down.remove(&(device, key)),
-            Edge::Repeat => return (self, EscapeChord::Quiet),
+            Edge::Repeat => return (self, false),
         };
         let fired = edge == Edge::Press
             && key.0 == Key::ESC
             && self.is_down(Key::LEFTSHIFT)
             && self.is_down(Key::RIGHTSHIFT);
-        let chord = if fired {
-            EscapeChord::Fired
-        } else {
-            EscapeChord::Quiet
-        };
-        (self, chord)
+        (self, fired)
     }
 
     /// Forget every key `device` had down.

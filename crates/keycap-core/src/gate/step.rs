@@ -1,25 +1,13 @@
-//! The gate's transition.
+//! The gate's check.
 
-use super::model::{Decision, GrabGate, KeysDown};
+use super::model::{Decision, KeysDown};
 
-impl GrabGate {
-    /// A device just seen, not yet grabbed.
-    pub const fn new() -> Self {
-        GrabGate::Pending
-    }
-
-    /// Check the device against its current key bitmap.
-    pub fn step(self, keys_down: KeysDown) -> (Self, Decision) {
-        match (self, keys_down.any()) {
-            (GrabGate::Pending, false) => (GrabGate::Grabbed, Decision::Grab),
-            (GrabGate::Pending, true) => (GrabGate::Pending, Decision::Wait),
-            (GrabGate::Grabbed, _) => (GrabGate::Grabbed, Decision::Keep),
-        }
-    }
-}
-
-impl Default for GrabGate {
-    fn default() -> Self {
-        Self::new()
+/// Check a device against its current key bitmap. `past_gate` is whether it was grabbed already;
+/// then there is nothing to do and the answer is `None`.
+pub fn check_gate(past_gate: bool, keys_down: KeysDown) -> Option<Decision> {
+    match (past_gate, keys_down.any()) {
+        (true, _) => None,
+        (false, false) => Some(Decision::Grab),
+        (false, true) => Some(Decision::Wait),
     }
 }

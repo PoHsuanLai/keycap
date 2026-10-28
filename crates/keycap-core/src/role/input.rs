@@ -13,25 +13,15 @@ pub enum Role {
     Shift,
 }
 
+// The names are the ones a profile's `when` chord uses.
+names!(Role {
+    Command => "command",
+    Option => "option",
+    Control => "control",
+    Shift => "shift",
+});
+
 impl Role {
-    /// Every role, in declaration order.
-    pub const ALL: [Role; 4] = [Role::Command, Role::Option, Role::Control, Role::Shift];
-
-    /// The role called `name` in a profile's `when` chord.
-    pub fn named(name: &str) -> Option<Role> {
-        Self::ALL.into_iter().find(|r| r.name() == name)
-    }
-
-    /// The name used in a profile's `when` chord.
-    pub const fn name(self) -> &'static str {
-        match self {
-            Role::Command => "command",
-            Role::Option => "option",
-            Role::Control => "control",
-            Role::Shift => "shift",
-        }
-    }
-
     pub(super) const fn bit(self) -> u8 {
         1 << self as u8
     }

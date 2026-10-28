@@ -34,14 +34,6 @@ const ABS_MT_TRACKING_ID: u16 = 0x39;
 const INPUT_PROP_POINTER: u16 = 0;
 const INPUT_PROP_BUTTONPAD: u16 = 2;
 
-/// Whether the fake has lock LEDs a compositor can light.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Leds {
-    None,
-    /// Num, Caps and Scroll Lock.
-    Locks,
-}
-
 /// Whether the fake is also a pointer, as a receiver with a trackpad is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pointer {
@@ -59,7 +51,8 @@ pub struct FakeSpec {
     pub name: String,
     pub vendor: u16,
     pub product: u16,
-    pub leds: Leds,
+    /// Whether the fake has lock LEDs (Num, Caps and Scroll Lock) a compositor can light.
+    pub locks: bool,
     pub pointer: Pointer,
 }
 
@@ -70,7 +63,7 @@ impl FakeSpec {
             name: name.to_owned(),
             vendor: 0x05ac,
             product: 0x0267,
-            leds: Leds::Locks,
+            locks: true,
             pointer: Pointer::None,
         }
     }
@@ -248,7 +241,7 @@ fn register(fd: &OwnedFd, spec: &FakeSpec) -> std::io::Result<Vec<UinputAbsSetup
     bit(BitSet::Ev, EV_KEY)?;
     KEYS.iter()
         .try_for_each(|&(_, code)| bit(BitSet::Key, code))?;
-    if spec.leds == Leds::Locks {
+    if spec.locks {
         bit(BitSet::Ev, EV_LED)?;
         [LED_NUML, LED_CAPSL, LED_SCROLLL]
             .into_iter()
@@ -318,6 +311,6 @@ mod tests {
         let spec = FakeSpec::apple("kb").with_pointer(Pointer::Touchpad);
         assert_eq!(spec.pointer, Pointer::Touchpad);
         assert_eq!(spec.vendor, 0x05ac);
-        assert_eq!(spec.leds, Leds::Locks);
+        assert!(spec.locks);
     }
 }

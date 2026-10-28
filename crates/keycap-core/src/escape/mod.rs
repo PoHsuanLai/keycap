@@ -5,4 +5,4 @@ mod step;
 #[cfg(test)]
 mod tests;
 
-pub use model::{Escape, EscapeChord};
+pub use model::Escape;

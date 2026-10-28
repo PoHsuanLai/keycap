@@ -18,72 +18,57 @@ pub enum Handler {
 
 type Row = (StandardAction, Handler);
 
+const C: Handler = Handler::Compositor;
+
+const fn sh(verb: ShellVerb) -> Handler {
+    Handler::Shell(verb)
+}
+
 /// The handled actions, except the Space numbers (see [`handler`]).
 const ROWS: &[Row] = &[
-    (
-        StandardAction::ForceQuit,
-        Handler::Shell(ShellVerb::ForceQuitToggle),
-    ),
-    (StandardAction::MissionControl, Handler::Compositor),
-    (StandardAction::FullScreen, Handler::Compositor),
-    (StandardAction::SpaceLeft, Handler::Compositor),
-    (StandardAction::SpaceRight, Handler::Compositor),
-    (
-        StandardAction::Launcher,
-        Handler::Shell(ShellVerb::LauncherToggle),
-    ),
-    (
-        StandardAction::NextApp,
-        Handler::Shell(ShellVerb::SwitcherNext),
-    ),
-    (
-        StandardAction::NextWindow,
-        Handler::Shell(ShellVerb::NextWindow),
-    ),
-    (
-        StandardAction::ToggleDock,
-        Handler::Shell(ShellVerb::DockToggleHide),
-    ),
-    (StandardAction::LockScreen, Handler::Shell(ShellVerb::Lock)),
+    (StandardAction::ForceQuit, sh(ShellVerb::ForceQuitToggle)),
+    (StandardAction::MissionControl, C),
+    (StandardAction::FullScreen, C),
+    (StandardAction::SpaceLeft, C),
+    (StandardAction::SpaceRight, C),
+    (StandardAction::Launcher, sh(ShellVerb::LauncherToggle)),
+    (StandardAction::NextApp, sh(ShellVerb::SwitcherNext)),
+    (StandardAction::NextWindow, sh(ShellVerb::NextWindow)),
+    (StandardAction::ToggleDock, sh(ShellVerb::DockToggleHide)),
+    (StandardAction::LockScreen, sh(ShellVerb::Lock)),
     (
         StandardAction::EmojiAndSymbols,
-        Handler::Shell(ShellVerb::EmojiAndSymbols),
+        sh(ShellVerb::EmojiAndSymbols),
     ),
     (
         StandardAction::NextInputSource,
-        Handler::Shell(ShellVerb::NextInputSource),
+        sh(ShellVerb::NextInputSource),
     ),
-    (
-        StandardAction::PreviousApp,
-        Handler::Shell(ShellVerb::SwitcherPrev),
-    ),
+    (StandardAction::PreviousApp, sh(ShellVerb::SwitcherPrev)),
     (
         StandardAction::ScreenshotScreen,
-        Handler::Shell(ShellVerb::ScreenshotScreen),
+        sh(ShellVerb::ScreenshotScreen),
     ),
     (
         StandardAction::ScreenshotSelection,
-        Handler::Shell(ShellVerb::ScreenshotArea),
+        sh(ShellVerb::ScreenshotArea),
     ),
     (
         StandardAction::ScreenshotTools,
-        Handler::Shell(ShellVerb::ScreenshotArea),
+        sh(ShellVerb::ScreenshotArea),
     ),
-    (
-        StandardAction::LogOut,
-        Handler::Shell(ShellVerb::PowerMenuOpen),
-    ),
-    (StandardAction::TileLeft, Handler::Compositor),
-    (StandardAction::TileRight, Handler::Compositor),
-    (StandardAction::TileTop, Handler::Compositor),
-    (StandardAction::TileBottom, Handler::Compositor),
-    (StandardAction::TileTopLeft, Handler::Compositor),
-    (StandardAction::TileTopRight, Handler::Compositor),
-    (StandardAction::TileBottomLeft, Handler::Compositor),
-    (StandardAction::TileBottomRight, Handler::Compositor),
-    (StandardAction::Fill, Handler::Compositor),
-    (StandardAction::Center, Handler::Compositor),
-    (StandardAction::ReturnToPreviousSize, Handler::Compositor),
+    (StandardAction::LogOut, sh(ShellVerb::PowerMenuOpen)),
+    (StandardAction::TileLeft, C),
+    (StandardAction::TileRight, C),
+    (StandardAction::TileTop, C),
+    (StandardAction::TileBottom, C),
+    (StandardAction::TileTopLeft, C),
+    (StandardAction::TileTopRight, C),
+    (StandardAction::TileBottomLeft, C),
+    (StandardAction::TileBottomRight, C),
+    (StandardAction::Fill, C),
+    (StandardAction::Center, C),
+    (StandardAction::ReturnToPreviousSize, C),
 ];
 
 /// Who handles `action`, or `None` when it belongs to apps. Every Space number is the

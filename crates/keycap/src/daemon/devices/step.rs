@@ -1,9 +1,9 @@
 //! The transitions: each takes the state and what happened, and returns the next state and the
 //! effects wanted.
 
-use super::model::{DeviceEffect, Devices, GrabOutcome, Retry, Standing, Tracked};
+use super::model::{DeviceEffect, Devices, GrabOutcome, Retry, Tracked};
 use crate::daemon::discover::Identity;
-use crate::{Backoff, Decision, DeviceId, GrabGate, KeysDown, Layout, Mono};
+use crate::{Backoff, Decision, DeviceId, KeysDown, Layout, Mono, check_gate};
 use keycap_protocol::Grab;
 use std::path::Path;
 use std::time::Duration;
@@ -25,7 +25,7 @@ impl Tracked {
     /// Back to waiting at the gate, with the grab shown as `grab`.
     fn at_gate(self, grab: Grab) -> Self {
         Self {
-            gate: GrabGate::new(),
+            past_gate: false,
             grab,
             ..self
         }
@@ -52,7 +52,7 @@ impl Devices {
         let tracked = Tracked {
             layout: Layout::of_vendor(identity.vendor),
             identity,
-            gate: GrabGate::new(),
+            past_gate: false,
             grab: Grab::WaitingForRelease,
             retry: Retry::Ready(Backoff::DEVICE),
         };
@@ -75,15 +75,23 @@ impl Devices {
     /// The keys down on `id`, read now. A keyboard that is waiting at the gate and due is
     /// grabbed when none is down.
     pub(crate) fn checked(mut self, id: DeviceId, keys: KeysDown, now: Mono) -> Step {
-        let wanted = self.standing == Standing::Grabbing;
+        let wanted = !self.released;
         let Some(tracked) = self.tracked.remove(&id) else {
             return (self, Vec::new());
         };
-        let (tracked, effects) = match (wanted && tracked.due(now), tracked.gate.step(keys)) {
-            (true, (gate, Decision::Grab)) => {
-                (Tracked { gate, ..tracked }, vec![DeviceEffect::Grab(id)])
-            }
-            (true, (_, Decision::Wait)) => {
+        let look = (
+            wanted && tracked.due(now),
+            check_gate(tracked.past_gate, keys),
+        );
+        let (tracked, effects) = match look {
+            (true, Some(Decision::Grab)) => (
+                Tracked {
+                    past_gate: true,
+                    ..tracked
+                },
+                vec![DeviceEffect::Grab(id)],
+            ),
+            (true, Some(Decision::Wait)) => {
                 let grab = match tracked.grab {
                     Grab::Conflict => Grab::Conflict,
                     _ => Grab::WaitingForRelease,
@@ -122,7 +130,7 @@ impl Devices {
         let effects = self
             .tracked
             .iter()
-            .filter(|(_, t)| t.gate == GrabGate::Grabbed)
+            .filter(|(_, t)| t.past_gate)
             .map(|(&id, _)| DeviceEffect::Ungrab(id))
             .collect();
         let tracked = self
@@ -142,7 +150,7 @@ impl Devices {
         (
             Devices {
                 tracked,
-                standing: Standing::Released,
+                released: true,
                 ..self
             },
             effects,
@@ -153,7 +161,7 @@ impl Devices {
     pub(crate) fn resumed(self) -> Step {
         (
             Devices {
-                standing: Standing::Grabbing,
+                released: false,
                 ..self
             },
             Vec::new(),
@@ -203,32 +211,30 @@ impl Devices {
 
     /// The keyboards whose gate should be looked at now.
     pub(crate) fn pending(&self, now: Mono) -> Vec<DeviceId> {
-        match self.standing {
-            Standing::Released => Vec::new(),
-            Standing::Grabbing => self
-                .tracked
-                .iter()
-                .filter(|(_, t)| t.gate == GrabGate::Pending && t.due(now))
-                .map(|(&id, _)| id)
-                .collect(),
+        if self.released {
+            return Vec::new();
         }
+        self.tracked
+            .iter()
+            .filter(|(_, t)| !t.past_gate && t.due(now))
+            .map(|(&id, _)| id)
+            .collect()
     }
 
     /// How long until something here needs a look: soon while a gate is open, else when the
     /// earliest refused grab may be retried.
     pub(crate) fn next_wake(&self, now: Mono) -> Option<Duration> {
-        match self.standing {
-            Standing::Released => None,
-            Standing::Grabbing => self
-                .tracked
-                .values()
-                .filter(|t| t.gate == GrabGate::Pending)
-                .map(|t| match t.retry {
-                    Retry::Waiting { until, .. } if until > now => until.since(now),
-                    _ => GATE_POLL,
-                })
-                .min(),
+        if self.released {
+            return None;
         }
+        self.tracked
+            .values()
+            .filter(|t| !t.past_gate)
+            .map(|t| match t.retry {
+                Retry::Waiting { until, .. } if until > now => until.since(now),
+                _ => GATE_POLL,
+            })
+            .min()
     }
 }
 

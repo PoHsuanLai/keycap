@@ -11,11 +11,13 @@ const D0: DeviceId = DeviceId(0);
 const D1: DeviceId = DeviceId(1);
 
 use Edge::{Press as P, Release as R, Repeat as T};
-use EscapeChord::{Fired as F, Quiet as Q};
+// Whether the step fired the chord.
+const F: bool = true;
+const Q: bool = false;
 
 #[test]
 fn escape_script_table() {
-    type Script = &'static [(Physical, Edge, EscapeChord)];
+    type Script = &'static [(Physical, Edge, bool)];
     let cases: &[(&str, Script)] = &[
         (
             "shift, shift, esc fires",

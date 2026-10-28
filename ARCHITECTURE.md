@@ -13,7 +13,7 @@ how to add the next thing. keycap depends on no desktop crate and runs on any Li
 | `keycap-protocol` | `crates/keycap-protocol` | the socket contract: `ToDaemon` (`Steer` or `KeymapCall`), `ToClient`, `Status`, `ProfileName`, `KeymapState`, `Registration`, `PROTOCOL_VERSION`, `MIN_PROTOCOL_VERSION`, `MAX_PACKET`, `encode`, `decode`, `compat` | `serde`, `serde_json`, `thiserror` |
 | `keycap-client` | `crates/keycap-client` | a program's end of the socket (`Connection`) and `KeycapSource`, this desktop's `chordkit::KeymapSource`: chordkit's conventions for our desktop, `system_bindings`, the machine's keymap from the daemon or its file, then the person's own file; `register` | `keycap-protocol`, `chordkit`, `rustix` (std has no `SOCK_SEQPACKET`) |
 | `keycap` | `crates/keycap` | the pure core and the daemon; library plus the `keycap` binary | `keycap-core`, `keycap-protocol`, `keycap-client`, `chordkit`, `serde`, `serde_json`, `thiserror`, `notify`, `rustix`, `peephole`, `peephole-core` (who is on the socket), `turnstile-client` (the root device service's client, which re-exports the wire types keycap names); the three are git deps by tag, `peephole` and `turnstile-client` with their `fake` features only as dev dependencies |
-| `keycap-devtest` | `crates/keycap-devtest` | test-only (`publish = false`): fake keyboards on `/dev/uinput`, the daemon as a child process, the output device reader, a socket client | `keycap-protocol`, `rustix` |
+| `keycap-devtest` | `crates/keycap-devtest` | test-only (`publish = false`): fake keyboards on `/dev/uinput`, the daemon as a child process, the output device reader, a socket client | `keycap-protocol`, `keycap-client` (its `Heard`), `rustix` |
 
 Edges: `keycap` -> `keycap-protocol` and `keycap-client` (the `status` verb's socket client), and `keycap-client` -> `keycap-protocol` and `chordkit`, never `keycap`; `keycap` also takes `chordkit` for the keymap file's judgement. keycap defines no action, chord or keymap type: those are chordkit's. And `keycap` dev-depends on `keycap-devtest`, which
 depends on `keycap-protocol` and never on `keycap`. `keycap-protocol` depends on no other workspace
@@ -51,10 +51,10 @@ Daemon modules:
 | `daemon/twin.rs` | the "<name> (keycap pointer)" virtual device of a combo device whose pointer the keyboard cannot carry (absolute axes): its descriptor from a `Source` (the service is asked with the original's name as the label and adds the suffix), destroyed on `Drop`; `direct_pointer` registers it on `/dev/uinput` from a `PointerCaps` |
 | `daemon/pointer.rs` | pure: `PointerCaps`, the pointer half of a device as a value (axes with their `absinfo`, relative axes, buttons, input properties, the original's name as `label` and the twin's name), built from the kernel's masks; `needs_twin` |
 | `daemon/buttons.rs` | pure: the mouse buttons each combo device holds, released on unplug, overflow and pause; the keyboard's record and each twin's are separate values |
-| `daemon/caps.rs`, `daemon/machine.rs`, `daemon/reader/caps.rs` | a Caps Lock nobody asked for: the pure `CapsFix` (whose word on the lock, the lock, the lock the user asked for through keycap's own Caps Lock presses) and `CapsKey` (does a rule take the bare Caps Lock key); the reader feeds it the desktop's Caps Lock LED reports, the lamp read (`EVIOCGLED`) at a grab until the desktop has reported, and the batches it writes, and writes one Caps Lock tap before the next non-modifier, non-Caps-Lock key while the lock is stray; `Machine` (`machine.rs`) composes the remapper and `CapsFix` once (`settled`, `step`, `wrote`, `reported`, `grabbed`, `forgotten`), and both the reader and `keycap replay` run it, with the reader doing the writes between the calls |
+| `daemon/caps.rs`, `daemon/machine.rs`, `daemon/reader/caps.rs` | a Caps Lock nobody asked for: the pure `CapsFix` (whose word on the lock, the lock, the lock the user asked for through keycap's own Caps Lock presses) and `remaps_caps` (does a rule take the bare Caps Lock key); the reader feeds it the desktop's Caps Lock LED reports, the lamp read (`EVIOCGLED`) at a grab until the desktop has reported, and the batches it writes, and writes one Caps Lock tap before the next non-modifier, non-Caps-Lock key while the lock is stray; `Machine` (`machine.rs`) composes the remapper and `CapsFix` once (`settled`, `step`, `wrote`, `reported`, `grabbed`, `forgotten`), and both the reader and `keycap replay` run it, with the reader doing the writes between the calls |
 | `command/caps_lamp.rs` | the Caps Lock lamp of a keyboard for `keycap status`, from the LED class in sysfs |
 | `daemon/leds.rs` | pure: the lock-LED events the compositor writes to the virtual device, forwarded to every grabbed keyboard, and `LedState`, the last lamps it set, written to a keyboard the moment it is grabbed |
-| `daemon/readiness.rs` | which polled fds are ready, as an enum rather than flags |
+| `daemon/readiness.rs` | which polled fds are ready, as a bool |
 | `daemon/events.rs` | `struct input_event` as bytes, `decode` (what a device sent) and `encode` (what keycap writes), pure |
 | `daemon/discover/` | the /sys scan and `notify` on `/dev/input`; `classify(&Caps, &Identity, Origin, &VirtualAllowance) -> Eligibility` is pure and table-tested (virtual devices are never grabbed unless the allowance names one exactly, which rules out loops with other remappers), sysfs roots injectable; `seat.rs` leaves a node whose udev entry names a seat other than `seat0` alone |
 | `daemon/devices/` | every keyboard as a pure state machine: `{ identity, layout, gate, grab }` plus the conflict `Backoff`; transitions return `(Devices, Vec<DeviceEffect>)`, `drive` carries the effects out through `Nodes`, `status_of` makes the `Status` a desktop sees |
@@ -119,7 +119,7 @@ Two outside parties decide what keycap trusts, and both are in the unit's reach 
 | Which lamps the desktop last set | `daemon::leds::LedState` |
 | Whether a lit Caps Lock is one the user asked for, or still to be cleared | `daemon::caps::CapsFix` |
 | Which undefined profile names were already logged | `daemon::reader::unknown::Unknowns` |
-| When a keyboard may be grabbed | `gate::GrabGate` |
+| When a keyboard may be grabbed | `gate::check_gate` |
 | The emergency chord | `escape` |
 | The mapping state machine | `remap::Remapper` |
 | Socket messages | `keycap-protocol` |
@@ -221,7 +221,7 @@ The `keycap-devtest` modules:
   the one bare generic root export, kept deliberately: it is the evdev code vocabulary and every
   other name here is built on it. Every other root export carries its concept in its name
   (`RemapInput`, `RemapOut`, `ConfigSource`, `ConfigLayer`, `RuleAction`).
-- **No `bool` in a field, parameter or key.** A choice is an enum.
+- **`bool` is fine for a field, a return or a private function.** A public function that would read as `f(true, false)`, a third state, or a value written to disk or the bus gets an enum.
 - **Release is exact:** a key's release sends what its press sent (`Held`), and `drain` empties
   it; a stuck modifier cannot be produced.
 - **`panic = "abort"` in release only**, so a panic ends the process and the kernel drops the

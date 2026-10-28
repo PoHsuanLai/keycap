@@ -1,7 +1,7 @@
 //! The pure Caps Lock rule: which LED reports, grabs and writes leave a lock to clear, and which
 //! typed key the tap goes before.
 
-use super::caps::{CapsFix, CapsKey, Stray};
+use super::caps::{CapsFix, remaps_caps};
 use super::leds::Lamp;
 use crate::{Edge, Key, Layout, Logical, OutEvent, Physical, builtin, resolve};
 
@@ -37,7 +37,7 @@ fn caps_press() -> Vec<OutEvent> {
 }
 
 /// What each press of `steps` wrote, with the Caps Lock key doing `key`.
-fn run(key: CapsKey, steps: &[Step]) -> Vec<Out> {
+fn run(key: bool, steps: &[Step]) -> Vec<Out> {
     let mut state = CapsFix::default();
     let mut outs = Vec::new();
     for &step in steps {
@@ -64,33 +64,34 @@ fn run(key: CapsKey, steps: &[Step]) -> Vec<Out> {
 
 #[test]
 fn caps_lock_rule_table() {
-    use CapsKey::{Passes, Remapped};
+    const PASSES: bool = false;
+    const REMAPPED: bool = true;
     use Lamp::{Off, On};
     use Out::{Quiet, Tap};
     use Step::{Grab, Led, Press, Wrote};
-    type Case = (&'static str, CapsKey, &'static [Step], &'static [Out]);
+    type Case = (&'static str, bool, &'static [Step], &'static [Out]);
     const CASES: &[Case] = &[
         (
             "the race: the lamp is off at the grab, the desktop's LED On comes after",
-            Remapped,
+            REMAPPED,
             &[Grab(Off), Led(On), Press("a"), Press("b")],
             &[Tap, Quiet],
         ),
         (
             "a lamp lit at the grab, before the desktop said anything",
-            Remapped,
+            REMAPPED,
             &[Grab(On), Press("a")],
             &[Tap],
         ),
         (
             "keycap restarted while the desktop's lock is on: the new device gets LED On",
-            Remapped,
+            REMAPPED,
             &[Led(On), Press("a")],
             &[Tap],
         ),
         (
             "modifier-only presses and Caps Lock itself do not take the tap",
-            Remapped,
+            REMAPPED,
             &[
                 Led(On),
                 Press("leftshift"),
@@ -104,25 +105,25 @@ fn caps_lock_rule_table() {
         ),
         (
             "the user's Shift+Caps Lock, then LED On: left on",
-            Remapped,
+            REMAPPED,
             &[Grab(Off), Wrote, Led(On), Press("a")],
             &[Quiet],
         ),
         (
             "Shift+Caps Lock again turns it off, and nothing is tapped",
-            Remapped,
+            REMAPPED,
             &[Wrote, Led(On), Press("a"), Wrote, Led(Off), Press("b")],
             &[Quiet, Quiet],
         ),
         (
             "after the user turned it off, a lock that comes back is stray again",
-            Remapped,
+            REMAPPED,
             &[Wrote, Led(On), Wrote, Led(Off), Led(On), Press("a")],
             &[Tap],
         ),
         (
             "Shift+Caps Lock on a stray lock turns it off without a tap",
-            Remapped,
+            REMAPPED,
             &[
                 Led(On),
                 Press("leftshift"),
@@ -134,43 +135,43 @@ fn caps_lock_rule_table() {
         ),
         (
             "a VT switch (LED Off, then On again) keeps the lock the user set",
-            Remapped,
+            REMAPPED,
             &[Wrote, Led(On), Led(Off), Led(On), Press("a")],
             &[Quiet],
         ),
         (
             "the desktop re-syncs a stray lock after the tap was lost: tapped again",
-            Remapped,
+            REMAPPED,
             &[Led(On), Press("a"), Led(Off), Led(On), Press("b")],
             &[Tap, Tap],
         ),
         (
             "a tap whose LED Off has not come yet is not repeated",
-            Remapped,
+            REMAPPED,
             &[Led(On), Press("a"), Press("b"), Press("c")],
             &[Tap, Quiet, Quiet],
         ),
         (
             "LED On while the Caps Lock key still toggles: left on",
-            Passes,
+            PASSES,
             &[Grab(On), Led(On), Press("a")],
             &[Quiet],
         ),
         (
             "LED Off before the key: nothing to clear",
-            Remapped,
+            REMAPPED,
             &[Grab(On), Led(Off), Press("a")],
             &[Quiet],
         ),
         (
             "a grab read after the desktop spoke does not count",
-            Remapped,
+            REMAPPED,
             &[Led(Off), Grab(On), Press("a")],
             &[Quiet],
         ),
         (
             "a later grab of a dark keyboard does not hide a stray lock",
-            Remapped,
+            REMAPPED,
             &[Grab(On), Grab(Off), Led(On), Press("a")],
             &[Tap],
         ),
@@ -183,11 +184,11 @@ fn caps_lock_rule_table() {
 #[test]
 fn stray_is_a_lit_lock_nothing_asked_for_with_a_key_that_cannot_clear_it() {
     let lit = CapsFix::default().reported(Lamp::On);
-    assert_eq!(lit.stray(CapsKey::Remapped), Stray::Lit);
-    assert_eq!(lit.stray(CapsKey::Passes), Stray::Clear);
+    assert!(lit.stray(true));
+    assert!(!lit.stray(false));
     let asked = CapsFix::default().wrote(&caps_press()).reported(Lamp::On);
-    assert_eq!(asked.stray(CapsKey::Remapped), Stray::Clear);
-    assert_eq!(CapsFix::default().stray(CapsKey::Remapped), Stray::Clear);
+    assert!(!asked.stray(true));
+    assert!(!CapsFix::default().stray(true));
 }
 
 #[test]
@@ -201,16 +202,11 @@ fn only_caps_lock_presses_count_as_asking() {
         OutEvent::Sync,
     ];
     let state = CapsFix::default().wrote(&other).reported(Lamp::On);
-    assert_eq!(
-        state.stray(CapsKey::Remapped),
-        Stray::Lit,
-        "Shift asks nothing"
-    );
+    assert!(state.stray(true), "Shift asks nothing");
     let twice = [caps_press(), caps_press()].concat();
     let state = CapsFix::default().wrote(&twice).reported(Lamp::On);
-    assert_eq!(
-        state.stray(CapsKey::Remapped),
-        Stray::Lit,
+    assert!(
+        state.stray(true),
         "on and off again leaves the user wanting it off"
     );
 }
@@ -219,18 +215,16 @@ fn only_caps_lock_presses_count_as_asking() {
 fn the_built_in_profile_leaves_caps_lock_alone_and_a_rule_takes_it() {
     let profile = |toml: &str| {
         let mine = crate::ConfigLayer::parse(toml, crate::ConfigSource::User).0;
-        CapsKey::in_profile(resolve(&[builtin().0, mine]).0.default_profile())
+        remaps_caps(resolve(&[builtin().0, mine]).0.default_profile())
     };
-    assert_eq!(profile(""), CapsKey::Passes);
-    assert_eq!(
-        profile("[profile.default]\nrules = [{ when = \"capslock\", then = \"ctrl+space\" }]\n"),
-        CapsKey::Remapped
-    );
-    assert_eq!(
-        profile(
+    assert!(!profile(""));
+    assert!(profile(
+        "[profile.default]\nrules = [{ when = \"capslock\", then = \"ctrl+space\" }]\n"
+    ));
+    assert!(
+        !profile(
             "[profile.default]\nrules = [{ when = \"shift+capslock\", then = \"capslock\" }]\n"
         ),
-        CapsKey::Passes,
         "a shifted Caps Lock rule alone does not take the key"
     );
 }

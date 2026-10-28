@@ -14,15 +14,6 @@ use crate::daemon::uinput::Emitter;
 use crate::{DeviceId, RemapInput, RemapOut};
 use keycap_protocol::Warning;
 
-/// Whether the virtual keyboard still holds what was written to it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Wire {
-    Intact,
-    /// A write failed and the device was recreated: it holds nothing, and whatever the core
-    /// computed against the old state is stale.
-    Recreated,
-}
-
 /// One config problem as a log line.
 pub(super) fn log_warning(warning: &Warning) {
     eprintln!("keycap: config: {}: {}", warning.key, warning.problem);
@@ -75,7 +66,9 @@ impl<E: Emitter> Reader<E> {
                 let (unknowns, notice) =
                     std::mem::take(&mut self.unknowns).note(&profile, &self.profiles);
                 self.unknowns = unknowns;
-                notice.line().iter().for_each(|line| eprintln!("{line}"));
+                notice
+                    .iter()
+                    .for_each(|notice| eprintln!("{}", notice.line()));
                 // A name the settings do not define writes as `default` (profiles.resolve), is
                 // logged once, and is taken up if a later config defines it.
                 self.feed(RemapInput::Focus(profile));
@@ -168,33 +161,32 @@ impl<E: Emitter> Reader<E> {
         self.write_caps_tap(&tap);
         let (machine, outs) = std::mem::take(&mut self.machine).step(input, &self.profiles);
         self.machine = machine;
-        let mut wire = Wire::Intact;
+        let mut recreated = false;
         for out in outs {
-            wire = self.dispatch(out, wire);
+            recreated = self.dispatch(out, recreated);
         }
     }
 
-    fn dispatch(&mut self, out: RemapOut, wire: Wire) -> Wire {
-        match (out, wire) {
+    /// Carries out `out`; `recreated` is whether an earlier write of this input replaced the
+    /// device, and the answer whether one has by now.
+    fn dispatch(&mut self, out: RemapOut, recreated: bool) -> bool {
+        match (out, recreated) {
             // Computed against held keys the recreated device never had: writing it would
             // press a key nothing records.
-            (RemapOut::Write(_), Wire::Recreated) => Wire::Recreated,
-            (RemapOut::Write(batch), Wire::Intact) => {
+            (RemapOut::Write(_), true) => true,
+            (RemapOut::Write(batch), false) => {
                 self.caps_wrote(&batch);
                 self.write(&encode(&batch))
             }
-            (RemapOut::ReleaseGrabs, wire) => {
+            (RemapOut::ReleaseGrabs, recreated) => {
                 self.release_grabs();
                 let (buttons, events) = std::mem::take(&mut self.buttons).release_all();
                 self.buttons = buttons;
                 self.release_twins();
-                match self.write(&events) {
-                    Wire::Intact => wire,
-                    Wire::Recreated => Wire::Recreated,
-                }
+                self.write(&events) || recreated
             }
             // The status is read back from the remapper when it is published.
-            (RemapOut::Status(_), wire) => wire,
+            (RemapOut::Status(_), recreated) => recreated,
         }
     }
 
@@ -215,14 +207,16 @@ impl<E: Emitter> Reader<E> {
     }
 
     /// Writes `events` to the virtual keyboard. A failed write leaves `Held` out of step with
-    /// the wire, so the device is replaced by a fresh one, where every key is up.
-    pub(super) fn write(&mut self, events: &[InputEvent]) -> Wire {
+    /// the wire, so the device is replaced by a fresh one, where every key is up. True when it
+    /// was replaced: it holds nothing, and whatever the core computed against the old state is
+    /// stale.
+    pub(super) fn write(&mut self, events: &[InputEvent]) -> bool {
         match self.emitter.write(events) {
-            Ok(()) => Wire::Intact,
+            Ok(()) => false,
             Err(e) => {
                 eprintln!("keycap: writing to the virtual keyboard failed: {e}");
                 self.recreate_output();
-                Wire::Recreated
+                true
             }
         }
     }

@@ -3,7 +3,7 @@
 //! daemon. Pure; the reads and the writes belong to the reader, which tells the machine what it
 //! wrote (`wrote`) only for what reached the wire.
 
-use super::caps::{CapsFix, CapsKey};
+use super::caps::{CapsFix, remaps_caps};
 use super::leds::{Lamp, Led, LedEvent};
 use crate::{OutEvent, Profiles, RemapInput, RemapOut, Remapper};
 use keycap_protocol::Mode;
@@ -50,8 +50,8 @@ impl Machine {
     /// it when a stray lock is due to be cleared (empty otherwise). The tap is written before
     /// `step`, because a write that fails replaces the virtual keyboard and resets the remapper.
     pub(crate) fn settled(self, input: &RemapInput, profiles: &Profiles) -> (Self, Vec<OutEvent>) {
-        let key = CapsKey::in_profile(profiles.default_profile());
-        let (caps, tap) = self.caps.before(input, key);
+        let remapped = remaps_caps(profiles.default_profile());
+        let (caps, tap) = self.caps.before(input, remapped);
         (Self { caps, ..self }, tap)
     }
 

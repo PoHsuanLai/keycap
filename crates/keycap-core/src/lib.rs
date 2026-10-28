@@ -8,6 +8,9 @@
 //! `Mono` argument, config arrives as strings. The daemon crate `keycap` adds those, and a
 //! compositor can link this crate alone. `scripts/check-boundary.sh` holds that.
 
+#[macro_use]
+mod names;
+
 mod backoff;
 mod config;
 mod escape;
@@ -27,9 +30,9 @@ pub use config::{
     MAX_RULES_PER_PROFILE, MAX_USER_RULES, Oversize, Sequences, builtin, layout_overrides, resolve,
     within_limits,
 };
-pub use escape::{Escape, EscapeChord};
+pub use escape::Escape;
 pub use event::{DeviceId, Edge, Logical, OutEvent, Physical};
-pub use gate::{Decision, GrabGate, KEYS_DOWN_BYTES, KeysDown};
+pub use gate::{Decision, KEYS_DOWN_BYTES, KeysDown, check_gate};
 pub use held::{Held, Record};
 pub use key::Key;
 pub use layout::{Layout, role};

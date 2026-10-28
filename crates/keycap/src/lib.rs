@@ -12,8 +12,8 @@ mod keymap;
 pub use config::{DEBOUNCE, FILE_NAME, spawn, system};
 pub use keycap_core::{
     Backoff, ChordError, ConfigLayer, ConfigSource, DEFAULTS_TOML, Decision, DeviceId, Edge,
-    Escape, EscapeChord, GrabGate, Held, Hold, KEYS_DOWN_BYTES, Key, KeysDown, Layout,
-    LayoutOverrides, Logical, MAX_PROFILES, ModMap, Mono, OutEvent, OutMod, OutMods, Oversize,
-    Physical, Profile, Profiles, Record, RemapInput, RemapOut, Remapper, Role, Roles, RuleAction,
-    Sequences, Stroke, Trigger, builtin, layout_overrides, resolve, role, within_limits,
+    Escape, Held, Hold, KEYS_DOWN_BYTES, Key, KeysDown, Layout, LayoutOverrides, Logical,
+    MAX_PROFILES, ModMap, Mono, OutEvent, OutMod, OutMods, Oversize, Physical, Profile, Profiles,
+    Record, RemapInput, RemapOut, Remapper, Role, Roles, RuleAction, Sequences, Stroke, Trigger,
+    builtin, check_gate, layout_overrides, resolve, role, within_limits,
 };

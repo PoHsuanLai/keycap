@@ -5,7 +5,8 @@
 //! then `closed` when the daemon hangs up (what it does to a client that is not the seat's
 //! owner) or `open` when it stays silent for three seconds.
 
-use keycap_devtest::{Client, Heard, summary};
+use keycap_client::Heard;
+use keycap_devtest::{Client, summary};
 use keycap_protocol::ToClient;
 use std::path::Path;
 use std::process::ExitCode;
