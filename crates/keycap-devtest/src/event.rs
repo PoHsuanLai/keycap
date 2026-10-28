@@ -2,8 +2,7 @@
 //! it: `+leftctrl +c SYN`.
 
 use crate::keys::name_of;
-use rustix::fd::AsFd;
-use rustix::io::Errno;
+use keycap_sys::EVENT_BYTES;
 
 pub const EV_SYN: u16 = 0x00;
 pub const EV_KEY: u16 = 0x01;
@@ -12,12 +11,6 @@ pub const EV_ABS: u16 = 0x03;
 pub const EV_LED: u16 = 0x11;
 pub const SYN_REPORT: u16 = 0;
 pub const LED_CAPSL: u16 = 0x01;
-
-/// Bytes of a `struct input_event` on a 64-bit kernel: a 16-byte timestamp, then type, code
-/// and value.
-const EVENT_BYTES: usize = 24;
-/// How many events one read asks for.
-const READ_EVENTS: usize = 64;
 
 /// One input event without its timestamp.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,7 +45,7 @@ impl Event {
         b
     }
 
-    fn from_bytes(b: &[u8]) -> Self {
+    pub(crate) fn from_bytes(b: &[u8; EVENT_BYTES]) -> Self {
         Self {
             kind: u16::from_le_bytes([b[16], b[17]]),
             code: u16::from_le_bytes([b[18], b[19]]),
@@ -64,36 +57,6 @@ impl Event {
 /// The bytes a write of `events` carries.
 pub(crate) fn encode(events: &[Event]) -> Vec<u8> {
     events.iter().flat_map(|e| e.to_bytes()).collect()
-}
-
-/// How a drain ended.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum End {
-    /// Nothing more is queued.
-    Idle,
-    /// The device is gone (`ENODEV`), or the fd reached end of file.
-    Gone,
-}
-
-/// Reads the nonblocking `fd` until it would block.
-pub(crate) fn drain(fd: impl AsFd) -> (Vec<Event>, End) {
-    let mut buf = [0u8; EVENT_BYTES * READ_EVENTS];
-    let mut events = Vec::new();
-    loop {
-        match rustix::io::read(&fd, &mut buf) {
-            Ok(0) => return (events, End::Gone),
-            Ok(n) => events.extend(
-                buf[..n]
-                    .as_chunks::<EVENT_BYTES>()
-                    .0
-                    .iter()
-                    .map(|b| Event::from_bytes(b)),
-            ),
-            Err(Errno::AGAIN) => return (events, End::Idle),
-            Err(Errno::INTR) => {}
-            Err(_) => return (events, End::Gone),
-        }
-    }
 }
 
 /// One event as a token: `+key`, `-key`, `~key` (repeat), `SYN`, `SYN_<n>` for the other sync

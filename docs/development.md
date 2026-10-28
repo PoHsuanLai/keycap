@@ -36,7 +36,7 @@ touches a device, so a script replays to exactly the outputs the live daemon pro
 | `keycap-protocol` (crate) | the socket messages and their codec |
 | `keymap` | the person's keymap file (`keymap`, chordkit's overrides line format): read, judged against the last good copy, watched |
 | `keycap-client` (crate) | a program's end of the socket, and `KeycapSource`, this desktop's chordkit keymap source |
-| `daemon` | threads, socket, discovery, the uinput keyboard, sd_notify, and `sys`: the ioctls, through `input-linux`'s safe handles (the workspace forbids `unsafe`) |
+| `daemon` | threads, socket, discovery, the uinput keyboard, sd_notify, sd_notify; the ioctls are `keycap-sys`, through `input-linux`'s safe handles (the workspace forbids `unsafe`) |
 
 ## The socket protocol
 

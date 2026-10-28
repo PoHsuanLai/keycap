@@ -14,11 +14,11 @@ workspace = true
 keycap-core = { path = "../keycap-core" }
 keycap-protocol = { path = "../keycap-protocol" }
 keycap-client = { path = "../keycap-client" }
+keycap-sys = { path = "../keycap-sys" }
 chordkit.workspace = true
 thiserror.workspace = true
 notify.workspace = true
 rustix.workspace = true
-input-linux.workspace = true
 peephole.workspace = true
 latchkey.workspace = true
 peephole-core.workspace = true

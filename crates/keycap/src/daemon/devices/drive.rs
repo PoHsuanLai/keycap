@@ -2,8 +2,8 @@
 
 use super::model::{DeviceEffect, Devices, GrabOutcome};
 use crate::daemon::grabber::Nodes;
-use crate::daemon::sys::GrabError;
 use crate::{DeviceId, Mono};
+use keycap_sys::GrabError;
 use std::collections::VecDeque;
 
 /// Performs `effects` and every effect their outcomes cause; returns the devices after.

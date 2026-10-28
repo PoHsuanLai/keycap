@@ -5,7 +5,6 @@
 //! functions, which are tested; creation on the node itself, and the read of LED changes, run
 //! only in the gated device tests (`tests/devices`).
 
-use super::evdev::drain;
 use super::events::{
     EV_KEY, EV_LED, EV_REL, EV_SYN, InputEvent, MAX_CODE, REL_HWHEEL, REL_HWHEEL_HI_RES, REL_WHEEL,
     REL_WHEEL_HI_RES, REL_X, REL_Y,
@@ -13,8 +12,8 @@ use super::events::{
 use super::leds::{LED_CODES, LedEvent, decode as decode_led};
 use super::pointer::PointerCaps;
 use super::source::Source;
-use super::sys::{self, BitSet, InputId, UinputSetup};
 use super::twin::PointerTwin;
+use keycap_sys::{self as sys, BitSet, InputId, UinputSetup, drain};
 use rustix::fd::{AsFd, BorrowedFd, OwnedFd};
 use rustix::fs::{Mode, OFlags};
 use std::io;
@@ -153,7 +152,7 @@ impl Emitter for Device {
     }
 
     fn leds(&mut self) -> Vec<LedEvent> {
-        drain(&self.fd)
+        drain(&self.fd, InputEvent::from_bytes)
             .events
             .into_iter()
             .filter_map(decode_led)

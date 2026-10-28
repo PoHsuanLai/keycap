@@ -3,6 +3,20 @@ FINDINGS
 
 Open items and standing facts.
 
+## One copy of the device code (2026-10-28)
+
+`keycap-devtest` kept its own copy of the daemon's low-level device code (`BitSet`, a `Grab` enum, `End`,
+`drain`, the uinput and evdev ioctl wrappers). Both now use the new `keycap-sys` crate (tier C, in
+`crates/`). Chosen over making `keycap`'s daemon items public for a test tool, which would have widened the
+library surface and tied the harness to the whole daemon. The daemon's behaviour is kept: `drain` is generic
+over the event type (each side passes its own `from_bytes`), `grab` and `release` are the daemon's (`GrabError`
+instead of the harness's `Grab::On`/`Off` and its own "device is grabbed" message), `key_state` returns the
+bitmap bytes and the daemon wraps them in `KeysDown`. `sysname` (only the harness calls it) lives in
+`keycap-sys` beside `dev_create`. Moved with the code: the name, out-of-range and drain tests; the harness's
+`Grab::is_on` test and its duplicate name and range tests are gone, and the daemon's `parse` (now inside `drain`)
+with its test. The harness's event type, its byte form and its tokens stay in `keycap-devtest`: a harness that
+checks the daemon should not share the daemon's event type.
+
 ## Type rules (2026-10-28)
 
 CONVENTIONS now follows the plain-Rust-first type rule: `bool` for fields, returns and private

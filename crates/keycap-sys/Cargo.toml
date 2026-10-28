@@ -1,0 +1,16 @@
+[package]
+name = "keycap-sys"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The evdev and uinput calls keycap and its device-test harness share: ioctls through safe handles, and draining a nonblocking event node"
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror.workspace = true
+rustix.workspace = true
+input-linux.workspace = true

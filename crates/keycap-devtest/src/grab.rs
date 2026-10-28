@@ -1,7 +1,7 @@
 //! Another program holding a device exclusively, as a second remapper would.
 
 use crate::failure::{Failure, errno, io};
-use crate::sys::{self, Grab};
+use keycap_sys as sys;
 use rustix::fd::OwnedFd;
 use rustix::fs::{Mode, OFlags};
 use std::path::Path;
@@ -21,12 +21,12 @@ impl ExternalGrab {
             Mode::empty(),
         )
         .map_err(errno(format!("opening {}", node.display())))?;
-        sys::grab(&fd, Grab::On).map_err(io(format!("grabbing {}", node.display())))?;
+        sys::grab(&fd).map_err(|e| Failure::new(format!("grabbing {}: {e}", node.display())))?;
         Ok(Self { fd })
     }
 
     /// Gives the device back.
     pub fn release(self) -> Result<(), Failure> {
-        sys::grab(&self.fd, Grab::Off).map_err(io("releasing the harness's grab"))
+        sys::release(&self.fd).map_err(io("releasing the harness's grab"))
     }
 }

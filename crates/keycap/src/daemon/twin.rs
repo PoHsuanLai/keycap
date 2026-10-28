@@ -8,8 +8,8 @@
 use super::events::{EV_ABS, EV_KEY, EV_REL, EV_SYN, InputEvent};
 use super::pointer::PointerCaps;
 use super::source::Source;
-use super::sys::{self, AbsSetup, BitSet, InputId, UinputSetup};
 use super::uinput::{BUS_VIRTUAL, OutputError, PointerSink, UINPUT, open, write_batch};
+use keycap_sys::{self as sys, AbsSetup, BitSet, InputId, UinputSetup};
 use rustix::fd::OwnedFd;
 use std::io;
 use std::path::Path;

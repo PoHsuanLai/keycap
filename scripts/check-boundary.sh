@@ -50,7 +50,10 @@ EDGES=(
   # keycap also links peephole (who the socket's peer is) and turnstile-client (the root service
   # that makes its virtual devices), both by tag; neither brings a bus or an async runtime. latchkey
   # (feature guard) holds the socket guard keycap shares with palmrest.
-  "keycap: chordkit input-linux keycap-client keycap-core keycap-protocol latchkey notify peephole peephole-core rustix thiserror turnstile-client"
+  "keycap: chordkit keycap-client keycap-core keycap-protocol keycap-sys latchkey notify peephole peephole-core rustix thiserror turnstile-client"
+  # keycap-sys: the evdev and uinput ioctls and the node drain that keycap and keycap-devtest
+  # share; the safe input-linux handles and rustix reads, nothing of keycap's own.
+  "keycap-sys: input-linux rustix thiserror"
   # keycap-client: what an app links to read the desktop keymap. The protocol, chordkit's pure core
   # and its bounded file reader (chordkit-file), and rustix for the SOCK_SEQPACKET socket std
   # lacks; no runtime, no file watcher. shell-verbs names the shell's verbs in the handled table.

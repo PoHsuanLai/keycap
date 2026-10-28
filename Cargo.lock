@@ -154,11 +154,11 @@ name = "keycap"
 version = "0.1.0"
 dependencies = [
  "chordkit",
- "input-linux",
  "keycap-client",
  "keycap-core",
  "keycap-devtest",
  "keycap-protocol",
+ "keycap-sys",
  "latchkey",
  "notify",
  "peephole",
@@ -192,9 +192,9 @@ dependencies = [
 name = "keycap-devtest"
 version = "0.1.0"
 dependencies = [
- "input-linux",
  "keycap-client",
  "keycap-protocol",
+ "keycap-sys",
  "rustix",
 ]
 
@@ -204,6 +204,15 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "keycap-sys"
+version = "0.1.0"
+dependencies = [
+ "input-linux",
+ "rustix",
  "thiserror",
 ]
 

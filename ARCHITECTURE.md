@@ -12,16 +12,17 @@ how to add the next thing. keycap depends on no desktop crate and runs on any Li
 |---|---|---|---|
 | `keycap-protocol` | `crates/keycap-protocol` | the socket contract: `ToDaemon` (`Steer` or `KeymapCall`), `ToClient`, `Status`, `ProfileName`, `KeymapState`, `Registration`, `PROTOCOL_VERSION`, `MIN_PROTOCOL_VERSION`, `MAX_PACKET`, `encode`, `decode`, `compat` | `serde`, `serde_json`, `thiserror` |
 | `keycap-client` | `crates/keycap-client` | a program's end of the socket (`Connection`) and `KeycapSource`, this desktop's `chordkit::KeymapSource`: chordkit's conventions for our desktop, `system_bindings`, the machine's keymap from the daemon or its file, then the person's own file; `register` | `keycap-protocol`, `chordkit`, `rustix` (std has no `SOCK_SEQPACKET`) |
-| `keycap` | `crates/keycap` | the pure core and the daemon; library plus the `keycap` binary | `keycap-core`, `keycap-protocol`, `keycap-client`, `chordkit`, `serde`, `serde_json`, `thiserror`, `notify`, `rustix`, `peephole`, `peephole-core` (who is on the socket), `turnstile-client` (the root device service's client, which re-exports the wire types keycap names); the three are git deps by tag, `peephole` and `turnstile-client` with their `fake` features only as dev dependencies |
-| `keycap-devtest` | `crates/keycap-devtest` | test-only (`publish = false`): fake keyboards on `/dev/uinput`, the daemon as a child process, the output device reader, a socket client | `keycap-protocol`, `keycap-client` (its `Heard`), `rustix` |
+| `keycap-sys` | `crates/keycap-sys` | tier C (IO, no keycap concepts): the evdev and uinput ioctls through `input-linux`'s safe `EvdevHandle` and `UInputHandle` (`EVIOCGRAB`, `EVIOCGKEY`, `EVIOCGLED`, `EVIOCGBIT`, `EVIOCGPROP`, `EVIOCGABS`, uinput incl. `UI_ABS_SETUP`; raw codes in, typed handles inside, `io::Error` out) and `drain`, reading a nonblocking event node until it would block; shared by the daemon and `keycap-devtest`, so neither keeps a copy | `input-linux`, `rustix`, `thiserror` |
+| `keycap` | `crates/keycap` | the pure core and the daemon; library plus the `keycap` binary | `keycap-core`, `keycap-protocol`, `keycap-client`, `keycap-sys`, `chordkit`, `serde`, `serde_json`, `thiserror`, `notify`, `rustix`, `peephole`, `peephole-core` (who is on the socket), `turnstile-client` (the root device service's client, which re-exports the wire types keycap names); the three are git deps by tag, `peephole` and `turnstile-client` with their `fake` features only as dev dependencies |
+| `keycap-devtest` | `crates/keycap-devtest` | test-only (`publish = false`): fake keyboards on `/dev/uinput`, the daemon as a child process, the output device reader, a socket client | `keycap-protocol`, `keycap-client` (its `Heard`), `keycap-sys`, `rustix` |
 
 Edges: `keycap` -> `keycap-protocol` and `keycap-client` (the `status` verb's socket client), and `keycap-client` -> `keycap-protocol` and `chordkit`, never `keycap`; `keycap` also takes `chordkit` for the keymap file's judgement. keycap defines no action, chord or keymap type: those are chordkit's. And `keycap` dev-depends on `keycap-devtest`, which
-depends on `keycap-protocol` and never on `keycap`. `keycap-protocol` depends on no other workspace
+depends on `keycap-protocol`, `keycap-client` and `keycap-sys`, and never on `keycap`. `keycap-protocol` depends on no other workspace
 crate, and has no `toml`, `notify` or `rustix`, so a desktop takes it without pulling the
 daemon. sill imports it as a path dependency. `scripts/check-boundary.sh` holds the edges
 (including the four above for `keycap`); `cargo tree -p keycap-protocol` shows only serde, serde_json and thiserror.
 
-The library surface of `keycap` is the pure core. The daemon, `sys` and the CLI verbs are
+The library surface of `keycap` is the pure core. The daemon and the CLI verbs are
 `pub(crate)`; the one public entry to them is `command::run`.
 
 ## 2. Modules and layers
@@ -37,14 +38,13 @@ never name `daemon` modules.
 | L2 keymap | `keymap` (`read`, `settle`, `spawn`): the person's keymap file in chordkit's overrides format, judged against the last good copy by the pure `settle`; its watch is `config::watch::spawn_reading` | pure except `read` and `spawn` | `pub(crate)` |
 | L3 state | `held`, `gate`, `escape`, `backoff` | pure state machines | `pub` |
 | L4 remapper | `remap` (`Remapper::step`, `RemapInput`, `RemapOut`) | pure composition: `Remapper::step(self, RemapInput, &Profiles) -> (Self, Vec<RemapOut>)` | `pub` |
-| L5 effects | `daemon` (`reader`, `socket`, `discover`, `uinput`, `sdnotify`, `env`, `sys`) | threads, sockets, devices, clocks, ioctls | `pub(crate)` |
+| L5 effects | `daemon` (`reader`, `socket`, `discover`, `uinput`, `sdnotify`, `env`) | threads, sockets, devices, clocks; the ioctls are `keycap-sys` | `pub(crate)` |
 | L6 entry | `command` | argument parsing, one `run(args)`; reads `std::env` once into `daemon::Env`; `--print-config`, `--check-uinput`, `status`, `resume`, `replay FILE` (a pure script parser, `script.rs`; `led` lines drive the Caps Lock rule of `daemon::caps` through the reader's own `Machine`) | `pub` (one fn) |
 
 Daemon modules:
 
 | Module | Role |
 |---|---|
-| `daemon/sys.rs` | the ioctls (`EVIOCGRAB`, `EVIOCGKEY`, `EVIOCGLED`, `EVIOCGBIT`, `EVIOCGPROP`, `EVIOCGABS`, uinput incl. `UI_ABS_SETUP`) through `input-linux`'s safe `EvdevHandle` and `UInputHandle`; it only converts raw codes to the crate's typed ones and errors to `io::Error`. No `unsafe` |
 | `command/status.rs` | `keycap status` and `keycap resume`: a plain socket client (`Hello` read, `Resume` sent), `render` and `is_remapping` pure and table-tested |
 | `daemon/uinput.rs` | the one "keycap keyboard" virtual device, a descriptor from a `Source`, destroyed on `Drop`; `direct_keyboard` makes it on `/dev/uinput` itself; passes the pointer events of plain combo devices through and carries the lock LEDs back; the `Emitter` and `PointerSink` traits and their recording fakes. Everything below device creation (writes, `led_fd`, `leds`) is the same whichever source made the descriptor |
 | `daemon/source.rs` | where a virtual device comes from: `Source::Service` asks the root device service (`turnstile-client`'s `Broker`, socket `/run/turnstile/input.sock`, `KEYCAP_DEVICE_SERVICE`) for a `KeycapKeyboard` or `KeycapPointer` and receives the finished device's descriptor; `Source::Direct` (the default when the socket is absent, and the standalone install) opens `/dev/uinput`. A service that stops answering falls back to `Direct` with a log line; a refusal does not. `recreate` drops the old descriptor and asks again. The test source is `turnstile-client`'s `FakeSource` |
@@ -60,7 +60,7 @@ Daemon modules:
 | `daemon/devices/` | every keyboard as a pure state machine: `{ identity, layout, gate, grab }` plus the conflict `Backoff`; transitions return `(Devices, Vec<DeviceEffect>)`, `drive` carries the effects out through `Nodes`, `status_of` makes the `Status` a desktop sees |
 | `daemon/grabber.rs` | `Grabber` (grab, ungrab) and `Nodes` (open, close, keys down): the real evdev fds, and `FakeGrabber` in tests |
 | `daemon/reader/` | the main thread: one `poll` over the nodes and the inbox's eventfd, timeout from the next gate or backoff deadline and half the watchdog; the reader waits on nothing but `poll`. `grabs.rs` acts on a device just grabbed or let go (LEDs, twin), `twins.rs` holds the twins and the pure `grab_change`, `unknown.rs` the pure `Unknowns` set behind the once-per-generation log of an undefined focused profile (64 names), `rescan.rs` the pure `Lookout` (which nodes to look at after a pass's hotplug messages: a burst is one scan) and `SafetyLook` (everything again every 30 s) |
-| `daemon/route.rs`, `daemon/evdev.rs` | one read of a node (drained until `EAGAIN`) to `RemapInput`s and pointer frames, pure `route` over the drained events |
+| `daemon/route.rs` | pure `route` over the events one read of a node drained (`keycap_sys::drain`, until `EAGAIN`) into `RemapInput`s and pointer frames |
 | `daemon/inbox.rs`, `daemon/waker.rs` | what other threads send the reader (`Request`, vendor config, system config, hotplug) over one bounded channel (256; the socket thread uses `try_send` and drops a client whose request does not fit) and one eventfd |
 | `daemon/socket/shelf.rs` | pure: the keymap in force, who watches it and what each connection registered (`Shelf::call`, `read`, `retain`); returns replies, the server sends them |
 | `daemon/socket/` | the socket thread; `seat.rs` holds the pure parts (`peer_of(uid, active, Claim)` to `Peer { Steering, Plain, Observer }`, `request_of`, `Seat::look` for owner leaving or user switch); `shell.rs` keycap's steering table and who is believed (the check, the seat file and the accept failures are `latchkey::guard`, shared with palmrest); `limits.rs` the bounds against hostile clients (32 clients, the seat owner exempt from that cap; 8 per uid; 16 messages per client per pass; 100 requests a second per client; listener paused 1 s on EMFILE; complaints logged once a minute per uid); `peer.rs` a connection (role, pace, what it missed) and `send` (`Sent`: a full queue or an oversize message never closes it); `inbound.rs` the bounded read |
@@ -129,7 +129,7 @@ Two outside parties decide what keycap trusts, and both are in the unit's reach 
 | The desktop's own bindings beyond chordkit's conventions | `keycap_client::system_bindings` |
 | A program's socket client | `keycap_client::Connection` |
 | Threads, sockets, devices, clocks | `daemon` |
-| ioctls | `daemon::sys` |
+| ioctls, draining an event node | `keycap-sys` |
 | Environment, clock, directories | `daemon::Env`, built once in `command::run` |
 | Command-line verbs | `command` |
 
@@ -207,15 +207,14 @@ The `keycap-devtest` modules:
 | `daemon`, `notify` | `Daemon`: the binary as a child with scratch paths, stderr to a file, `READY=1` and `WATCHDOG=1` recorded with times |
 | `client` | `Client`: `Hello`, `Focus`, `Resume`, `wait_status` |
 | `grab` | `ExternalGrab`: another program's `EVIOCGRAB` |
-| `sys` | the harness's ioctls, through `input-linux` |
 | `keys`, `event`, `sysfs`, `scratch`, `failure` | key names, `struct input_event`, finding nodes by name, the scratch directory, the error type |
 
 ## 7. Repo rules
 
 - **Only `daemon` owns threads, sockets, devices, clocks and the environment.** When the core
   seems to need an effect, it returns an `RemapOut` for the daemon to carry out.
-- **No `unsafe`:** the workspace lint is `forbid`. The ioctls in `daemon/sys.rs` and, test-only,
-  `keycap-devtest/src/sys.rs` go through `input-linux`'s safe handles.
+- **No `unsafe`:** the workspace lint is `forbid`. The ioctls in `keycap-sys`, which the daemon and
+  the test harness share, go through `input-linux`'s safe handles.
 - **The layering rule:** core modules never name daemon modules.
 - **Units and ids are newtypes:** `Key`, `Physical`, `Logical`, `ProfileName`, `Mono`. `Key` is
   the one bare generic root export, kept deliberately: it is the evdev code vocabulary and every

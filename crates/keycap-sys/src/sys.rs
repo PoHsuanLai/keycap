@@ -5,26 +5,25 @@
 //! errors into `io::Error`. A handle borrows the descriptor for one call; the caller keeps
 //! ownership and closing it still releases a grab and destroys a device.
 
-use crate::KeysDown;
 use input_linux::{
     AbsoluteAxis, AbsoluteInfoSetup, EvdevHandle, EventKind, InputProperty, Key, LedKind,
     RelativeAxis, UInputHandle,
 };
-pub(crate) use input_linux::{AbsoluteInfo as AbsInfo, InputId};
+pub use input_linux::{AbsoluteInfo as AbsInfo, InputId};
 use rustix::fd::{AsFd, BorrowedFd};
 use std::io;
 
 /// Bytes in the `EVIOCGKEY` bitmap: `KEY_MAX / 8 + 1`.
-const KEY_STATE_BYTES: usize = 96;
+pub const KEY_STATE_BYTES: usize = 96;
 /// Bytes in the `EVIOCGLED` bitmap: `LED_MAX` is 0x0f, so 16 bits.
-const LED_STATE_BYTES: usize = 2;
+pub const LED_STATE_BYTES: usize = 2;
 /// Bytes of the `EVIOCGPROP` bitmap: `INPUT_PROP_MAX / 8 + 1` is 4, read as one 64-bit word.
 const PROP_BYTES: usize = 8;
 /// Bytes of the `EVIOCGBIT(EV_REL)` and `EVIOCGBIT(EV_ABS)` bitmaps: `REL_MAX` and `ABS_MAX`
 /// fit one 64-bit word.
 const AXIS_BYTES: usize = 8;
 /// Bytes of a uinput device name, the terminating NUL included.
-const NAME_BYTES: usize = 80;
+pub const NAME_BYTES: usize = 80;
 
 /// An evdev handle over a descriptor the caller keeps.
 fn evdev(fd: &impl AsFd) -> EvdevHandle<BorrowedFd<'_>> {
@@ -44,7 +43,7 @@ fn out_of_range<E>(_: E) -> io::Error {
 /// `struct uinput_setup`: the identity a virtual device is created under. The name is NUL
 /// padded; it ends at the first NUL.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct UinputSetup {
+pub struct UinputSetup {
     pub id: InputId,
     pub name: [u8; NAME_BYTES],
     pub ff_effects_max: u32,
@@ -60,7 +59,7 @@ impl UinputSetup {
 
 /// One absolute axis a virtual device declares, with its range.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AbsSetup {
+pub struct AbsSetup {
     pub code: u16,
     pub info: AbsInfo,
 }
@@ -76,7 +75,7 @@ impl AbsSetup {
 
 /// Why a grab failed; `Busy` is another program already holding the device.
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum GrabError {
+pub enum GrabError {
     #[error("another program has grabbed the device")]
     Busy,
     #[error("grab failed: {0}")]
@@ -84,7 +83,7 @@ pub(crate) enum GrabError {
 }
 
 /// Takes the exclusive grab on an evdev fd.
-pub(crate) fn grab(fd: impl AsFd) -> Result<(), GrabError> {
+pub fn grab(fd: impl AsFd) -> Result<(), GrabError> {
     evdev(&fd).grab(true).map_err(|e| match e.kind() {
         io::ErrorKind::ResourceBusy => GrabError::Busy,
         _ => GrabError::Other(e),
@@ -92,33 +91,33 @@ pub(crate) fn grab(fd: impl AsFd) -> Result<(), GrabError> {
 }
 
 /// Releases the exclusive grab on an evdev fd.
-pub(crate) fn release(fd: impl AsFd) -> io::Result<()> {
+pub fn release(fd: impl AsFd) -> io::Result<()> {
     evdev(&fd).grab(false)
 }
 
-/// The keys the kernel believes are down on the device.
-pub(crate) fn keys_down(fd: impl AsFd) -> io::Result<KeysDown> {
+/// The keys the kernel believes are down on the device, as its bitmap.
+pub fn key_state(fd: impl AsFd) -> io::Result<[u8; KEY_STATE_BYTES]> {
     let mut bytes = [0u8; KEY_STATE_BYTES];
     evdev(&fd).key_state(&mut bytes)?;
-    Ok(KeysDown::from_bytes(bytes))
+    Ok(bytes)
 }
 
 /// The LEDs the kernel believes are lit on the device, as its little-endian bitmap.
-pub(crate) fn leds_lit(fd: impl AsFd) -> io::Result<[u8; LED_STATE_BYTES]> {
+pub fn leds_lit(fd: impl AsFd) -> io::Result<[u8; LED_STATE_BYTES]> {
     let mut bytes = [0u8; LED_STATE_BYTES];
     evdev(&fd).led_state(&mut bytes)?;
     Ok(bytes)
 }
 
 /// The range and resolution of absolute axis `axis` (`EVIOCGABS`).
-pub(crate) fn abs_info(fd: impl AsFd, axis: u16) -> io::Result<AbsInfo> {
+pub fn abs_info(fd: impl AsFd, axis: u16) -> io::Result<AbsInfo> {
     let axis = AbsoluteAxis::from_code(axis).map_err(out_of_range)?;
     evdev(&fd).absolute_info(axis)
 }
 
 /// Which capability bitmap `capability_bits` reads from an evdev fd.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Capability {
+pub enum Capability {
     Key,
     Rel,
     Abs,
@@ -128,7 +127,7 @@ pub(crate) enum Capability {
 /// A device's capability bitmap as the kernel's bytes: `EVIOCGBIT` for keys and axes,
 /// `EVIOCGPROP` for the input properties. Little-endian 64-bit words, as `Bits::from_bytes`
 /// reads them.
-pub(crate) fn capability_bits(fd: impl AsFd, capability: Capability) -> io::Result<Vec<u8>> {
+pub fn capability_bits(fd: impl AsFd, capability: Capability) -> io::Result<Vec<u8>> {
     let handle = evdev(&fd);
     let bits = |kind, len| {
         let mut bytes = vec![0u8; len];
@@ -147,7 +146,7 @@ pub(crate) fn capability_bits(fd: impl AsFd, capability: Capability) -> io::Resu
 
 /// Which capability bit set a `UI_SET_*BIT` call writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BitSet {
+pub enum BitSet {
     Ev,
     Key,
     Rel,
@@ -157,7 +156,7 @@ pub(crate) enum BitSet {
 }
 
 /// Enables one capability bit on a uinput fd before the device is created.
-pub(crate) fn set_bit(fd: impl AsFd, set: BitSet, code: u16) -> io::Result<()> {
+pub fn set_bit(fd: impl AsFd, set: BitSet, code: u16) -> io::Result<()> {
     let handle = uinput(&fd);
     match set {
         BitSet::Ev => handle.set_evbit(EventKind::try_from(code).map_err(out_of_range)?),
@@ -171,7 +170,7 @@ pub(crate) fn set_bit(fd: impl AsFd, set: BitSet, code: u16) -> io::Result<()> {
 
 /// Declares the device's identity and absolute axes, then creates it: `UI_DEV_SETUP`, one
 /// `UI_ABS_SETUP` per axis, `UI_DEV_CREATE`. The capability bits are already set.
-pub(crate) fn dev_create(fd: impl AsFd, setup: UinputSetup, abs: &[AbsSetup]) -> io::Result<()> {
+pub fn dev_create(fd: impl AsFd, setup: UinputSetup, abs: &[AbsSetup]) -> io::Result<()> {
     let abs = abs
         .iter()
         .map(|axis| axis.typed())
@@ -180,8 +179,16 @@ pub(crate) fn dev_create(fd: impl AsFd, setup: UinputSetup, abs: &[AbsSetup]) ->
 }
 
 /// Destroys the device.
-pub(crate) fn dev_destroy(fd: impl AsFd) -> io::Result<()> {
+pub fn dev_destroy(fd: impl AsFd) -> io::Result<()> {
     uinput(&fd).dev_destroy()
+}
+
+/// The sysfs name (`inputN`) of the created device, which names its directory under
+/// `/sys/class/input` whatever else is registered under the same device name.
+pub fn sysname(fd: impl AsFd) -> io::Result<String> {
+    let bytes = uinput(&fd).sys_name()?;
+    let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+    Ok(String::from_utf8_lossy(&bytes[..end]).into_owned())
 }
 
 #[cfg(test)]

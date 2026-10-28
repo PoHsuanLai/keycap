@@ -1,9 +1,10 @@
 //! The "keycap keyboard" as a reader sees it: what keycap actually wrote to the kernel.
 
-use crate::event::{EV_LED, End, Event, SYN_REPORT, drain, encode, token};
+use crate::event::{EV_LED, Event, SYN_REPORT, encode, token};
 use crate::failure::{Failure, errno};
 use crate::keys::name_of;
 use crate::sysfs::{OUTPUT_NAME, find_node, name_registered, wait_for};
+use keycap_sys::{End, drain};
 use rustix::fd::OwnedFd;
 use rustix::fs::{Mode, OFlags};
 use std::collections::BTreeSet;
@@ -70,12 +71,12 @@ impl Output {
 
     /// Reads what is queued: its tokens, and the keys down afterwards.
     fn read(&mut self) -> Vec<String> {
-        let (events, end) = drain(&self.fd);
-        if end == End::Gone && !self.gone {
+        let drained = drain(&self.fd, Event::from_bytes);
+        if drained.end == End::Gone && !self.gone {
             self.gone = true;
             self.log("the node is gone (ENODEV or end of file)");
         }
-        for e in &events {
+        for e in &drained.events {
             match (e.kind, e.value) {
                 (1, 1 | 2) => {
                     self.down.insert(e.code);
@@ -86,7 +87,7 @@ impl Output {
                 _ => {}
             }
         }
-        let tokens: Vec<String> = events.into_iter().map(token).collect();
+        let tokens: Vec<String> = drained.events.into_iter().map(token).collect();
         if !tokens.is_empty() {
             self.log(&tokens.join(" "));
         }

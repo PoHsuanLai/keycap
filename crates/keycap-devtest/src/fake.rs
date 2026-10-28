@@ -1,10 +1,10 @@
 //! A keyboard that exists only as a uinput device: what a person's hands do, from a test.
 
-use crate::event::{EV_ABS, EV_KEY, EV_LED, EV_REL, EV_SYN, Event, LED_CAPSL, drain, encode};
+use crate::event::{EV_ABS, EV_KEY, EV_LED, EV_REL, EV_SYN, Event, LED_CAPSL, encode};
 use crate::failure::{Failure, errno, io};
 use crate::keys::{KEYS, code_of};
-use crate::sys::{self, AbsInfo, BitSet, InputId, UinputAbsSetup, UinputSetup};
 use crate::sysfs::{node_of_sysname, registered, wait_for};
+use keycap_sys::{self as sys, AbsInfo, AbsSetup, BitSet, InputId, UinputSetup, drain};
 use rustix::fd::OwnedFd;
 use rustix::fs::{Mode, OFlags};
 use std::path::{Path, PathBuf};
@@ -178,8 +178,8 @@ impl FakeKeyboard {
     /// The LED events that reached the fake since the last call, as `(led, value)`: what a
     /// compositor (through keycap) wrote to the keyboard it believes it is typing on.
     pub fn leds(&self) -> Vec<(u16, i32)> {
-        drain(&self.fd)
-            .0
+        drain(&self.fd, Event::from_bytes)
+            .events
             .into_iter()
             .filter(|e| e.kind == EV_LED)
             .map(|e| (e.code, e.value))
@@ -235,7 +235,7 @@ fn setup(spec: &FakeSpec) -> UinputSetup {
 
 /// Declares what the fake can send: every key in the harness's table, the LEDs and the pointer
 /// the spec asks for. Returns the absolute axes with their ranges, which go in at creation.
-fn register(fd: &OwnedFd, spec: &FakeSpec) -> std::io::Result<Vec<UinputAbsSetup>> {
+fn register(fd: &OwnedFd, spec: &FakeSpec) -> std::io::Result<Vec<AbsSetup>> {
     let bit = |set, code| sys::set_bit(fd, set, code);
     bit(BitSet::Ev, EV_SYN)?;
     bit(BitSet::Ev, EV_KEY)?;
@@ -261,7 +261,7 @@ fn relative_half(fd: &OwnedFd) -> std::io::Result<()> {
     sys::set_bit(fd, BitSet::Key, BTN_LEFT)
 }
 
-fn touchpad_half(fd: &OwnedFd) -> std::io::Result<Vec<UinputAbsSetup>> {
+fn touchpad_half(fd: &OwnedFd) -> std::io::Result<Vec<AbsSetup>> {
     sys::set_bit(fd, BitSet::Ev, EV_ABS)?;
     [BTN_TOUCH, BTN_TOOL_FINGER, BTN_TOOL_DOUBLETAP]
         .into_iter()
@@ -274,9 +274,9 @@ fn touchpad_half(fd: &OwnedFd) -> std::io::Result<Vec<UinputAbsSetup>> {
         (ABS_MT_POSITION_Y, 0, 800),
         (ABS_MT_TRACKING_ID, 0, 65535),
     ];
-    let setups = axes.map(|(code, minimum, maximum)| UinputAbsSetup {
+    let setups = axes.map(|(code, minimum, maximum)| AbsSetup {
         code,
-        absinfo: AbsInfo {
+        info: AbsInfo {
             value: 0,
             minimum,
             maximum,

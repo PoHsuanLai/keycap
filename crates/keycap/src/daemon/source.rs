@@ -128,9 +128,9 @@ mod tests {
     use crate::daemon::events::{EV_KEY, InputEvent};
     use crate::daemon::pointer::AbsAxis as TwinAxis;
     use crate::daemon::scratch::Scratch;
-    use crate::daemon::sys::AbsInfo;
     use crate::daemon::twin::PointerTwin;
     use crate::daemon::uinput::{Device, Emitter, PointerSink};
+    use keycap_sys::AbsInfo;
     use rustix::net::{AddressFamily, RecvFlags, SocketFlags, SocketType, socketpair};
     use turnstile_client::Reason;
     use turnstile_client::fake::{FakeSource, OpenMode};

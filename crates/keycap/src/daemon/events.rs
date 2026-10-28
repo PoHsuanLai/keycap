@@ -3,6 +3,7 @@
 
 use crate::Key;
 use crate::{Edge, Logical, OutEvent, Physical};
+use keycap_sys::EVENT_BYTES;
 
 pub(crate) const EV_SYN: u16 = 0x00;
 pub(crate) const EV_KEY: u16 = 0x01;
@@ -22,10 +23,6 @@ pub(crate) const REL_WHEEL_HI_RES: u16 = 0x0b;
 pub(crate) const REL_HWHEEL_HI_RES: u16 = 0x0c;
 /// The highest key or button code keycap's virtual keyboard registers.
 pub(crate) const MAX_CODE: u16 = 0x2ff;
-
-/// Bytes of a `struct input_event` on a 64-bit kernel: a 16-byte timestamp, then type, code
-/// and value.
-pub(crate) const EVENT_BYTES: usize = 24;
 
 /// One `struct input_event` without its timestamp (the kernel stamps uinput writes).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,13 +57,6 @@ impl InputEvent {
             value: i32::from_le_bytes([b[20], b[21], b[22], b[23]]),
         }
     }
-}
-
-/// The events in a buffer read from an evdev node: whole 24-byte records, a trailing partial
-/// record ignored (the kernel never returns one).
-pub(crate) fn parse(bytes: &[u8]) -> Vec<InputEvent> {
-    let (records, _partial) = bytes.as_chunks::<EVENT_BYTES>();
-    records.iter().map(InputEvent::from_bytes).collect()
 }
 
 /// What a device event means to keycap.
@@ -159,17 +149,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_splits_a_read_into_events_and_drops_a_partial_tail() {
-        let events = [
-            ev(EV_KEY, 30, 1),
-            ev(EV_KEY, 30, 0),
-            ev(EV_SYN, SYN_REPORT, 0),
-        ];
-        let mut bytes: Vec<u8> = events.iter().flat_map(|e| e.to_bytes()).collect();
-        assert_eq!(parse(&bytes), events);
-        bytes.extend([1, 2, 3]);
-        assert_eq!(parse(&bytes), events, "partial record dropped");
-        assert_eq!(parse(&[]), []);
+    fn sync_is_a_syn_report() {
         assert_eq!(InputEvent::SYNC, ev(EV_SYN, SYN_REPORT, 0));
     }
 

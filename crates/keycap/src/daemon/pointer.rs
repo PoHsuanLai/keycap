@@ -1,10 +1,10 @@
 //! The pointer half of a combo device as a value: what a "keycap pointer" twin registers.
-//! Pure; the ioctls that read the masks and the axis ranges belong to `grabber` and `sys`.
+//! Pure; the ioctls that read the masks and the axis ranges belong to `grabber` and `keycap-sys`.
 
 use super::discover::Bits;
 use super::events::{MAX_CODE, is_button};
-use super::sys::AbsInfo;
 use super::uinput::REL_AXES;
+use keycap_sys::AbsInfo;
 
 /// What follows the original's name in a twin's name; discovery never grabs a node that ends
 /// with it.

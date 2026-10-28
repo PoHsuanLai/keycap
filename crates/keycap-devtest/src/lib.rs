@@ -16,7 +16,6 @@ mod keys;
 mod notify;
 mod output;
 mod scratch;
-mod sys;
 mod sysfs;
 
 pub use client::{Client, FOCUS_SETTLE, summary};

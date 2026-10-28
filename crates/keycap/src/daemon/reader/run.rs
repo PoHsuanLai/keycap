@@ -6,11 +6,12 @@ use crate::DeviceId;
 use crate::daemon::clock;
 use crate::daemon::devices::{poll_gates, status_of, summary};
 use crate::daemon::discover::scan;
-use crate::daemon::evdev::{End, drain};
+use crate::daemon::events::InputEvent;
 use crate::daemon::readiness::ready;
 use crate::daemon::route::{Routed, route};
 use crate::daemon::socket::ToSocket;
 use crate::daemon::uinput::Emitter;
+use keycap_sys::{End, drain};
 use rustix::event::{PollFd, PollFlags, poll};
 use rustix::io::Errno;
 use rustix::time::Timespec;
@@ -130,7 +131,7 @@ impl<E: Emitter> Reader<E> {
         let Some(fd) = self.nodes.fd(id) else {
             return;
         };
-        let drained = drain(fd);
+        let drained = drain(fd, InputEvent::from_bytes);
         if let Some(layout) = self.devices.active(id) {
             let skipping = self.discarding.remove(&id);
             let (routed, skipping) = route(id, layout, &drained.events, clock::now(), skipping);
